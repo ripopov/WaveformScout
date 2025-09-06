@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow,
                               QMessageBox, QProgressDialog, QAbstractItemView,
                               QToolBar, QStyle, QStyleFactory, QWidget, QHBoxLayout,
                               QVBoxLayout, QPushButton, QLabel, QFrame, QMenuBar,
-                              QSizeGrip)
+                              QSizeGrip, QMenu, QStatusBar, QSizePolicy)
+from qframelesswindow import FramelessWindow
 from wavescout.message_box_utils import show_critical, show_warning, show_information, show_question
 from PySide6.QtCore import Qt, QThreadPool, QRunnable, Signal, QObject, QSettings, QEvent, QPoint, QSize
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPainter, QColor, QPen, QIcon, QPixmap
@@ -82,288 +83,12 @@ class LoadingState:
         self.cli_snippets = []
 
 
-class CustomTitleBar(QWidget):
-    """Custom title bar with integrated menu and panel toggle buttons."""
-    
-    def __init__(self, parent: 'WaveScoutMainWindow'):
-        super().__init__(parent)
-        self.parent = parent
-        self.setFixedHeight(35)
-        self.setAutoFillBackground(True)
-        
-        # Set up the palette based on current theme
-        palette = self.palette()
-        # Use a neutral dark color that works with both light and dark themes
-        palette.setColor(self.backgroundRole(), QColor("#252526"))
-        self.setPalette(palette)
-        
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        # Create menu bar
-        self.menu_bar = QMenuBar(self)
-        self.menu_bar.setStyleSheet("""
-            QMenuBar {
-                background-color: transparent;
-                color: #CCCCCC;
-            }
-            QMenuBar::item {
-                background-color: transparent;
-                padding: 5px 10px;
-            }
-            QMenuBar::item:selected {
-                background-color: #3E3E42;
-            }
-            QMenu {
-                background-color: #252526;
-                color: #CCCCCC;
-                border: 1px solid #3E3E42;
-            }
-            QMenu::item:selected {
-                background-color: #007ACC;
-            }
-        """)
-        layout.addWidget(self.menu_bar)
-        
-        layout.addStretch()
-        
-        # Title label
-        self.title = QLabel("WaveScout - Waveform Viewer", self)
-        self.title.setStyleSheet("color: #CCCCCC;")
-        layout.addWidget(self.title)
-        
-        layout.addStretch()
-        
-        # Toggle left sidebar button
-        self.left_button = QPushButton()
-        self.left_button.setCheckable(True)
-        self.left_button.setChecked(True)
-        self.left_button.setIcon(self.create_sidebar_icon(Qt.LeftArrow))
-        self.left_button.setFixedSize(30, 30)
-        self.left_button.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; } "
-            "QPushButton:hover { background-color: #3E3E42; } "
-            "QPushButton:checked { background-color: #007ACC; }")
-        layout.addWidget(self.left_button)
-        
-        # Toggle right sidebar button
-        self.right_button = QPushButton()
-        self.right_button.setCheckable(True)
-        self.right_button.setChecked(True)
-        self.right_button.setIcon(self.create_sidebar_icon(Qt.RightArrow))
-        self.right_button.setFixedSize(30, 30)
-        self.right_button.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; } "
-            "QPushButton:hover { background-color: #3E3E42; } "
-            "QPushButton:checked { background-color: #007ACC; }")
-        layout.addWidget(self.right_button)
-        
-        # Toggle bottom panel button  
-        self.bottom_button = QPushButton()
-        self.bottom_button.setCheckable(True)
-        self.bottom_button.setChecked(True)
-        self.bottom_button.setIcon(self.create_bottom_panel_icon())
-        self.bottom_button.setFixedSize(30, 30)
-        self.bottom_button.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; } "
-            "QPushButton:hover { background-color: #3E3E42; } "
-            "QPushButton:checked { background-color: #007ACC; }")
-        layout.addWidget(self.bottom_button)
-        
-        # Window control buttons
-        self.minimize_button = QPushButton("_")
-        self.minimize_button.setFixedSize(30, 30)
-        self.minimize_button.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; color: #CCCCCC; } "
-            "QPushButton:hover { background-color: #3E3E42; }")
-        self.minimize_button.clicked.connect(self.parent.showMinimized)
-        layout.addWidget(self.minimize_button)
-        
-        self.maximize_button = QPushButton("[]")
-        self.maximize_button.setFixedSize(30, 30)
-        self.maximize_button.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; color: #CCCCCC; } "
-            "QPushButton:hover { background-color: #3E3E42; }")
-        self.maximize_button.clicked.connect(self.toggle_maximize)
-        layout.addWidget(self.maximize_button)
-        
-        self.close_button = QPushButton("X")
-        self.close_button.setFixedSize(30, 30)
-        self.close_button.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; color: #CCCCCC; } "
-            "QPushButton:hover { background-color: #C42B1C; }")
-        self.close_button.clicked.connect(self.parent.close)
-        layout.addWidget(self.close_button)
-        
-        # For window dragging
-        self.old_pos: Optional[QPoint] = None
-        self._system_move_active = False
-        
-        # Install event filter on menu bar to pass through clicks in empty space
-        self.menu_bar.installEventFilter(self)
-    
-    def create_sidebar_icon(self, arrow_direction) -> QIcon:
-        """Create icon for sidebar toggle buttons."""
-        pixmap = QPixmap(16, 16)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        pen = QPen(QColor("#CCCCCC"))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        
-        if arrow_direction == Qt.LeftArrow:
-            # Left sidebar icon - bar on left with arrow
-            painter.drawRect(1, 1, 6, 14)
-            painter.drawLine(10, 4, 14, 8)
-            painter.drawLine(10, 12, 14, 8)
-        else:
-            # Right sidebar icon - bar on right with arrow
-            painter.drawRect(9, 1, 6, 14)
-            painter.drawLine(6, 4, 2, 8)
-            painter.drawLine(6, 12, 2, 8)
-        
-        painter.end()
-        return QIcon(pixmap)
-    
-    def create_bottom_panel_icon(self) -> QIcon:
-        """Create icon for bottom panel toggle button."""
-        pixmap = QPixmap(16, 16)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        pen = QPen(QColor("#CCCCCC"))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        
-        # Bottom panel icon - horizontal bar with down arrow
-        painter.drawRect(1, 9, 14, 6)
-        painter.drawLine(4, 6, 8, 2)
-        painter.drawLine(12, 6, 8, 2)
-        
-        painter.end()
-        return QIcon(pixmap)
-    
-    def toggle_maximize(self):
-        """Toggle window maximize state."""
-        if self.parent.isMaximized():
-            self.parent.showNormal()
-        else:
-            self.parent.showMaximized()
-    
-    def _start_system_move(self, event: QEvent) -> bool:
-        """Try to use native system move (needed on Wayland)."""
-        wh = self.parent.windowHandle() if self.parent.windowHandle() else None
-        if wh is None:
-            return False
-        if not hasattr(wh, 'startSystemMove'):
-            return False
-        try:
-            # Try Qt6 method with globalPosition
-            try:
-                return bool(wh.startSystemMove(event.globalPosition().toPoint()))
-            except TypeError:
-                # Some versions take no args
-                return bool(wh.startSystemMove())
-        except Exception:
-            return False
-    
-    def mousePressEvent(self, event):
-        """Handle mouse press for window dragging."""
-        if event.button() == Qt.LeftButton and not self.parent.isMaximized():
-            # Check if click is in draggable area (not on buttons)
-            click_pos = event.position().toPoint()
-            
-            # Check if click is on any button
-            for button in [self.left_button, self.right_button, self.bottom_button,
-                          self.minimize_button, self.maximize_button, self.close_button]:
-                if button.geometry().contains(click_pos):
-                    return
-            
-            # Check if click is on menu bar (will be handled by eventFilter)
-            if self.menu_bar.geometry().contains(click_pos):
-                return
-            
-            # We're in a draggable area (title or empty space), start drag
-            if self._start_system_move(event):
-                self._system_move_active = True
-                self.old_pos = None
-            else:
-                self._system_move_active = False
-                self.old_pos = event.globalPosition().toPoint()
-    
-    def mouseMoveEvent(self, event):
-        """Handle mouse move for window dragging."""
-        if self._system_move_active:
-            # System move is handled by the window system
-            return
-        if self.old_pos:
-            delta = QPoint(event.globalPosition().toPoint() - self.old_pos)
-            self.parent.move(self.parent.x() + delta.x(), self.parent.y() + delta.y())
-            self.old_pos = event.globalPosition().toPoint()
-    
-    def mouseReleaseEvent(self, event):
-        """Handle mouse release to stop dragging."""
-        self._system_move_active = False
-        self.old_pos = None
-    
-    def mouseDoubleClickEvent(self, event):
-        """Toggle maximize on double-click."""
-        self.toggle_maximize()
-    
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
-        """Filter events from menu bar to allow dragging in empty space."""
-        if obj == self.menu_bar:
-            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-                # Check if click is in empty space after menu items
-                click_x = event.position().x()
-                
-                # Get the actual width used by menu items
-                last_action = None
-                for action in self.menu_bar.actions():
-                    if action.isVisible():
-                        last_action = action
-                
-                if last_action:
-                    # Get the geometry of the last menu item
-                    action_geom = self.menu_bar.actionGeometry(last_action)
-                    menu_items_width = action_geom.right()
-                    
-                    # If click is beyond the menu items, start dragging
-                    if click_x > menu_items_width + 10:  # Add small margin
-                        if not self.parent.isMaximized():
-                            # Start window drag
-                            if self._start_system_move(event):
-                                self._system_move_active = True
-                                self.old_pos = None
-                            else:
-                                self._system_move_active = False
-                                self.old_pos = event.globalPosition().toPoint()
-                            return True  # Consume the event
-            
-            elif event.type() == QEvent.MouseMove:
-                if self.old_pos is not None:
-                    # Continue dragging
-                    delta = event.globalPosition().toPoint() - self.old_pos
-                    self.parent.move(self.parent.x() + delta.x(), self.parent.y() + delta.y())
-                    self.old_pos = event.globalPosition().toPoint()
-                    return True
-                    
-            elif event.type() == QEvent.MouseButtonRelease:
-                if self.old_pos is not None:
-                    self._system_move_active = False
-                    self.old_pos = None
-                    return True
-                    
-        return super().eventFilter(obj, event)
-
-
-class WaveScoutMainWindow(QMainWindow):
+class WaveScoutMainWindow(FramelessWindow):
     """Main window for WaveScout App."""
     
     def __init__(self, session_file=None, wave_file: str | None = None, exit_after_load: bool = False):
         super().__init__()
         self.setWindowTitle("WaveScout - Waveform Viewer")
-        self.setWindowFlags(Qt.FramelessWindowHint)
         self.resize(1400, 800)
         
         # Initialize thread pool and progress dialog
@@ -384,6 +109,12 @@ class WaveScoutMainWindow(QMainWindow):
         # Connect theme change signal for automatic repainting
         theme_manager.themeChanged.connect(self._on_theme_changed)
         
+        # Connect to system theme changes if available
+        from PySide6.QtWidgets import QStyleFactory
+        app = QApplication.instance()
+        if app and hasattr(app, 'paletteChanged'):
+            app.paletteChanged.connect(self._on_system_palette_changed)
+        
         # Store current waveform file for reload
         self.current_wave_file: str | None = None
         
@@ -399,18 +130,28 @@ class WaveScoutMainWindow(QMainWindow):
         # Initialize optional components
         self.design_tree_view: Optional[DesignTreeView] = None
         
-        # Create main widget and layout
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
+        # Create status bar early for compatibility
+        self._status_bar = QStatusBar()
         
-        # Main vertical layout for title bar and content
-        self.main_layout = QVBoxLayout(self.central_widget)
+        # Setup title bar with menu and panel toggle buttons
+        self._setup_title_bar()
+        
+        # Apply FramelessWindow theme styling after components are created
+        self._apply_frameless_styling()
+        
+        # Create main container widget that fills the window below title bar
+        self.container = QWidget(self)
+        self.container.setObjectName("container")
+        self.container.setGeometry(0, self.titleBar.height(), self.width(), 
+                                   self.height() - self.titleBar.height())
+        
+        # Apply container styling after it's created
+        self._apply_container_styling()
+        
+        # Main vertical layout for container content
+        self.main_layout = QVBoxLayout(self.container)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
-        
-        # Create and add custom title bar
-        self.title_bar = CustomTitleBar(self)
-        self.main_layout.addWidget(self.title_bar)
         
         # Create vertical splitter for main area and bottom panel
         self.vertical_splitter = QSplitter(Qt.Vertical)
@@ -467,8 +208,11 @@ class WaveScoutMainWindow(QMainWindow):
         self.bottom_panel_layout.addWidget(QLabel("Bottom Panel Content", styleSheet="color: #CCCCCC"))
         self.vertical_splitter.addWidget(self.bottom_panel)
         
-        # Add vertical splitter to main layout (below title bar)
+        # Add vertical splitter to main layout (below toolbar that will be added)
         self.main_layout.addWidget(self.vertical_splitter)
+        
+        # Add status bar at the bottom
+        self.main_layout.addWidget(self._status_bar)
         
         # Load value tooltip preference
         value_tooltips_enabled = self.settings_manager.get_value_tooltips_enabled()
@@ -491,17 +235,17 @@ class WaveScoutMainWindow(QMainWindow):
         # Restore panel states from settings after setting initial sizes
         self._restore_panel_states()
         
-        # Connect panel toggle buttons
-        self._connect_panel_toggles()
-        
         # Create actions first (shared between menu and toolbar)
         self._create_actions()
         
-        # Create menu bar
+        # Create menus using the menu bar in title bar
         self._create_menus()
         
-        # Create toolbar
+        # Create toolbar after actions are created
         self._create_toolbar()
+        
+        # Connect panel toggle buttons (after title bar setup)
+        self._connect_panel_toggles()
         
         # Initialize status bar
         self.statusBar().showMessage("Ready")
@@ -530,6 +274,311 @@ class WaveScoutMainWindow(QMainWindow):
             # Ensure waveform-related actions are disabled until a file is loaded
             self._set_waveform_actions_enabled(False)
         
+    def _setup_title_bar(self):
+        """Setup the title bar with menu bar and panel toggle buttons."""
+        # Create menu bar as child of title bar
+        self.menu_bar = QMenuBar(self.titleBar)
+        self.menu_bar.setNativeMenuBar(False)  # Ensure it's embedded in the window
+        
+        # Insert menu bar into title bar layout at the beginning (position 0)
+        self.titleBar.layout().insertWidget(0, self.menu_bar, 0, Qt.AlignLeft)
+        
+        # Add stretch to push panel buttons to the right (position 1)
+        self.titleBar.layout().insertStretch(1, 1)
+        
+        # Create panel toggle buttons container
+        buttons_container = QWidget()
+        buttons_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)  # Don't expand
+        buttons_layout = QHBoxLayout(buttons_container)
+        buttons_layout.setContentsMargins(0, 0, 12, 0)  # Margin to separate from window controls
+        buttons_layout.setSpacing(1)  # Tighter spacing for professional look
+        
+        # Toggle left sidebar button
+        self.left_button = QPushButton()
+        self.left_button.setCheckable(True)
+        self.left_button.setChecked(True)
+        self.left_button.setIcon(self._create_sidebar_icon(Qt.LeftArrow))
+        self.left_button.setFixedSize(28, 28)  # Slightly smaller for better proportions
+        self.left_button.setStyleSheet(
+            "QPushButton { background-color: transparent; border: none; } "
+            "QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); border-radius: 4px; } "
+            "QPushButton:checked { background-color: rgba(0, 120, 212, 0.3); border-radius: 4px; }")
+        self.left_button.setToolTip("Toggle Left Panel")
+        buttons_layout.addWidget(self.left_button)
+        
+        # Toggle right sidebar button
+        self.right_button = QPushButton()
+        self.right_button.setCheckable(True)
+        self.right_button.setChecked(True)
+        self.right_button.setIcon(self._create_sidebar_icon(Qt.RightArrow))
+        self.right_button.setFixedSize(28, 28)
+        self.right_button.setStyleSheet(
+            "QPushButton { background-color: transparent; border: none; } "
+            "QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); border-radius: 4px; } "
+            "QPushButton:checked { background-color: rgba(0, 120, 212, 0.3); border-radius: 4px; }")
+        self.right_button.setToolTip("Toggle Right Panel")
+        buttons_layout.addWidget(self.right_button)
+        
+        # Toggle bottom panel button
+        self.bottom_button = QPushButton()
+        self.bottom_button.setCheckable(True)
+        self.bottom_button.setChecked(True)
+        self.bottom_button.setIcon(self._create_bottom_panel_icon())
+        self.bottom_button.setFixedSize(28, 28)
+        self.bottom_button.setStyleSheet(
+            "QPushButton { background-color: transparent; border: none; } "
+            "QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); border-radius: 4px; } "
+            "QPushButton:checked { background-color: rgba(0, 120, 212, 0.3); border-radius: 4px; }")
+        self.bottom_button.setToolTip("Toggle Bottom Panel")
+        buttons_layout.addWidget(self.bottom_button)
+        
+        # Insert the buttons container at position 2 (after menu bar and stretch)
+        # This positions them on the right side, pushed there by the stretch
+        # No second stretch needed - window controls will be added automatically by FramelessWindow
+        self.titleBar.layout().insertWidget(2, buttons_container, 0, Qt.AlignVCenter)
+        
+        # Ensure title bar is raised
+        self.titleBar.raise_()
+    
+    def statusBar(self) -> QStatusBar:
+        """Return the status bar (compatibility method)."""
+        return self._status_bar
+    
+    def _apply_frameless_styling(self):
+        """Apply theme-aware styling to FramelessWindow components."""
+        # Detect if system is using dark theme
+        is_dark = self._is_system_dark_theme()
+        
+        if is_dark:
+            # Dark theme styling
+            menu_style = """
+                QMenuBar {
+                    background-color: transparent;
+                    color: white;
+                    border: none;
+                    padding: 2px;
+                }
+                QMenuBar::item {
+                    background-color: transparent;
+                    padding: 6px 8px;
+                    border-radius: 4px;
+                }
+                QMenuBar::item:selected {
+                    background-color: #505050;
+                }
+                QMenuBar::item:pressed {
+                    background-color: #606060;
+                }
+                QMenu {
+                    background-color: #252526;
+                    color: #CCCCCC;
+                    border: 1px solid #3E3E42;
+                    border-radius: 6px;
+                    padding: 4px;
+                }
+                QMenu::item {
+                    padding: 6px 20px;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #007ACC;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background-color: #3E3E42;
+                    margin: 4px 10px;
+                }
+            """
+            # Update panel toggle buttons for dark theme
+            button_style = """
+                QPushButton { 
+                    background-color: transparent; 
+                    border: none; 
+                    color: white;
+                } 
+                QPushButton:hover { 
+                    background-color: #505050; 
+                    border-radius: 4px; 
+                } 
+                QPushButton:checked { 
+                    background-color: #007ACC; 
+                    border-radius: 4px; 
+                }
+            """
+        else:
+            # Light theme styling
+            menu_style = """
+                QMenuBar {
+                    background-color: transparent;
+                    color: palette(window-text);
+                    border: none;
+                    padding: 2px;
+                }
+                QMenuBar::item {
+                    background-color: transparent;
+                    padding: 6px 8px;
+                    border-radius: 4px;
+                }
+                QMenuBar::item:selected {
+                    background-color: rgba(0, 0, 0, 0.1);
+                }
+                QMenuBar::item:pressed {
+                    background-color: rgba(0, 0, 0, 0.2);
+                }
+                QMenu {
+                    background-color: palette(base);
+                    color: palette(text);
+                    border: 1px solid palette(mid);
+                    border-radius: 6px;
+                    padding: 4px;
+                }
+                QMenu::item {
+                    padding: 6px 20px;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: palette(highlight);
+                    color: palette(highlighted-text);
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background-color: palette(mid);
+                    margin: 4px 10px;
+                }
+            """
+            # Update panel toggle buttons for light theme
+            button_style = """
+                QPushButton { 
+                    background-color: transparent; 
+                    border: none; 
+                    color: palette(window-text);
+                } 
+                QPushButton:hover { 
+                    background-color: rgba(0, 0, 0, 0.1); 
+                    border-radius: 4px; 
+                } 
+                QPushButton:checked { 
+                    background-color: rgba(0, 120, 212, 0.3); 
+                    border-radius: 4px; 
+                }
+            """
+        
+        # Apply the theme-appropriate styles
+        self.menu_bar.setStyleSheet(menu_style)
+        self.left_button.setStyleSheet(button_style)
+        self.right_button.setStyleSheet(button_style)
+        self.bottom_button.setStyleSheet(button_style)
+        
+        # Update title bar button colors
+        self._update_title_bar_button_colors(is_dark)
+    
+    def _apply_container_styling(self):
+        """Apply styling to the container widget."""
+        # Style the container for consistent appearance
+        self.container.setStyleSheet("""
+            QWidget#container {
+                background-color: palette(window);
+            }
+        """)
+    
+    def _is_system_dark_theme(self) -> bool:
+        """Check if the system is using a dark theme."""
+        # Get the system palette
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QPalette
+        palette = QApplication.style().standardPalette()
+        window_color = palette.color(QPalette.Window)
+        text_color = palette.color(QPalette.WindowText)
+        
+        # Calculate luminance to determine if it's a dark theme
+        # Using relative luminance formula
+        window_luminance = (0.299 * window_color.red() + 
+                           0.587 * window_color.green() + 
+                           0.114 * window_color.blue()) / 255
+        
+        text_luminance = (0.299 * text_color.red() + 
+                         0.587 * text_color.green() + 
+                         0.114 * text_color.blue()) / 255
+        
+        # If background is dark and text is light, it's a dark theme
+        return window_luminance < 0.5 and text_luminance > 0.5
+    
+    def _update_title_bar_button_colors(self, is_dark: bool):
+        """Update title bar button colors based on theme."""
+        if is_dark:
+            # Dark theme - use white icons with dark hover backgrounds
+            icon_color = Qt.white
+            hover_bg = QColor(80, 80, 80)
+        else:
+            # Light theme - use black icons with light hover backgrounds
+            icon_color = Qt.black
+            hover_bg = QColor(0, 0, 0, 26)
+        
+        # Set title bar button colors based on theme
+        if hasattr(self.titleBar, 'minBtn'):
+            self.titleBar.minBtn.setNormalColor(icon_color)
+            self.titleBar.minBtn.setHoverColor(icon_color)
+            self.titleBar.minBtn.setPressedColor(icon_color)
+            self.titleBar.minBtn.setHoverBackgroundColor(hover_bg)
+            
+        if hasattr(self.titleBar, 'maxBtn'):
+            self.titleBar.maxBtn.setNormalColor(icon_color)
+            self.titleBar.maxBtn.setHoverColor(icon_color)
+            self.titleBar.maxBtn.setPressedColor(icon_color)
+            self.titleBar.maxBtn.setHoverBackgroundColor(hover_bg)
+            
+        if hasattr(self.titleBar, 'closeBtn'):
+            # Close button uses the same icon color but keeps red hover background
+            self.titleBar.closeBtn.setNormalColor(icon_color)
+    
+    def _create_sidebar_icon(self, arrow_direction) -> QIcon:
+        """Create theme-aware icon for sidebar toggle buttons."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        
+        # Use theme-appropriate color
+        is_dark = self._is_system_dark_theme()
+        icon_color = QColor("#CCCCCC") if is_dark else QColor("#666666")
+        pen = QPen(icon_color)
+        pen.setWidth(2)
+        painter.setPen(pen)
+        
+        if arrow_direction == Qt.LeftArrow:
+            # Left sidebar icon - bar on left with arrow
+            painter.drawRect(1, 1, 6, 14)
+            painter.drawLine(10, 4, 14, 8)
+            painter.drawLine(10, 12, 14, 8)
+        else:
+            # Right sidebar icon - bar on right with arrow
+            painter.drawRect(9, 1, 6, 14)
+            painter.drawLine(6, 4, 2, 8)
+            painter.drawLine(6, 12, 2, 8)
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def _create_bottom_panel_icon(self) -> QIcon:
+        """Create theme-aware icon for bottom panel toggle button."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        
+        # Use theme-appropriate color
+        is_dark = self._is_system_dark_theme()
+        icon_color = QColor("#CCCCCC") if is_dark else QColor("#666666")
+        pen = QPen(icon_color)
+        pen.setWidth(2)
+        painter.setPen(pen)
+        
+        # Bottom panel icon - horizontal bar with down arrow
+        painter.drawRect(1, 9, 14, 6)
+        painter.drawLine(4, 6, 8, 2)
+        painter.drawLine(12, 6, 8, 2)
+        
+        painter.end()
+        return QIcon(pixmap)
+    
     def _create_actions(self):
         """Create shared QAction objects for toolbar and menu."""
         # File actions
@@ -614,8 +663,8 @@ class WaveScoutMainWindow(QMainWindow):
         self.toolbar.setMovable(False)
         self.toolbar.setFloatable(False)
         
-        # Insert toolbar below title bar in main layout
-        self.main_layout.insertWidget(1, self.toolbar)
+        # Add toolbar to main layout (already inserted before splitter)
+        self.main_layout.insertWidget(0, self.toolbar)
         
         # Add actions to toolbar
         self.toolbar.addAction(self.open_action)
@@ -630,7 +679,7 @@ class WaveScoutMainWindow(QMainWindow):
     
     def _create_menus(self):
         """Create application menus."""
-        menubar = self.title_bar.menu_bar
+        menubar = self.menu_bar
         
         # File menu
         file_menu = menubar.addMenu("&File")
@@ -1565,6 +1614,14 @@ class WaveScoutMainWindow(QMainWindow):
         if self.wave_widget and self.wave_widget.session is not None:
             self._update_signal_colors_to_theme()
         
+        # Update title bar and button styling based on new theme
+        self._apply_frameless_styling()
+        
+        # Recreate icons with new theme colors
+        self.left_button.setIcon(self._create_sidebar_icon(Qt.LeftArrow))
+        self.right_button.setIcon(self._create_sidebar_icon(Qt.RightArrow))
+        self.bottom_button.setIcon(self._create_bottom_panel_icon())
+        
         # Trigger repaint of all widgets
         if self.wave_widget:
             self.wave_widget.update_all_views()
@@ -1572,6 +1629,16 @@ class WaveScoutMainWindow(QMainWindow):
         # Update design tree view if it exists
         if self.design_tree_view is not None:
             self.design_tree_view.update()
+    
+    def _on_system_palette_changed(self):
+        """Handle system palette changes (e.g., when user toggles Windows dark mode)."""
+        # Reapply theme-aware styling when system palette changes
+        self._apply_frameless_styling()
+        
+        # Recreate icons with new theme colors
+        self.left_button.setIcon(self._create_sidebar_icon(Qt.LeftArrow))
+        self.right_button.setIcon(self._create_sidebar_icon(Qt.RightArrow))
+        self.bottom_button.setIcon(self._create_bottom_panel_icon())
     
     def _update_signal_colors_to_theme(self):
         """Update all signal colors that are using the old default to use the new theme default."""
@@ -1779,9 +1846,9 @@ class WaveScoutMainWindow(QMainWindow):
     
     def _connect_panel_toggles(self):
         """Connect panel toggle buttons to their respective methods."""
-        self.title_bar.left_button.clicked.connect(self.toggle_left_sidebar)
-        self.title_bar.right_button.clicked.connect(self.toggle_right_sidebar)
-        self.title_bar.bottom_button.clicked.connect(self.toggle_bottom_panel)
+        self.left_button.clicked.connect(self.toggle_left_sidebar)
+        self.right_button.clicked.connect(self.toggle_right_sidebar)
+        self.bottom_button.clicked.connect(self.toggle_bottom_panel)
     
     def toggle_left_sidebar(self):
         """Toggle left sidebar visibility."""
@@ -1818,7 +1885,7 @@ class WaveScoutMainWindow(QMainWindow):
                 self.horizontal_splitter.setSizes(sizes)
         
         # Update button state
-        self.title_bar.left_button.setChecked(self.left_panel.isVisible())
+        self.left_button.setChecked(self.left_panel.isVisible())
         self._save_panel_states()
     
     def toggle_right_sidebar(self):
@@ -1856,7 +1923,7 @@ class WaveScoutMainWindow(QMainWindow):
                 self.horizontal_splitter.setSizes(sizes)
         
         # Update button state
-        self.title_bar.right_button.setChecked(self.right_panel.isVisible())
+        self.right_button.setChecked(self.right_panel.isVisible())
         self._save_panel_states()
     
     def toggle_bottom_panel(self):
@@ -1888,7 +1955,7 @@ class WaveScoutMainWindow(QMainWindow):
                 self.vertical_splitter.setSizes(sizes)
         
         # Update button state
-        self.title_bar.bottom_button.setChecked(self.bottom_panel.isVisible())
+        self.bottom_button.setChecked(self.bottom_panel.isVisible())
         self._save_panel_states()
     
     def _save_panel_states(self):
@@ -1968,9 +2035,18 @@ class WaveScoutMainWindow(QMainWindow):
         self.vertical_splitter.setSizes(v_sizes)
         
         # Update toggle button states to match visibility
-        self.title_bar.left_button.setChecked(left_visible)
-        self.title_bar.right_button.setChecked(right_visible)
-        self.title_bar.bottom_button.setChecked(bottom_visible)
+        self.left_button.setChecked(left_visible)
+        self.right_button.setChecked(right_visible)
+        self.bottom_button.setChecked(bottom_visible)
+    
+    def resizeEvent(self, event):
+        """Handle window resize events."""
+        super().resizeEvent(event)
+        # Resize container to fill the window below the title bar
+        self.container.setGeometry(0, self.titleBar.height(), self.width(), 
+                                   self.height() - self.titleBar.height())
+        # Ensure title bar is properly positioned
+        self.titleBar.raise_()
     
     def closeEvent(self, event):
         """Handle window close event."""
