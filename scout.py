@@ -332,10 +332,20 @@ class WaveScoutMainWindow(FramelessWindow):
         self.bottom_button.setToolTip("Toggle Bottom Panel")
         buttons_layout.addWidget(self.bottom_button)
         
-        # Insert the buttons container at position 2 (after menu bar and stretch)
-        # This positions them on the right side, pushed there by the stretch
-        # No second stretch needed - window controls will be added automatically by FramelessWindow
-        self.titleBar.layout().insertWidget(2, buttons_container, 0, Qt.AlignVCenter)
+        # Insert the buttons container just before the minimize button if available,
+        # otherwise fall back to placing it before the last item (window controls group).
+        layout = self.titleBar.layout()
+        insert_index = max(layout.count() - 1, 0)
+        try:
+            # Some qframelesswindow title bars expose minBtn directly; if so, prefer its index
+            if hasattr(self.titleBar, 'minBtn') and self.titleBar.minBtn is not None:
+                idx = layout.indexOf(self.titleBar.minBtn)
+                if idx != -1:
+                    insert_index = idx  # place immediately before minBtn
+        except Exception:
+            # If any unexpected structure, keep fallback index
+            pass
+        layout.insertWidget(insert_index, buttons_container, 0, Qt.AlignVCenter)
         
         # Ensure title bar is raised
         self.titleBar.raise_()
