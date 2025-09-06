@@ -12,6 +12,7 @@ pyside6 = "^6.9.1"
 numpy = "^2.0.0"
 rapidfuzz = "^3.13.0"
 qdarkstyle = "^3.2.3"
+PySideSix-Frameless-Window = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
