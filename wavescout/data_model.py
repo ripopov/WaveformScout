@@ -47,14 +47,11 @@ Time = int  # In Timescale units
 # SignalHandle is an opaque identifier used to efficiently reference signals in the waveform database.
 # Instead of using full hierarchical names (e.g., "top.cpu.core.alu.result[31:0]") for every
 # database query, which would be slow for string comparisons, we use integer handles that act
-# as primary keys. This provides O(1) lookup performance when fetching signal data.
+# as primary keys. In addition, multiple hierarchical names can reference the same Signal,
+# so using SignalHandle is less ambiguous.
 # The handle is obtained when first querying a signal by name, then reused for all subsequent
 # operations like getting transitions, sampling values, etc.
 # Important: Multiple Variables with different hierarchical names can reference the same Signal.
-# We use handles instead of Signal objects directly because:
-# - Handles enable lazy loading - signals are loaded into cache only when needed for rendering
-# - Handles are serializable for session save/restore, while Signal objects are not
-# - This separation keeps the UI layer (SignalNode) decoupled from the data layer (Signal)
 SignalHandle = int
 
 # SignalNodeID is a unique identifier for each SignalNode instance.
