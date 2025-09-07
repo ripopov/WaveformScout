@@ -95,6 +95,12 @@ class WaveScoutWidget(QWidget):
         self._splitter.addWidget(self._values_view)
         self._splitter.addWidget(self._canvas)
         
+        # Set stretch factors: 0 for fixed width panels, 1 for canvas
+        # This ensures that when the window resizes, only the canvas expands
+        self._splitter.setStretchFactor(0, 0)  # Names view - fixed width
+        self._splitter.setStretchFactor(1, 0)  # Values view - fixed width
+        self._splitter.setStretchFactor(2, 1)  # Canvas - takes all extra space
+        
         # Set initial splitter sizes
         if UI.SPLITTER_INITIAL_SIZES is not None:
             self._splitter.setSizes(UI.SPLITTER_INITIAL_SIZES)

@@ -232,6 +232,17 @@ class WaveScoutMainWindow(FramelessWindow):
         self.horizontal_splitter.setSizes([420, 730, 250])
         self.vertical_splitter.setSizes([600, 200])
         
+        # Set stretch factors for horizontal splitter
+        # Only the center widget (WaveScoutWidget) should expand horizontally
+        self.horizontal_splitter.setStretchFactor(0, 0)  # Design tree - fixed width
+        self.horizontal_splitter.setStretchFactor(1, 1)  # Wave widget - takes all extra space
+        self.horizontal_splitter.setStretchFactor(2, 0)  # Snippets panel - fixed width
+        
+        # Set stretch factors for vertical splitter
+        # Only the main area should expand vertically
+        self.vertical_splitter.setStretchFactor(0, 1)  # Main area - takes all extra space
+        self.vertical_splitter.setStretchFactor(1, 0)  # Bottom panel - fixed height
+        
         # Restore panel states from settings after setting initial sizes
         self._restore_panel_states()
         
