@@ -13,10 +13,12 @@ Implement a new group rendering mode called OVERLAPPED where all signal waveform
    - Render Mode menu disabled for groups containing subgroups (only flat groups supported)
 
 2. **Display Behavior**
-   - In OVERLAPPED mode, all child signals render in the same row space
-   - Group's height_scaling = sum of all children's height_scaling values
-   - Individual child height_scaling values are ignored during rendering
+   - Group node remains as an empty row with height_scaling = 1 (standard group row)
+   - All child signal rows are replaced by a single combined overlapped waveform row
+   - The combined row's height_scaling = sum of all children's height_scaling values
+   - Individual child nodes no longer render their own rows (rendering skipped)
    - All child signals rendered as analog waveforms regardless of their original render type
+   - The overlapped waveform appears immediately after the group node row
 
 3. **Scaling Mode**
    - AnalogScalingMode.SCALE_TO_ALL_DATA automatically selected for the group
@@ -161,12 +163,13 @@ Implement a new group rendering mode called OVERLAPPED where all signal waveform
 **Method**: `paintEvent()`
 
 **Changes at line 603** (where groups skip rendering):
-- Check if `node.group_render_mode == GroupRenderMode.OVERLAPPED`
-- If true:
+- Group nodes still render as empty rows (existing behavior preserved)
+- For OVERLAPPED groups, after rendering the empty group row:
+  - Render a single combined overlapped waveform row immediately after
   - Collect all child nodes and their drawing data
-  - Call `draw_overlapped_group()` from signal_renderer
-  - Skip rendering individual children
-- Update row height calculation to use summed height_scaling
+  - Call `draw_overlapped_group()` with combined height_scaling
+  - Skip rendering individual child signal rows (mark them as handled)
+- Row height calculation: group row = 1, overlapped row = sum of children's height_scaling
 
 **Method**: `_calculate_signal_range()`
 
@@ -202,12 +205,14 @@ Implement a new group rendering mode called OVERLAPPED where all signal waveform
 
 #### Height Scaling Calculation
 1. When switching to OVERLAPPED:
-   - Sum all child height_scaling values
-   - Set group.height_scaling = sum
-   - Mark children as "height ignored" internally
+   - Group node keeps height_scaling = 1 (empty row)
+   - Create virtual overlapped row with height = sum of all child height_scaling values
+   - Mark individual child rows as "skip rendering" (height effectively 0)
+   - Total display height = 1 (group) + sum (overlapped row)
 2. When switching back to SEPARATE_ROWS:
-   - Restore group.height_scaling = 1
-   - Children use their own height_scaling again
+   - Group node remains height_scaling = 1 (empty row)
+   - Children restore their individual height_scaling values
+   - Remove virtual overlapped row
 
 ### UI Integration
 
@@ -224,10 +229,12 @@ Group Context Menu
 ```
 
 #### Visual Updates
-- Groups in OVERLAPPED mode show all waveforms superimposed
-- Each signal has distinct color from rainbow palette
-- Vertical scaling uses combined height of all children
-- Canvas properly allocates space based on summed height_scaling
+- Group node appears as empty row (height = 1) with expand/collapse controls
+- Overlapped waveform row appears immediately below group node
+- All child waveforms superimposed in the overlapped row with distinct colors
+- Individual child signal rows are hidden/skipped
+- Overlapped row height = sum of all children's original height_scaling values
+- Each signal uses distinct color from automatically assigned rainbow palette
 
 ### Performance Considerations
 
