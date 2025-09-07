@@ -24,7 +24,7 @@ and sampling code; it contains no widget logic.
 from typing import Dict, Tuple, Optional, Union, TypedDict
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPolygonF
 from PySide6.QtCore import Qt, QPointF
-from .data_model import RenderType, Time, AnalogScalingMode, SignalHandle, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache
+from .data_model import RenderType, Time, AnalogScalingMode, SignalHandle, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat
 from .signal_sampling import SignalDrawingData, ValueKind
 from . import config
 RENDERING = config.RENDERING
@@ -523,7 +523,7 @@ def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[T
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol) -> Tuple[float, float]:
+def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED) -> Tuple[float, float]:
     """Estimate global min/max from the waveform database.
     
     Rationale
@@ -558,6 +558,20 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBPro
         start_time = 0
         end_time = time_table[-1]
         
+        # Get the signal's bit width for correct signed/unsigned interpretation
+        bit_width = 32  # Default bit width
+        if waveform_db.hierarchy:
+            # Find the variable corresponding to this handle to get its bit width
+            for var in waveform_db.hierarchy.all_vars():
+                var_handle = waveform_db.find_handle_by_path(var.full_name(waveform_db.hierarchy))
+                if var_handle == handle:
+                    try:
+                        detected_width = var.bitwidth()
+                        bit_width = detected_width if detected_width is not None else 32
+                    except:
+                        bit_width = 32  # Fallback to 32-bit if bitwidth() fails
+                    break
+        
         # Sample the signal at various points to find min/max
         # We need to sample because pywellen doesn't provide a direct way to get all transitions
         # Sample at a reasonable interval to capture the range
@@ -571,7 +585,7 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBPro
             query_result = signal_obj.query_signal(int(current_time))
             if query_result and query_result.value is not None:
                 # Parse the value to get numeric representation
-                _, value_float, _ = parse_signal_value(query_result.value)
+                _, value_float, _ = parse_signal_value(query_result.value, data_format, bit_width)
                 
                 if value_float is not None and not math.isnan(value_float):
                     min_val = min(min_val, value_float)
@@ -600,6 +614,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
                     drawing_data: SignalDrawingData, 
                     scaling_mode: AnalogScalingMode, 
                     signal_range_cache: Dict[SignalNodeID, SignalRangeCache],
+                    data_format: DataFormat = DataFormat.UNSIGNED,
                     waveform_db: Optional[WaveformDBProtocol] = None,
                     start_time: Optional[Time] = None, end_time: Optional[Time] = None) -> Tuple[float, float]:
     """Return analog Y-range using a small cache keyed by signal instance.
@@ -624,11 +639,13 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         (min_val, max_val) range for mapping values to Y.
     """
     # Get or create cache entry for this signal instance
-    if instance_id not in signal_range_cache:
+    # If cache exists but data format changed, invalidate it
+    if instance_id not in signal_range_cache or signal_range_cache[instance_id].data_format != data_format:
         signal_range_cache[instance_id] = SignalRangeCache(
             min=float('inf'),
             max=float('-inf'),
-            viewport_ranges={}
+            viewport_ranges={},
+            data_format=data_format
         )
     
     cache = signal_range_cache[instance_id]
@@ -638,7 +655,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         if cache.min == float('inf'):
             # Compute and cache global range from database
             if waveform_db and handle is not None:
-                min_val, max_val = compute_global_signal_range(handle, waveform_db)
+                min_val, max_val = compute_global_signal_range(handle, waveform_db, data_format)
             else:
                 # Fallback to viewport data if db not available
                 min_val, max_val = compute_signal_range(drawing_data)
@@ -708,7 +725,7 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
     if instance_id is not None and handle is not None:
         min_val, max_val = get_signal_range(
             instance_id, handle, drawing_data, scaling_mode, signal_range_cache,
-            waveform_db, params['start_time'], params['end_time']
+            node_info['format'].data_format, waveform_db, params['start_time'], params['end_time']
         )
     else:
         # Fallback to computing range from current data

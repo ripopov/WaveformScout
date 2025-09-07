@@ -318,6 +318,7 @@ class SignalRangeCache:
     min: float  # Min value across all time
     max: float  # Max value across all time
     viewport_ranges: Dict[Tuple[Time, Time], Tuple[float, float]] = field(default_factory=dict)  # Cached viewport ranges
+    data_format: DataFormat = DataFormat.UNSIGNED  # The data format used for computing these ranges
 
 @dataclass
 class WaveformSession:
