@@ -155,13 +155,13 @@ class SnippetBrowserWidget(QWidget):
         self.table_view.setSortingEnabled(True)
         self.table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         
-        # Adjust column widths
+        # Adjust column widths - all columns resizable
         header = self.table_view.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Name column stretches
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Name
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Parent Scope
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Signals
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Created
+        header.setStretchLastSection(True)  # Last column fills remaining space
         
         layout.addWidget(self.table_view)
         

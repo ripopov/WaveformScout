@@ -183,12 +183,12 @@ class VarsView(QWidget):
         # Set model
         self.table_view.setModel(self.filter_proxy)
         
-        # Configure column widths
+        # Configure column widths - all columns resizable
         header = self.table_view.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Name column stretches
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Type column interactive
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Bit Range column interactive
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Name column
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Type column
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Bit Range column
+        header.setStretchLastSection(True)  # Last column fills remaining space
         # Micro-optimization: faster measurements
         self.table_view.setWordWrap(False)
         
@@ -229,24 +229,24 @@ class VarsView(QWidget):
     
     def set_variables(self, variables: List[VariableData]) -> None:
         """Set the variables to display.
-        Performs a one-time resize-to-contents for secondary columns after data changes,
-        then restores interactive mode to avoid expensive recalculations during layout changes.
+        Keeps all columns in interactive mode for consistent resizing behavior.
         """
         self.vars_model.set_variables(variables)
         self.filter_input.clear()
 
-        # One-time resize-to-contents for Type and Bit Range columns
+        # Optionally resize columns to fit content initially while keeping interactive mode
         header = self.table_view.horizontalHeader()
-        # Temporarily switch to ResizeToContents to measure
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        # Trigger measurements
+        
+        # Resize columns to content (this works even in Interactive mode)
         self.table_view.resizeColumnsToContents()
         
         # Clamp widths to avoid overly wide columns
         try:
+            max_name_width = 300
             max_type_width = 200
             max_range_width = 200
+            if header.sectionSize(0) > max_name_width:
+                header.resizeSection(0, max_name_width)
             if header.sectionSize(1) > max_type_width:
                 header.resizeSection(1, max_type_width)
             if header.sectionSize(2) > max_range_width:
@@ -254,10 +254,6 @@ class VarsView(QWidget):
         except Exception:
             # Be robust in environments without a running event loop during tests
             pass
-        
-        # Restore Interactive to prevent continuous recomputation
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
     
     def get_selected_variables(self) -> List[VariableData]:
         """Get the currently selected variables."""
