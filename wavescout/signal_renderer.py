@@ -731,14 +731,10 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
         # Fallback to computing range from current data
         min_val, max_val = compute_signal_range(drawing_data)
     
-    # Add margin to the range
+    # Use the real signal range without added margins
     value_range = max_val - min_val
     if value_range == 0:
         value_range = 1.0
-    margin = value_range * 0.1
-    min_val -= margin
-    max_val += margin
-    value_range = max_val - min_val
     
     # Draw min/max value labels only if there's enough vertical space
     height_scaling = node_info.get('height_scaling', 1)
