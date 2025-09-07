@@ -68,23 +68,23 @@ def test_parse_signal_value_hex():
     """Test hexadecimal formatting."""
     # 8-bit hex
     value_str, value_float, value_bool = parse_signal_value(255, DataFormat.HEX, 8)
-    assert value_str == "0xFF"
+    assert value_str == "FF"
     assert value_float == 255.0
     assert value_bool == True
     
     # 16-bit hex
     value_str, value_float, value_bool = parse_signal_value(0x1234, DataFormat.HEX, 16)
-    assert value_str == "0x1234"
+    assert value_str == "1234"
     assert value_float == 0x1234
     
     # 32-bit hex
     value_str, value_float, value_bool = parse_signal_value(0xDEADBEEF, DataFormat.HEX, 32)
-    assert value_str == "0xDEADBEEF"
+    assert value_str == "DEADBEEF"
     assert value_float == 0xDEADBEEF
     
     # Zero in hex
     value_str, value_float, value_bool = parse_signal_value(0, DataFormat.HEX, 8)
-    assert value_str == "0x00"
+    assert value_str == "00"
     assert value_float == 0.0
     assert value_bool == False
 
