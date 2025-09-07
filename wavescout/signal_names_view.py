@@ -166,6 +166,37 @@ class SignalNamesView(BaseColumnView):
         
         # For groups, show rename and save as snippet actions
         if node.is_group:
+            # Render Mode submenu for groups
+            render_mode_menu = menu.addMenu("Render Mode")
+
+            # Determine if group contains subgroups (disable overlapped for nested groups)
+            has_subgroups = any(getattr(child, 'is_group', False) for child in node.children)
+
+            # Action group for exclusivity
+            render_mode_group = QActionGroup(self)
+            render_mode_group.setExclusive(True)
+
+            # Separate Rows (default)
+            separate_action = QAction("Separate Rows", self)
+            separate_action.setCheckable(True)
+            separate_action.setChecked(node.group_render_mode in (None, GroupRenderMode.SEPARATE_ROWS))
+            separate_action.triggered.connect(lambda: self._controller.set_group_render_mode(node.instance_id, GroupRenderMode.SEPARATE_ROWS))
+            render_mode_group.addAction(separate_action)
+            render_mode_menu.addAction(separate_action)
+
+            # Overlapped
+            overlapped_action = QAction("Overlapped", self)
+            overlapped_action.setCheckable(True)
+            overlapped_action.setChecked(node.group_render_mode == GroupRenderMode.OVERLAPPED)
+            overlapped_action.setEnabled(not has_subgroups)
+            overlapped_action.triggered.connect(lambda: self._controller.set_group_render_mode(node.instance_id, GroupRenderMode.OVERLAPPED))
+            render_mode_group.addAction(overlapped_action)
+            render_mode_menu.addAction(overlapped_action)
+
+            # Separator after render mode
+            menu.addSeparator()
+
+            # Rename action
             rename_action = QAction("Rename", self)
             rename_action.triggered.connect(self._rename_selected_signal)
             menu.addAction(rename_action)

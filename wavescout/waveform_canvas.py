@@ -6,14 +6,14 @@ from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics, QImage, Q
 from typing import List, Tuple, Dict, Optional, Union, Set
 from .waveform_item_model import WaveformItemModel
 from dataclasses import dataclass, field
-from .data_model import SignalNode, SignalHandle, SignalNodeID, Time, TimeUnit, TimeRulerConfig, RenderType, Marker
+from .data_model import SignalNode, SignalHandle, SignalNodeID, Time, TimeUnit, TimeRulerConfig, RenderType, Marker, GroupRenderMode
 from .signal_sampling import (
     SignalDrawingData,
     generate_signal_draw_commands
 )
 from .signal_renderer import (
     draw_digital_signal, draw_bus_signal, draw_analog_signal, draw_event_signal,
-    NodeInfo, RenderParams
+    NodeInfo, RenderParams, draw_overlapped_group
 )
 from . import config
 RENDERING = config.RENDERING
@@ -319,13 +319,36 @@ class WaveformCanvas(QWidget):
                 node = model.data(index, Qt.ItemDataRole.UserRole)
 
                 if node:
+                    # Always show the group node row as is
                     self._visible_nodes.append(node)
                     self._row_to_node[current_row] = node
-                    # Store the scaled row height for this row
                     self._row_heights[current_row] = self._row_height * node.height_scaling
                     current_row += 1
 
-                    # Add children if expanded
+                    # Handle special group render modes
+                    if getattr(node, 'is_group', False) and node.is_expanded and node.group_render_mode != GroupRenderMode.SEPARATE_ROWS:
+                        # For non-default render modes, add a special rendering row after the group
+                        # Only if expanded and has child signals
+                        child_signals: List[SignalNode] = [c for c in node.children if not c.is_group and c.handle is not None]
+                        if child_signals:
+                            # Compute combined height scaling as sum of children
+                            combined_scaling = sum(max(1, c.height_scaling) for c in child_signals)
+                            # Create a virtual node to represent the combined rendering
+                            # Store reference to parent group and children for rendering
+                            virtual_node = SignalNode(name=f"{node.name}_virtual", handle=None, is_group=False)
+                            virtual_node.height_scaling = combined_scaling
+                            # Store parent group reference and children in the virtual node
+                            # Using special attributes to identify this as a group render node
+                            setattr(virtual_node, '_group_render_parent', node)
+                            setattr(virtual_node, '_group_render_children', child_signals)
+                            self._visible_nodes.append(virtual_node)
+                            self._row_to_node[current_row] = virtual_node
+                            self._row_heights[current_row] = self._row_height * combined_scaling
+                            current_row += 1
+                        # Skip recursing into children for non-default render modes
+                        continue
+
+                    # Add children if expanded (normal behavior)
                     if model.hasChildren(index):
                         # Check if node is expanded (from data model)
                         is_expanded = node.is_group and node.is_expanded
@@ -763,7 +786,7 @@ class WaveformCanvas(QWidget):
             header_height=self._header_height,  # Include header height for proper rendering
             waveform_max_time=self._waveform_max_time,  # Add waveform max time for renderer
             signal_range_cache=self._signal_range_cache,  # Pass signal range cache for analog rendering
-            highlight_selected=self._highlight_selected  # Pass highlight flag
+            highlight_selected=self._highlight_selected,  # Pass highlight flag
         )
     
     def _render_to_image(self, params: RenderParams, generation: int) -> Tuple[QImage, int, float]:
@@ -803,6 +826,9 @@ class WaveformCanvas(QWidget):
                     # Row is in render area, include it if it's a signal
                     if not node.is_group and node.handle is not None:
                         signals_to_render.append(node)
+                    # If this is a virtual group render node, include its children
+                    if hasattr(node, '_group_render_children'):
+                        signals_to_render.extend(node._group_render_children)
                 
                 cumulative_y += row_height
             
@@ -985,7 +1011,17 @@ class WaveformCanvas(QWidget):
         painter.setPen(border_pen)
         painter.drawLine(0, y + row_height - 1, params['width'], y + row_height - 1)
         
-        
+        # Check if this is a virtual group render node by checking the actual node object
+        actual_node = params['visible_nodes'][row] if row < len(params['visible_nodes']) else None
+        if actual_node and hasattr(actual_node, '_group_render_parent'):
+            parent = getattr(actual_node, '_group_render_parent')
+            children = getattr(actual_node, '_group_render_children')
+            # Handle based on the parent's render mode
+            if parent.group_render_mode == GroupRenderMode.OVERLAPPED:
+                draw_overlapped_group(painter, parent.instance_id, children, y, row_height, params)
+            # Future render modes can be added here
+            return
+
         # Draw signal if it has drawing commands
         if node_info['handle'] is not None and node_info['handle'] in draw_commands:
             drawing_data = draw_commands[node_info['handle']]

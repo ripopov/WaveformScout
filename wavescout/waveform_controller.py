@@ -889,18 +889,59 @@ class WaveformController:
             self._emit("session_changed")
     
     def set_group_render_mode(self, node_id: SignalNodeID, mode: GroupRenderMode) -> None:
-        """Set the render mode for a group."""
+        """Set the render mode for a group and apply required side-effects.
+        
+        - Only flat groups (no subgroup children) are allowed for OVERLAPPED.
+        - When switching to OVERLAPPED:
+          * Force all direct child signals to Analog render_type
+          * Set analog_scaling_mode to SCALE_TO_ALL_DATA
+          * Assign distinct rainbow colors to children (if color is None)
+        """
+        from .data_model import AnalogScalingMode
+        from .color_utils import generate_rainbow_colors
+
         node = self._find_node_by_id(node_id)
         if not node or not node.is_group:
             return
-        
-        if node.group_render_mode != mode:
-            node.group_render_mode = mode
-            self.event_bus.publish(FormatChangedEvent(
-                node_id=node_id,
-                changes={'render_type': mode.value}
-            ))
-            self._emit("session_changed")
+
+        # Validate flat group for OVERLAPPED
+        if mode == GroupRenderMode.OVERLAPPED:
+            if any(child.is_group for child in node.children):
+                # Disallow overlapped on nested groups; keep or reset to SEPARATE_ROWS
+                mode = GroupRenderMode.SEPARATE_ROWS
+
+        if node.group_render_mode == mode:
+            return
+
+        node.group_render_mode = mode
+
+        # Apply side effects when enabling OVERLAPPED
+        if mode == GroupRenderMode.OVERLAPPED:
+            # Collect direct child signals
+            child_signals = [c for c in node.children if not c.is_group and c.handle is not None]
+            # Assign rainbow colors deterministically
+            colors = generate_rainbow_colors(len(child_signals)) if child_signals else []
+            for idx, child in enumerate(child_signals):
+                # Force analog rendering and scaling to all data
+                if child.format.render_type != RenderType.ANALOG:
+                    child.format.render_type = RenderType.ANALOG
+                if child.format.analog_scaling_mode != AnalogScalingMode.SCALE_TO_ALL_DATA:
+                    child.format.analog_scaling_mode = AnalogScalingMode.SCALE_TO_ALL_DATA
+                # Assign color only if not set by user
+                if child.format.color is None and idx < len(colors):
+                    child.format.color = colors[idx]
+
+        # Notify views
+        self.event_bus.publish(FormatChangedEvent(
+            node_id=node_id,
+            changes={'render_type': mode.value}
+        ))
+        # Publish structure change so views rebuild layout (virtual overlapped row)
+        self.event_bus.publish(StructureChangedEvent(
+            change_kind='group',
+            affected_ids=[node_id]
+        ))
+        self._emit("session_changed")
     
     # ---- Clock Signal Management ----
     

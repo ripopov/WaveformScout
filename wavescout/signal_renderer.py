@@ -684,16 +684,6 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
       high-impedance; draw aliasing markers (dashed verticals) where multiple transitions
       happened within the same pixel column.
     - Clip drawing to valid pixel range derived from viewport times and waveform_max_time.
-    
-    Args:
-        painter: Active QPainter.
-        node_info: Dict with format.color, format.analog_scaling_mode, optional instance_id,
-            handle, and height_scaling.
-        drawing_data: Pre-sampled numeric values along X (value_float).
-        y: Row top Y in pixels.
-        row_height: Row height in pixels.
-        params: Dict with width, start_time, end_time, optional waveform_max_time,
-            optional signal_range_cache and waveform_db.
     """
     effective_color = get_signal_color(node_info['format'].color)
     color = QColor(effective_color)
@@ -930,3 +920,111 @@ def draw_event_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sign
         painter.drawPoint(x_pos + 1, arrow_tip_y + 5)
         painter.drawPoint(x_pos + 2, arrow_tip_y + 5)
 
+
+
+
+def draw_overlapped_group(painter: QPainter, group_id: SignalNodeID, children: list[SignalNode],
+                          y: int, row_height: int, params: RenderParams) -> None:
+    """Draw multiple child signals overlapped in a single row.
+    
+    Behavior:
+    - Forces analog-style rendering for all child signals.
+    - Uses a single global Y-range across all children (SCALE_TO_ALL_DATA by spec).
+    - Colors come from each child's DisplayFormat.color (fallback to default).
+    - Renders polylines on top of each other with slight transparency.
+    """
+    # Bounds and clipping
+    waveform_max_time = params.get('waveform_max_time')
+    min_valid_px, max_valid_px = calculate_valid_pixel_range(
+        params['start_time'], params['end_time'], params['width'], waveform_max_time
+    )
+    y_top, y_bottom, _ = calculate_signal_bounds(y, row_height)
+    signal_height = y_bottom - y_top
+
+    # Compute global range for the group with caching
+    # Cache keyed by group_id in the same cache used for signals
+    signal_range_cache = params.get('signal_range_cache', {})
+    cache = signal_range_cache.get(group_id)
+    if cache is None or cache.min == float('inf'):
+        # Compute across all children from DB if available; fallback to viewport samples
+        min_val = float('inf')
+        max_val = float('-inf')
+        db = params.get('waveform_db')
+        for child in children:
+            if child.handle is None:
+                continue
+            if db is not None:
+                cmin, cmax = compute_global_signal_range(child.handle, db, child.format.data_format)
+            else:
+                # Fallback: use draw_commands viewport values if available
+                dd = params.get('draw_commands', {}).get(child.handle)
+                if dd and dd.samples:
+                    # compute min/max from visible samples
+                    vals = [s.value_float for _, s in dd.samples if s.value_float is not None]
+                    if vals:
+                        cmin = min(vals)
+                        cmax = max(vals)
+                    else:
+                        cmin, cmax = 0.0, 1.0
+                else:
+                    cmin, cmax = 0.0, 1.0
+            if cmin < min_val:
+                min_val = cmin
+            if cmax > max_val:
+                max_val = cmax
+        if min_val == float('inf') or max_val == float('-inf') or min_val == max_val:
+            # Provide a sane default
+            if min_val == float('inf') or max_val == float('-inf'):
+                min_val, max_val = 0.0, 1.0
+            else:
+                margin = abs(min_val) * 0.1 if min_val != 0 else 1.0
+                min_val -= margin
+                max_val += margin
+        # Store cache
+        signal_range_cache[group_id] = SignalRangeCache(min=min_val, max=max_val, viewport_ranges={}, data_format=DataFormat.UNSIGNED)
+        cache = signal_range_cache[group_id]
+
+    # Slight headroom
+    min_val = cache.min
+    max_val = cache.max
+    if max_val <= min_val:
+        max_val = min_val + 1.0
+    headroom = (max_val - min_val) * 0.1
+    min_val -= headroom
+    max_val += headroom
+
+    # Draw each child as analog, using its own color
+    for child in children:
+        if child.handle is None:
+            continue
+        drawing_data = params.get('draw_commands', {}).get(child.handle)
+        if not drawing_data:
+            continue
+        color_str = get_signal_color(child.format.color)
+        color = QColor(color_str)
+        # Set some transparency for better overlap perception
+        if color.alpha() > 200:
+            color.setAlpha(200)
+        pen = QPen(color)
+        pen.setWidth(0)
+        painter.setPen(pen)
+        # Build polyline
+        poly = QPolygonF()
+        for px, sample in drawing_data.samples:
+            if px < min_valid_px:
+                continue
+            if px > max_valid_px:
+                break
+            if sample.value_float is None or math.isnan(sample.value_float):
+                # Break in case of undefined/high-Z: draw current poly and reset
+                if poly and poly.size() > 1:
+                    painter.drawPolyline(poly)
+                poly = QPolygonF()
+                continue
+            # Map value to Y
+            norm = (sample.value_float - min_val) / (max_val - min_val)
+            # Flip vertically: higher value is lower Y (downwards axis)
+            y_px = y_top + (1.0 - norm) * signal_height
+            poly.append(QPointF(float(px), float(y_px)))
+        if poly and poly.size() > 1:
+            painter.drawPolyline(poly)
