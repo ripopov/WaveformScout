@@ -1,5 +1,5 @@
 """
-pylibfst - Rust-based FST waveform reader with pywellen-compatible API
+pylibfst - Rust-based FST waveform reader with wellen-compatible API
 """
 
 try:

@@ -19,12 +19,12 @@ def is_valid_clock_signal(var: WVar) -> bool:
     """
     var_type = var.var_type()
     
-    # Invalid types (use proper capitalization for pywellen)
+    # Invalid types (use proper capitalization for wellen)
     if var_type in ('String', 'Real', 'RealTime'):
         return False
     
     # Event types are always valid
-    if var_type == 'Event':  # Capital E for pywellen enum
+    if var_type == 'Event':  # Capital E for wellen enum
         return True
     
     # All other digital types are valid (wire, reg, logic, bit, integer, etc.)
@@ -220,7 +220,7 @@ def calculate_clock_period(signal: WSignal, var: WVar) -> Optional[tuple[Time, T
     var_type = var.var_type()
     
     # Event type signals
-    if var_type == 'Event':  # Capital E for pywellen enum
+    if var_type == 'Event':  # Capital E for wellen enum
         return calculate_event_clock_period(signal)
     
     # Check bit width for digital signals

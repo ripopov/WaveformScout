@@ -144,8 +144,8 @@ class TestSessionAliasLoading:
             }
         }
     
-    def test_load_session_with_aliases_pywellen(self, session_with_aliases: Dict[str, Any], test_waveform_path: Path):
-        """Test loading a session with aliased signals using pywellen backend."""
+    def test_load_session_with_aliases_pyrox(self, session_with_aliases: Dict[str, Any], test_waveform_path: Path):
+        """Test loading a session with aliased signals using pyrox backend."""
         if not test_waveform_path.exists():
             pytest.skip(f"Test file {test_waveform_path} not found")
         
@@ -155,8 +155,8 @@ class TestSessionAliasLoading:
             session_file = Path(f.name)
         
         try:
-            # Load session with pywellen backend
-            session = load_session(session_file, backend_preference="pywellen")
+            # Load session with pyrox backend
+            session = load_session(session_file, backend_preference="pyrox")
             
             assert session is not None
             assert session.waveform_db is not None
@@ -257,32 +257,32 @@ class TestSessionAliasLoading:
         
         try:
             # Load with both backends and compare results
-            session_pywellen = load_session(session_file, backend_preference="pywellen")
+            session_pyrox = load_session(session_file, backend_preference="pyrox")
             session_pylibfst = load_session(session_file, backend_preference="pylibfst")
             
-            db_pywellen = session_pywellen.waveform_db
+            db_pyrox = session_pyrox.waveform_db
             db_pylibfst = session_pylibfst.waveform_db
             
             # Compare values for handle 0 (pready)
             for t in [0, 100, 1000, 10000]:
-                val_pywellen = db_pywellen.sample(0, t)
+                val_pyrox = db_pyrox.sample(0, t)
                 val_pylibfst = db_pylibfst.sample(0, t)
-                assert val_pywellen == val_pylibfst, \
-                    f"Values differ at t={t}: pywellen={val_pywellen}, pylibfst={val_pylibfst}"
+                assert val_pyrox == val_pylibfst, \
+                    f"Values differ at t={t}: pyrox={val_pyrox}, pylibfst={val_pylibfst}"
             
             # Compare transition counts for handle 3 (pclk)
-            trans_pywellen = db_pywellen.transitions(3, 0, 1000000)
+            trans_pyrox = db_pyrox.transitions(3, 0, 1000000)
             trans_pylibfst = db_pylibfst.transitions(3, 0, 1000000)
-            assert len(trans_pywellen) == len(trans_pylibfst), \
-                f"Transition counts differ: pywellen={len(trans_pywellen)}, pylibfst={len(trans_pylibfst)}"
+            assert len(trans_pyrox) == len(trans_pylibfst), \
+                f"Transition counts differ: pyrox={len(trans_pyrox)}, pylibfst={len(trans_pylibfst)}"
             
             # Verify signal names are handled correctly (trailing spaces)
-            for group in session_pywellen.root_nodes:
+            for group in session_pyrox.root_nodes:
                 for child in group.children:
                     if child.handle is not None:
-                        # Names should not have trailing spaces in pywellen
+                        # Names should not have trailing spaces in pyrox
                         assert not child.name.endswith(' '), \
-                            f"pywellen should strip trailing spaces: '{child.name}'"
+                            f"pyrox should strip trailing spaces: '{child.name}'"
             
         finally:
             session_file.unlink(missing_ok=True)
@@ -292,8 +292,8 @@ class TestSessionAliasLoading:
         if not test_waveform_path.exists():
             pytest.skip(f"Test file {test_waveform_path} not found")
         
-        # Create a WaveformDB with pywellen
-        db = WaveformDB(backend_preference="pywellen")
+        # Create a WaveformDB with pyrox
+        db = WaveformDB(backend_preference="pyrox")
         db.open(str(test_waveform_path))
         
         # Create a list with duplicate handles (simulating what happens with aliases)

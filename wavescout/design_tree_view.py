@@ -420,7 +420,7 @@ class DesignTreeView(QWidget):
             self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
     
     def _is_single_bit(self, var_obj: Optional[WVar], handle: Optional[SignalHandle]) -> bool:
-        """Determine if a variable/signal is single-bit using pywellen API.
+        """Determine if a variable/signal is single-bit using wellen API.
         
         Tries the provided var object first; if not available, attempts to fetch
         it from the waveform_db using the handle. Falls back to True on errors
@@ -433,7 +433,7 @@ class DesignTreeView(QWidget):
                 var_obj = self.waveform_db.get_var(handle)
             except Exception:
                 var_obj = None
-        # Use pywellen is_1bit if available
+        # Use wellen is_1bit if available
         if var_obj is not None:
             try:
                 is_single_bit = bool(var_obj.is_1bit())

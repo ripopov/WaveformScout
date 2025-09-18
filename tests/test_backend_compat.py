@@ -1,5 +1,5 @@
 """
-API compatibility tests for pylibfst vs pywellen
+API compatibility tests for pylibfst vs pyrox
 """
 import sys
 import os
@@ -17,10 +17,10 @@ except ImportError:
     pylibfst = None
 
 try:
-    import pywellen
+    import pyrox
 except ImportError:
-    print("Warning: pywellen not available for comparison.")
-    pywellen = None
+    print("Warning: pyrox not available for comparison.")
+    pyrox = None
 
 import pytest
 import time
@@ -138,17 +138,17 @@ def test_lazy_loading():
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_api_compatibility():
-    """Compare pylibfst with pywellen API"""
+    """Compare pylibfst with pyrox API"""
     fst_file = get_test_fst_file()
     if not fst_file:
         pytest.skip("No test FST file found")
     
     # Load same file with both libraries
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
     # Compare hierarchy
@@ -159,7 +159,7 @@ def test_api_compatibility():
     # Just check that we have a reasonable number
     assert len(lf_vars) > 0
     assert len(pw_vars) > 0
-    print(f"  pywellen: {len(pw_vars)} vars, pylibfst: {len(lf_vars)} vars")
+    print(f"  pyrox: {len(pw_vars)} vars, pylibfst: {len(lf_vars)} vars")
     
     # Compare first few variables by matching names
     compared = 0
@@ -282,11 +282,11 @@ def test_signal_types():
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_query_result_comparison():
-    """Deep comparison of QueryResult functionality between pywellen and pylibfst"""
+    """Deep comparison of QueryResult functionality between pyrox and pylibfst"""
     # Use test utilities to get the FST file
     try:
         fst_file = str(get_test_input_path(TestFiles.ANALOG_SIGNALS_SHORT_FST))
@@ -299,7 +299,7 @@ def test_query_result_comparison():
     print(f"\nComparing QueryResult for: {fst_file}")
     
     # Load with both libraries
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
     pw_hier = pw_wave.hierarchy
@@ -344,21 +344,21 @@ def test_query_result_comparison():
                 # Allow for floating point differences
                 if isinstance(pw_result.value, float) and isinstance(lf_result.value, float):
                     if abs(pw_result.value - lf_result.value) > 1e-6:
-                        print(f"      [WARNING] Value mismatch: pywellen={pw_result.value}, pylibfst={lf_result.value}")
+                        print(f"      [WARNING] Value mismatch: pyrox={pw_result.value}, pylibfst={lf_result.value}")
                 else:
-                    print(f"      [WARNING] Value mismatch: pywellen={pw_result.value}, pylibfst={lf_result.value}")
+                    print(f"      [WARNING] Value mismatch: pyrox={pw_result.value}, pylibfst={lf_result.value}")
             
             # Compare actual_time
             if pw_result.actual_time != lf_result.actual_time:
-                print(f"      [WARNING] Actual time mismatch: pywellen={pw_result.actual_time}, pylibfst={lf_result.actual_time}")
+                print(f"      [WARNING] Actual time mismatch: pyrox={pw_result.actual_time}, pylibfst={lf_result.actual_time}")
             
             # Compare next_time
             if pw_result.next_time != lf_result.next_time:
-                print(f"      [WARNING] Next time mismatch: pywellen={pw_result.next_time}, pylibfst={lf_result.next_time}")
+                print(f"      [WARNING] Next time mismatch: pyrox={pw_result.next_time}, pylibfst={lf_result.next_time}")
             
             # Compare next_idx
             if pw_result.next_idx != lf_result.next_idx:
-                print(f"      [WARNING] Next index mismatch: pywellen={pw_result.next_idx}, pylibfst={lf_result.next_idx}")
+                print(f"      [WARNING] Next index mismatch: pyrox={pw_result.next_idx}, pylibfst={lf_result.next_idx}")
         
         # Test iteration using next_idx and next_time
         print(f"    Testing iteration via QueryResult...")
@@ -407,10 +407,10 @@ def test_query_result_comparison():
             if pw_val_idx != lf_val_idx:
                 if not (isinstance(pw_val_idx, float) and isinstance(lf_val_idx, float) and 
                        abs(pw_val_idx - lf_val_idx) < 1e-6):
-                    print(f"      [WARNING] value_at_idx({idx}) mismatch: pywellen={pw_val_idx}, pylibfst={lf_val_idx}")
+                    print(f"      [WARNING] value_at_idx({idx}) mismatch: pyrox={pw_val_idx}, pylibfst={lf_val_idx}")
         
-        # Note: value_at_time has different semantics between pywellen and pylibfst
-        # pywellen appears to return the NEXT value after the given time
+        # Note: value_at_time has different semantics between pyrox and pylibfst
+        # pyrox appears to return the NEXT value after the given time
         # pylibfst returns the value AT the given time (standard waveform viewer behavior)
         # Both libraries have consistent query_signal behavior, so we skip value_at_time comparison
         print(f"    Note: Skipping value_at_time comparison due to semantic differences")
@@ -424,11 +424,11 @@ def test_query_result_comparison():
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_time_range_comparison():
-    """Compare time range between pywellen and pylibfst"""
+    """Compare time range between pyrox and pylibfst"""
     # Use vcd_extensions.fst for testing
     try:
         fst_file = str(get_test_input_path(TestFiles.VCD_EXTENSIONS_FST))
@@ -438,16 +438,16 @@ def test_time_range_comparison():
     print(f"\nComparing time range for: {fst_file}")
     
     # Load with both libraries
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
-    # Get pywellen's time table
+    # Get pyrox's time table
     pw_time_table = pw_wave.time_table
     
     # Get pylibfst's time range
     lf_time_range = lf_wave.time_range if hasattr(lf_wave, 'time_range') else None
     
-    # Note: Converting pywellen time_table to list can hang on some files
+    # Note: Converting pyrox time_table to list can hang on some files
     # So we'll access it more carefully
     if pw_time_table:
         try:
@@ -456,25 +456,25 @@ def test_time_range_comparison():
             # Get length first
             pw_len = len(pw_time_table)
             pw_end = pw_time_table[pw_len - 1] if pw_len > 0 else pw_start
-            print(f"\n  Pywellen time table: length={pw_len}, start={pw_start}, end={pw_end}")
+            print(f"\n  Pyrox time table: length={pw_len}, start={pw_start}, end={pw_end}")
         except Exception as e:
-            print(f"\n  Error accessing pywellen time table: {e}")
+            print(f"\n  Error accessing pyrox time table: {e}")
             pw_start = None
             pw_end = None
     else:
-        print(f"\n  Pywellen time table: None")
+        print(f"\n  Pyrox time table: None")
         pw_start = None
         pw_end = None
     
     print(f"  Pylibfst time range: {lf_time_range}")
     
-    # Check that pylibfst's time range matches first and last of pywellen's time table
+    # Check that pylibfst's time range matches first and last of pyrox's time table
     if pw_start is not None and pw_end is not None and lf_time_range:
         lf_start, lf_end = lf_time_range
         
         print(f"\n  Comparing time boundaries:")
-        print(f"    Start time - pywellen: {pw_start}, pylibfst: {lf_start}")
-        print(f"    End time - pywellen: {pw_end}, pylibfst: {lf_end}")
+        print(f"    Start time - pyrox: {pw_start}, pylibfst: {lf_start}")
+        print(f"    End time - pyrox: {pw_end}, pylibfst: {lf_end}")
         
         start_match = pw_start == lf_start
         end_match = pw_end == lf_end
@@ -483,16 +483,16 @@ def test_time_range_comparison():
             print(f"  [OK] Time range matches: start={lf_start}, end={lf_end}")
         else:
             if not start_match:
-                print(f"  [WARNING] Start time mismatch: pywellen={pw_start}, pylibfst={lf_start}")
+                print(f"  [WARNING] Start time mismatch: pyrox={pw_start}, pylibfst={lf_start}")
             if not end_match:
-                print(f"  [WARNING] End time mismatch: pywellen={pw_end}, pylibfst={lf_end}")
+                print(f"  [WARNING] End time mismatch: pyrox={pw_end}, pylibfst={lf_end}")
         
         # Assert that boundaries match
         assert start_match, f"Start time mismatch: {pw_start} vs {lf_start}"
         assert end_match, f"End time mismatch: {pw_end} vs {lf_end}"
     else:
         if pw_start is None or pw_end is None:
-            print("  [WARNING] Could not access pywellen time table")
+            print("  [WARNING] Could not access pyrox time table")
         if not lf_time_range:
             print("  [WARNING] Pylibfst has no time range")
         if pw_start is None or pw_end is None or not lf_time_range:
@@ -503,11 +503,11 @@ def test_time_range_comparison():
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_var_api_compatibility():
-    """Test Var API compatibility between pywellen and pylibfst using vcd_extensions.fst"""
+    """Test Var API compatibility between pyrox and pylibfst using vcd_extensions.fst"""
     # Look for vcd_extensions.fst file
     try:
         fst_file = str(get_test_input_path(TestFiles.VCD_EXTENSIONS_FST))
@@ -517,7 +517,7 @@ def test_var_api_compatibility():
     print(f"\nTesting Var API compatibility with: {fst_file}")
     
     # Load with both libraries
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
     pw_hier = pw_wave.hierarchy
@@ -527,7 +527,7 @@ def test_var_api_compatibility():
     pw_vars = list(pw_hier.all_vars())
     lf_vars = list(lf_hier.all_vars())
     
-    print(f"  Found {len(pw_vars)} pywellen vars, {len(lf_vars)} pylibfst vars")
+    print(f"  Found {len(pw_vars)} pyrox vars, {len(lf_vars)} pylibfst vars")
     
     # Create a mapping by full name for comparison
     pw_var_map = {}
@@ -572,7 +572,7 @@ def test_var_api_compatibility():
         pw_type = pw_var.var_type()
         lf_type = lf_var.var_type()
         if pw_type != lf_type:
-            msg = f"var_type: pywellen={pw_type}, pylibfst={lf_type}"
+            msg = f"var_type: pyrox={pw_type}, pylibfst={lf_type}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -580,7 +580,7 @@ def test_var_api_compatibility():
         pw_enum = pw_var.enum_type(pw_hier)
         lf_enum = lf_var.enum_type(lf_hier)
         if pw_enum != lf_enum:
-            msg = f"enum_type: pywellen={pw_enum}, pylibfst={lf_enum}"
+            msg = f"enum_type: pyrox={pw_enum}, pylibfst={lf_enum}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -588,7 +588,7 @@ def test_var_api_compatibility():
         pw_vhdl = pw_var.vhdl_type_name(pw_hier)
         lf_vhdl = lf_var.vhdl_type_name(lf_hier)
         if pw_vhdl != lf_vhdl:
-            msg = f"vhdl_type_name: pywellen={pw_vhdl}, pylibfst={lf_vhdl}"
+            msg = f"vhdl_type_name: pyrox={pw_vhdl}, pylibfst={lf_vhdl}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -596,7 +596,7 @@ def test_var_api_compatibility():
         pw_dir = pw_var.direction()
         lf_dir = lf_var.direction()
         if pw_dir != lf_dir:
-            msg = f"direction: pywellen={pw_dir}, pylibfst={lf_dir}"
+            msg = f"direction: pyrox={pw_dir}, pylibfst={lf_dir}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -604,7 +604,7 @@ def test_var_api_compatibility():
         pw_len = pw_var.length()
         lf_len = lf_var.length()
         if pw_len != lf_len:
-            msg = f"length: pywellen={pw_len}, pylibfst={lf_len}"
+            msg = f"length: pyrox={pw_len}, pylibfst={lf_len}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -612,7 +612,7 @@ def test_var_api_compatibility():
         pw_real = pw_var.is_real()
         lf_real = lf_var.is_real()
         if pw_real != lf_real:
-            msg = f"is_real: pywellen={pw_real}, pylibfst={lf_real}"
+            msg = f"is_real: pyrox={pw_real}, pylibfst={lf_real}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -620,18 +620,18 @@ def test_var_api_compatibility():
         pw_str = pw_var.is_string()
         lf_str = lf_var.is_string()
         if pw_str != lf_str:
-            msg = f"is_string: pywellen={pw_str}, pylibfst={lf_str}"
+            msg = f"is_string: pyrox={pw_str}, pylibfst={lf_str}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
-        # Note: is_bit_vector is not applicable to libfst - it's a pywellen-specific encoding concept
+        # Note: is_bit_vector is not applicable to libfst - it's a pyrox-specific encoding concept
         # so we skip comparing it
         
         # Test is_1bit
         pw_1bit = pw_var.is_1bit()
         lf_1bit = lf_var.is_1bit()
         if pw_1bit != lf_1bit:
-            msg = f"is_1bit: pywellen={pw_1bit}, pylibfst={lf_1bit}"
+            msg = f"is_1bit: pyrox={pw_1bit}, pylibfst={lf_1bit}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         
@@ -640,7 +640,7 @@ def test_var_api_compatibility():
         lf_idx = lf_var.index()
         # Compare index values - both might be None or have msb/lsb attributes
         if (pw_idx is None) != (lf_idx is None):
-            msg = f"index: pywellen={pw_idx}, pylibfst={lf_idx}"
+            msg = f"index: pyrox={pw_idx}, pylibfst={lf_idx}"
             var_mismatches.append(msg)
             api_mismatches.append(f"{var_name}: {msg}")
         elif pw_idx is not None and lf_idx is not None:
@@ -650,7 +650,7 @@ def test_var_api_compatibility():
             lf_msb = lf_idx.msb() if hasattr(lf_idx, 'msb') else None
             lf_lsb = lf_idx.lsb() if hasattr(lf_idx, 'lsb') else None
             if pw_msb != lf_msb or pw_lsb != lf_lsb:
-                msg = f"index: pywellen=[{pw_msb}:{pw_lsb}], pylibfst=[{lf_msb}:{lf_lsb}]"
+                msg = f"index: pyrox=[{pw_msb}:{pw_lsb}], pylibfst=[{lf_msb}:{lf_lsb}]"
                 var_mismatches.append(msg)
                 api_mismatches.append(f"{var_name}: {msg}")
         
@@ -677,9 +677,9 @@ def test_var_api_compatibility():
         
         # Check if these are known/acceptable differences
         # Some differences might be due to different interpretations of the FST format
-        # or differences in how pywellen vs pylibfst handle certain edge cases
+        # or differences in how pyrox vs pylibfst handle certain edge cases
         known_patterns = [
-            ": length: pywellen=None, pylibfst=8",  # Real variables report None in pywellen but 8 (bytes) in pylibfst
+            ": length: pyrox=None, pylibfst=8",  # Real variables report None in pyrox but 8 (bytes) in pylibfst
         ]
         
         unexpected_mismatches = []
@@ -701,15 +701,15 @@ def test_var_api_compatibility():
             print(f"\n  [OK] All API differences are known/expected")
             print(f"  Note: Real variables report length=8 in pylibfst (8 bytes for double precision float)")
     else:
-        print(f"  [OK] All Var API methods match perfectly between pywellen and pylibfst")
+        print(f"  [OK] All Var API methods match perfectly between pyrox and pylibfst")
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_hierarchy_methods_compatibility():
-    """Test all Hierarchy methods work the same between pywellen and pylibfst"""
+    """Test all Hierarchy methods work the same between pyrox and pylibfst"""
     # Use vcd_extensions.fst for testing
     try:
         fst_file = str(get_test_input_path(TestFiles.VCD_EXTENSIONS_FST))
@@ -719,7 +719,7 @@ def test_hierarchy_methods_compatibility():
     print(f"\nTesting Hierarchy methods compatibility with: {fst_file}")
     
     # Load with both libraries
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
     pw_hier = pw_wave.hierarchy
@@ -732,10 +732,10 @@ def test_hierarchy_methods_compatibility():
     print("\n  1. Testing file_format():")
     pw_format = pw_hier.file_format()
     lf_format = lf_hier.file_format()
-    print(f"     pywellen: {pw_format}")
+    print(f"     pyrox: {pw_format}")
     print(f"     pylibfst: {lf_format}")
     if pw_format != lf_format:
-        mismatches.append(f"file_format: pywellen={pw_format}, pylibfst={lf_format}")
+        mismatches.append(f"file_format: pyrox={pw_format}, pylibfst={lf_format}")
     else:
         print(f"     [OK] Match: {lf_format}")
     
@@ -743,10 +743,10 @@ def test_hierarchy_methods_compatibility():
     print("\n  2. Testing date():")
     pw_date = pw_hier.date()
     lf_date = lf_hier.date()
-    print(f"     pywellen: {pw_date}")
+    print(f"     pyrox: {pw_date}")
     print(f"     pylibfst: {lf_date}")
     if pw_date != lf_date:
-        mismatches.append(f"date: pywellen={pw_date}, pylibfst={lf_date}")
+        mismatches.append(f"date: pyrox={pw_date}, pylibfst={lf_date}")
     else:
         print(f"     [OK] Match: {lf_date}")
     
@@ -754,10 +754,10 @@ def test_hierarchy_methods_compatibility():
     print("\n  3. Testing version():")
     pw_version = pw_hier.version()
     lf_version = lf_hier.version()
-    print(f"     pywellen: {pw_version}")
+    print(f"     pyrox: {pw_version}")
     print(f"     pylibfst: {lf_version}")
     if pw_version != lf_version:
-        mismatches.append(f"version: pywellen={pw_version}, pylibfst={lf_version}")
+        mismatches.append(f"version: pyrox={pw_version}, pylibfst={lf_version}")
     else:
         print(f"     [OK] Match: {lf_version}")
     
@@ -769,7 +769,7 @@ def test_hierarchy_methods_compatibility():
     # Compare timescale (it's an object, so we need to compare its string representation)
     pw_ts_str = str(pw_ts) if pw_ts else None
     lf_ts_str = str(lf_ts) if lf_ts else None
-    print(f"     pywellen: {pw_ts_str}")
+    print(f"     pyrox: {pw_ts_str}")
     print(f"     pylibfst: {lf_ts_str}")
     
     if pw_ts_str != lf_ts_str:
@@ -778,9 +778,9 @@ def test_hierarchy_methods_compatibility():
             # Both have timescale, check if they're functionally equivalent
             # Timescale usually has a string representation like "1ns" or "1ps"
             print(f"     [WARNING] String representation differs, but both have timescale objects")
-            mismatches.append(f"timescale: pywellen={pw_ts_str}, pylibfst={lf_ts_str}")
+            mismatches.append(f"timescale: pyrox={pw_ts_str}, pylibfst={lf_ts_str}")
         else:
-            mismatches.append(f"timescale: pywellen={pw_ts_str}, pylibfst={lf_ts_str}")
+            mismatches.append(f"timescale: pyrox={pw_ts_str}, pylibfst={lf_ts_str}")
     else:
         print(f"     [OK] Match: {lf_ts_str}")
     
@@ -788,11 +788,11 @@ def test_hierarchy_methods_compatibility():
     print("\n  5. Testing all_vars():")
     pw_vars = list(pw_hier.all_vars())
     lf_vars = list(lf_hier.all_vars())
-    print(f"     pywellen: {len(pw_vars)} variables")
+    print(f"     pyrox: {len(pw_vars)} variables")
     print(f"     pylibfst: {len(lf_vars)} variables")
     
     if len(pw_vars) != len(lf_vars):
-        mismatches.append(f"all_vars count: pywellen={len(pw_vars)}, pylibfst={len(lf_vars)}")
+        mismatches.append(f"all_vars count: pyrox={len(pw_vars)}, pylibfst={len(lf_vars)}")
     else:
         print(f"     [OK] Match: {len(lf_vars)} variables")
     
@@ -810,11 +810,11 @@ def test_hierarchy_methods_compatibility():
     print("\n  7. Testing top_scopes():")
     pw_scopes = list(pw_hier.top_scopes())
     lf_scopes = list(lf_hier.top_scopes())
-    print(f"     pywellen: {len(pw_scopes)} top-level scopes")
+    print(f"     pyrox: {len(pw_scopes)} top-level scopes")
     print(f"     pylibfst: {len(lf_scopes)} top-level scopes")
     
     if len(pw_scopes) != len(lf_scopes):
-        mismatches.append(f"top_scopes count: pywellen={len(pw_scopes)}, pylibfst={len(lf_scopes)}")
+        mismatches.append(f"top_scopes count: pyrox={len(pw_scopes)}, pylibfst={len(lf_scopes)}")
     else:
         print(f"     [OK] Match: {len(lf_scopes)} top-level scopes")
         
@@ -823,11 +823,11 @@ def test_hierarchy_methods_compatibility():
         lf_scope_names = [s.name(lf_hier) for s in lf_scopes]
         
         print(f"     Top scope names:")
-        print(f"       pywellen: {pw_scope_names}")
+        print(f"       pyrox: {pw_scope_names}")
         print(f"       pylibfst: {lf_scope_names}")
         
         if sorted(pw_scope_names) != sorted(lf_scope_names):
-            mismatches.append(f"top_scopes names differ: pywellen={pw_scope_names}, pylibfst={lf_scope_names}")
+            mismatches.append(f"top_scopes names differ: pyrox={pw_scope_names}, pylibfst={lf_scope_names}")
         else:
             print(f"       [OK] Names match")
     
@@ -850,7 +850,7 @@ def test_hierarchy_methods_compatibility():
         lf_var_name = lf_var.full_name(lf_hier)
         pw_var_name = pw_var.full_name(pw_hier)
         print(f"     First var full_name:")
-        print(f"       pywellen: {pw_var_name}")
+        print(f"       pyrox: {pw_var_name}")
         print(f"       pylibfst: {lf_var_name}")
         
         # Test var methods exist and work
@@ -871,7 +871,7 @@ def test_hierarchy_methods_compatibility():
         lf_scope_name = lf_scope.full_name(lf_hier)
         pw_scope_name = pw_scope.full_name(pw_hier)
         print(f"     First scope full_name:")
-        print(f"       pywellen: {pw_scope_name}")
+        print(f"       pyrox: {pw_scope_name}")
         print(f"       pylibfst: {lf_scope_name}")
         
         # Test scope methods exist and work
@@ -916,15 +916,15 @@ def test_hierarchy_methods_compatibility():
         else:
             print(f"\n  [OK] All differences are acceptable (timescale representation may vary)")
     else:
-        print(f"  [OK] All Hierarchy methods match perfectly between pywellen and pylibfst")
+        print(f"  [OK] All Hierarchy methods match perfectly between pyrox and pylibfst")
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_hierarchy_deep_comparison():
-    """Deep comparison of hierarchy traversal between pywellen and pylibfst"""
+    """Deep comparison of hierarchy traversal between pyrox and pylibfst"""
     # Look for vcd_extensions.fst
     try:
         fst_file = str(get_test_input_path(TestFiles.VCD_EXTENSIONS_FST))
@@ -934,7 +934,7 @@ def test_hierarchy_deep_comparison():
     print(f"\nComparing hierarchy for: {fst_file}")
     
     # Load with both libraries
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
     pw_hier = pw_wave.hierarchy
@@ -967,7 +967,7 @@ def test_hierarchy_deep_comparison():
     pw_scope_names = set(pw_scopes.keys())
     lf_scope_names = set(lf_scopes.keys())
     
-    print(f"  Pywellen scopes: {len(pw_scope_names)}")
+    print(f"  Pyrox scopes: {len(pw_scope_names)}")
     print(f"  Pylibfst scopes: {len(lf_scope_names)}")
     
     # Check for missing scopes
@@ -975,9 +975,9 @@ def test_hierarchy_deep_comparison():
     missing_in_pw = lf_scope_names - pw_scope_names
     
     if missing_in_lf:
-        print(f"  [WARNING] Scopes in pywellen but not pylibfst: {missing_in_lf}")
+        print(f"  [WARNING] Scopes in pyrox but not pylibfst: {missing_in_lf}")
     if missing_in_pw:
-        print(f"  [WARNING] Scopes in pylibfst but not pywellen: {missing_in_pw}")
+        print(f"  [WARNING] Scopes in pylibfst but not pyrox: {missing_in_pw}")
     
     # Compare scope types for common scopes
     common_scopes = pw_scope_names & lf_scope_names
@@ -986,7 +986,7 @@ def test_hierarchy_deep_comparison():
         pw_type = pw_scopes[scope_name]['type']
         lf_type = lf_scopes[scope_name]['type']
         if pw_type != lf_type:
-            print(f"    Scope type mismatch for '{scope_name}': pywellen={pw_type}, pylibfst={lf_type}")
+            print(f"    Scope type mismatch for '{scope_name}': pyrox={pw_type}, pylibfst={lf_type}")
             scope_type_mismatches += 1
     
     if scope_type_mismatches == 0:
@@ -1016,7 +1016,7 @@ def test_hierarchy_deep_comparison():
     pw_var_names = set(pw_vars.keys())
     lf_var_names = set(lf_vars.keys())
     
-    print(f"  Pywellen variables: {len(pw_var_names)}")
+    print(f"  Pyrox variables: {len(pw_var_names)}")
     print(f"  Pylibfst variables: {len(lf_var_names)}")
     
     # Check for missing variables
@@ -1024,12 +1024,12 @@ def test_hierarchy_deep_comparison():
     missing_vars_in_pw = lf_var_names - pw_var_names
     
     if len(missing_vars_in_lf) > 0:
-        print(f"  [WARNING] Variables in pywellen but not pylibfst: {len(missing_vars_in_lf)}")
+        print(f"  [WARNING] Variables in pyrox but not pylibfst: {len(missing_vars_in_lf)}")
         for var_name in list(missing_vars_in_lf)[:5]:
             print(f"    - {var_name}")
     
     if len(missing_vars_in_pw) > 0:
-        print(f"  [WARNING] Variables in pylibfst but not pywellen: {len(missing_vars_in_pw)}")
+        print(f"  [WARNING] Variables in pylibfst but not pyrox: {len(missing_vars_in_pw)}")
         for var_name in list(missing_vars_in_pw)[:5]:
             print(f"    - {var_name}")
     
@@ -1044,12 +1044,12 @@ def test_hierarchy_deep_comparison():
         
         # Compare short names
         if pw_info['name'] != lf_info['name']:
-            print(f"    Variable name mismatch for '{var_path}': pywellen={pw_info['name']}, pylibfst={lf_info['name']}")
+            print(f"    Variable name mismatch for '{var_path}': pyrox={pw_info['name']}, pylibfst={lf_info['name']}")
             var_name_mismatches += 1
         
         # Compare variable types
         if pw_info['type'] != lf_info['type']:
-            print(f"    Variable type mismatch for '{var_path}': pywellen={pw_info['type']}, pylibfst={lf_info['type']}")
+            print(f"    Variable type mismatch for '{var_path}': pyrox={pw_info['type']}, pylibfst={lf_info['type']}")
             var_type_mismatches += 1
     
     if var_type_mismatches == 0 and var_name_mismatches == 0:
@@ -1076,11 +1076,11 @@ def test_hierarchy_deep_comparison():
 
 
 @pytest.mark.skipif(
-    pylibfst is None or pywellen is None,
-    reason="Both pylibfst and pywellen required for comparison"
+    pylibfst is None or pyrox is None,
+    reason="Both pylibfst and pyrox required for comparison"
 )
 def test_performance_comparison():
-    """Compare performance between pywellen and pylibfst using analog_signals_short.fst"""
+    """Compare performance between pyrox and pylibfst using analog_signals_short.fst"""
     # Use test utilities to get the FST file
     try:
         fst_file = str(get_test_input_path(TestFiles.ANALOG_SIGNALS_SHORT_FST))
@@ -1091,7 +1091,7 @@ def test_performance_comparison():
         pytest.skip("analog_signals_short.fst not found")
     
     print(f"\n{'='*80}")
-    print(f"Performance Comparison: pywellen vs pylibfst")
+    print(f"Performance Comparison: pyrox vs pylibfst")
     print(f"Test file: {fst_file}")
     print(f"{'='*80}")
     
@@ -1106,12 +1106,12 @@ def test_performance_comparison():
     # For large files, only do 1 iteration
     iterations = 1 if file_size_mb > 1000 else 2
     
-    # Test pywellen loading
-    print(f"  Testing pywellen ({iterations} iteration{'s' if iterations > 1 else ''})...")
+    # Test pyrox loading
+    print(f"  Testing pyrox ({iterations} iteration{'s' if iterations > 1 else ''})...")
     pw_load_times = []
     for i in range(iterations):
         start = time.perf_counter()
-        pw_wave = pywellen.Waveform(fst_file)
+        pw_wave = pyrox.Waveform(fst_file)
         pw_load_time = time.perf_counter() - start
         pw_load_times.append(pw_load_time)
         print(f"    Run {i+1}: {pw_load_time * 1_000_000:.1f} μs")
@@ -1136,36 +1136,36 @@ def test_performance_comparison():
     
     speedup = pw_avg_load / lf_avg_load
     if speedup > 1:
-        print(f"\n  ⚡ Result: pylibfst is {speedup:.2f}x faster than pywellen")
+        print(f"\n  ⚡ Result: pylibfst is {speedup:.2f}x faster than pyrox")
     else:
-        print(f"\n  ⚡ Result: pywellen is {1/speedup:.2f}x faster than pylibfst")
+        print(f"\n  ⚡ Result: pyrox is {1/speedup:.2f}x faster than pylibfst")
     
     # 2. Compare signal loading performance
     print(f"\n2. Signal Loading Performance:")
     print(f"{'-'*40}")
     
     # Load fresh waveforms for signal testing
-    pw_wave = pywellen.Waveform(fst_file)
+    pw_wave = pyrox.Waveform(fst_file)
     lf_wave = pylibfst.Waveform(fst_file)
     
     # Get all variables
     pw_vars = list(pw_wave.hierarchy.all_vars())
     lf_vars = list(lf_wave.hierarchy.all_vars())
     
-    print(f"  Number of variables: pywellen={len(pw_vars)}, pylibfst={len(lf_vars)}")
+    print(f"  Number of variables: pyrox={len(pw_vars)}, pylibfst={len(lf_vars)}")
     
     # Limit to first N signals for reasonable test time
     # For large files, test fewer signals
     max_signals = 20 if file_size_mb > 1000 else min(50, len(pw_vars), len(lf_vars))
     print(f"  Testing first {max_signals} signals...")
     
-    # Test pywellen signal loading
+    # Test pyrox signal loading
     pw_signal_times = []
     pw_signals = []
     signal_names = []
     
     print(f"\n  Per-signal breakdown:")
-    print(f"  {'Signal Name':<20} {'Type':<10} {'Changes':<10} {'pywellen (μs)':>13} {'pylibfst (μs)':>13}   {'Speedup':>12}")
+    print(f"  {'Signal Name':<20} {'Type':<10} {'Changes':<10} {'pyrox (μs)':>13} {'pylibfst (μs)':>13}   {'Speedup':>12}")
     print(f"  {'-'*20} {'-'*10} {'-'*10} {'-'*13} {'-'*13}   {'-'*12}")
     
     for i, var in enumerate(pw_vars[:max_signals]):
@@ -1173,7 +1173,7 @@ def test_performance_comparison():
         signal_names.append(signal_name)
         var_type = var.var_type()
         
-        # Load with pywellen
+        # Load with pyrox
         start = time.perf_counter()
         signal = pw_wave.get_signal(var)
         pw_elapsed = time.perf_counter() - start
@@ -1199,7 +1199,7 @@ def test_performance_comparison():
         
         # Print comparison for this signal
         if i < len(signal_names):
-            # Get metadata from pywellen var
+            # Get metadata from pyrox var
             pw_var = pw_vars[i]
             var_type = pw_var.var_type()
             num_changes = len(list(pw_signals[i].all_changes()))
@@ -1234,9 +1234,9 @@ def test_performance_comparison():
     
     signal_speedup = pw_avg_signal_load / lf_avg_signal_load
     if signal_speedup > 1:
-        print(f"\n  ⚡ Result: pylibfst is {signal_speedup:.2f}x faster than pywellen")
+        print(f"\n  ⚡ Result: pylibfst is {signal_speedup:.2f}x faster than pyrox")
     else:
-        print(f"\n  ⚡ Result: pywellen is {1/signal_speedup:.2f}x faster than pylibfst")
+        print(f"\n  ⚡ Result: pyrox is {1/signal_speedup:.2f}x faster than pylibfst")
     
     # 3. Compare signal iteration and computation performance
     print(f"\n3. Signal Value Iteration Performance:")
@@ -1246,7 +1246,7 @@ def test_performance_comparison():
     if pw_signals and lf_signals:
         print(f"  Testing iteration over 1 signal (first signal)...")
         
-        # Test pywellen iteration
+        # Test pyrox iteration
         signal = pw_signals[0]
         var_name = pw_vars[0].name(pw_wave.hierarchy) if pw_vars else "unknown"
         print(f"  Signal: {var_name}")
@@ -1261,7 +1261,7 @@ def test_performance_comparison():
                 pw_values.append(float(value))
         
         pw_iter_time = time.perf_counter() - start
-        print(f"  pywellen: {pw_iter_time * 1_000_000:.1f} μs, {pw_changes} changes")
+        print(f"  pyrox: {pw_iter_time * 1_000_000:.1f} μs, {pw_changes} changes")
         if pw_values:
             print(f"           Numeric values: {len(pw_values)}, avg: {statistics.mean(pw_values):.6f}")
         
@@ -1285,9 +1285,9 @@ def test_performance_comparison():
         if lf_iter_time > 0:
             iter_speedup = pw_iter_time / lf_iter_time
             if iter_speedup > 1:
-                print(f"\n  ⚡ Result: pylibfst is {iter_speedup:.2f}x faster than pywellen")
+                print(f"\n  ⚡ Result: pylibfst is {iter_speedup:.2f}x faster than pyrox")
             else:
-                print(f"\n  ⚡ Result: pywellen is {1/iter_speedup:.2f}x faster than pylibfst")
+                print(f"\n  ⚡ Result: pyrox is {1/iter_speedup:.2f}x faster than pylibfst")
         else:
             iter_speedup = 0
     else:
@@ -1303,19 +1303,19 @@ def test_performance_comparison():
     if speedup > 1:
         print(f"  Waveform loading: pylibfst is {speedup:.2f}x faster")
     else:
-        print(f"  Waveform loading: pywellen is {1/speedup:.2f}x faster")
+        print(f"  Waveform loading: pyrox is {1/speedup:.2f}x faster")
     
     # Signal loading
     if signal_speedup > 1:
         print(f"  Signal loading:   pylibfst is {signal_speedup:.2f}x faster")
     else:
-        print(f"  Signal loading:   pywellen is {1/signal_speedup:.2f}x faster")
+        print(f"  Signal loading:   pyrox is {1/signal_speedup:.2f}x faster")
     
     # Value iteration
     if iter_speedup > 1:
         print(f"  Value iteration:  pylibfst is {iter_speedup:.2f}x faster")
     elif iter_speedup > 0:
-        print(f"  Value iteration:  pywellen is {1/iter_speedup:.2f}x faster")
+        print(f"  Value iteration:  pyrox is {1/iter_speedup:.2f}x faster")
     else:
         print(f"  Value iteration:  No data available")
     
@@ -1324,9 +1324,9 @@ def test_performance_comparison():
         overall_speedup = statistics.mean([speedup, signal_speedup, iter_speedup])
         print(f"\n  Overall average:")
         if overall_speedup > 1:
-            print(f"  🎉 pylibfst is {overall_speedup:.2f}x faster than pywellen on average")
+            print(f"  🎉 pylibfst is {overall_speedup:.2f}x faster than pyrox on average")
         else:
-            print(f"  [WARNING]️  pywellen is {1/overall_speedup:.2f}x faster than pylibfst on average")
+            print(f"  [WARNING]️  pyrox is {1/overall_speedup:.2f}x faster than pylibfst on average")
     
     print(f"{'='*80}\n")
 
@@ -1351,7 +1351,7 @@ if __name__ == "__main__":
         test_iterators()
         print("[OK] Iterator test passed")
         
-        if pywellen:
+        if pyrox:
             test_api_compatibility()
             print("[OK] API compatibility test passed")
             
@@ -1370,6 +1370,6 @@ if __name__ == "__main__":
             test_time_range_comparison()
             print("[OK] Time range comparison test passed")
         else:
-            print("[WARNING] Skipping API compatibility tests (pywellen not available)")
+            print("[WARNING] Skipping API compatibility tests (pyrox not available)")
     else:
         print("[WARNING] pylibfst not built. Run 'maturin develop' first.")

@@ -2,7 +2,7 @@
 """
 Integration test for FST waveform loading and session persistence.
 
-Tests the complete FST workflow with both pywellen and pylibfst backends:
+Tests the complete FST workflow with both pyrox and pylibfst backends:
 1. Open scout.py main window
 2. Load test_inputs/des.fst file with specified backend
 3. Expand scopes in design tree: top -> des
@@ -163,13 +163,13 @@ class FSTTestHelper:
         return added_signals
 
 
-@pytest.mark.parametrize("backend_preference", ["pywellen", "pylibfst"])
+@pytest.mark.parametrize("backend_preference", ["pyrox", "pylibfst"])
 def test_fst_loading_with_backend(backend_preference):
     """
     Test FST file loading and signal addition workflow with specified backend.
     
     Args:
-        backend_preference: The backend to use ("pywellen" or "pylibfst")
+        backend_preference: The backend to use ("pyrox" or "pylibfst")
     
     Test Scenario:
     ==============
@@ -355,10 +355,10 @@ def test_fst_loading_with_backend(backend_preference):
             QApplication.processEvents()  # Ensure close is processed
 
 
-# Backwards compatibility - keep the original test function that tests with pywellen
+# Backwards compatibility - keep the original test function that tests with pyrox
 def test_fst_loading():
-    """Test FST loading with default (pywellen) backend for backwards compatibility."""
-    test_fst_loading_with_backend("pywellen")
+    """Test FST loading with default (pyrox) backend for backwards compatibility."""
+    test_fst_loading_with_backend("pyrox")
 
 
 if __name__ == "__main__":

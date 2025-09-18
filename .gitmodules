@@ -1,4 +1,0 @@
-[submodule "wellen"]
-	path = wellen
-	url = https://github.com/ripopov/wellen
-	branch = api-responsiveness

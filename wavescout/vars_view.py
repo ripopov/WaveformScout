@@ -21,7 +21,7 @@ class VariableData(TypedDict):
     full_path: str
     var_type: str
     bit_range: str
-    var: Any  # pywellen Var object
+    var: Any  # wellen Var object
 
 
 class VarsModel(QAbstractTableModel):

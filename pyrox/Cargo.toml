@@ -1,0 +1,15 @@
+[package]
+name = "pyrox"
+version = "0.1.0"
+edition = "2021"
+authors = ["WaveScout Team"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "pyrox"
+crate-type = ["cdylib"]
+
+[dependencies]
+num-bigint = "0.4.6"
+pyo3 = { version = "0.23.3", features = ["num-bigint"] }
+wellen = "=0.19.0"

@@ -55,12 +55,12 @@ def create_signal_node_from_var(var: WVar, hierarchy: WHierarchy, handle: Signal
     
     return node
 
-def create_sample_session(vcd_path: str, backend_preference: Literal["pywellen", "pylibfst"] = "pywellen") -> WaveformSession:
+def create_sample_session(vcd_path: str, backend_preference: Literal["pyrox", "pylibfst"] = "pyrox") -> WaveformSession:
     """Create a sample WaveformSession with signals from a waveform file.
-    
+
     Args:
         vcd_path: Path to the waveform file (VCD or FST)
-        backend_preference: Preferred backend for FST files ("pywellen" or "pylibfst")
+        backend_preference: Preferred backend for FST files ("pyrox" or "pylibfst")
     """
     from .protocols import WaveformDBProtocol
     db = WaveformDB(backend_preference=backend_preference)

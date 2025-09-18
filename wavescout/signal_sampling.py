@@ -50,16 +50,16 @@ def determine_value_kind(value: str) -> ValueKind:
 
 
 def parse_signal_value(value: Any, data_format: DataFormat = DataFormat.UNSIGNED, bit_width: int = 32) -> Tuple[Optional[str], Optional[float], Optional[bool]]:
-    """Parse pywellen signal value to appropriate types based on data format.
+    """Parse wellen signal value to appropriate types based on data format.
     
-    Pywellen returns values in their native types:
+    Pyrox returns values in their native types:
     - int for raw binary data
     - float for real signals
     - str for string signals
     - None for undefined values
     
     Args:
-        value: The raw value from pywellen
+        value: The raw value from pyrox
         data_format: How to interpret integer values
         bit_width: Bit width of the signal (for signed/float conversion)
     

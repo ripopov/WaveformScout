@@ -52,7 +52,7 @@ def _serialize_node(node: SignalNode) -> Dict[str, Any]:
 def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProtocol) -> None:
     """Resolve signal handles for all nodes to ensure they're correct for the current backend.
     
-    This is crucial when loading sessions across different backends (pylibfst vs pywellen)
+    This is crucial when loading sessions across different backends (pylibfst vs pyrox)
     since they may have different handle assignments and signal name formats.
     """
     if not waveform_db:
@@ -66,7 +66,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProt
             handle = waveform_db.find_handle_by_path(node.name)
             
             # If not found and name has trailing spaces, try without spaces
-            # (handles the case where pylibfst adds trailing spaces but pywellen doesn't)
+            # (handles the case where pylibfst adds trailing spaces but pyrox doesn't)
             if handle is None and node.name.endswith(' '):
                 trimmed_name = node.name.rstrip()
                 handle = waveform_db.find_handle_by_path(trimmed_name)
@@ -356,13 +356,13 @@ def save_session(session: WaveformSession, path: pathlib.Path) -> None:
         json.dump(data, f, indent=2)
 
 
-def load_session(path: pathlib.Path, backend_preference: Optional[Literal["pywellen", "pylibfst"]] = None) -> WaveformSession:
+def load_session(path: pathlib.Path, backend_preference: Optional[Literal["pyrox", "pylibfst"]] = None) -> WaveformSession:
     """
     Deserialize JSON to dataclasses and reconnect to waveform DB.
-    
+
     Args:
         path: Path to the session file
-        backend_preference: Optional backend preference ("pywellen" or "pylibfst") for FST files
+        backend_preference: Optional backend preference ("pyrox" or "pylibfst") for FST files
     """
     # Check file extension
     if not path.suffix.lower() == '.json':

@@ -26,7 +26,7 @@ wheel = "^0.45.1"
 patchelf = {version = "^0.17.2.4", markers = "sys_platform == 'linux'"}
 
 [tool.poetry.scripts]
-build-pywellen = "scripts.build_pywellen:main"
+build-pyrox = "scripts.build_pyrox:main"
 build-pylibfst = "scripts.build_pylibfst:main"
 
 [build-system]

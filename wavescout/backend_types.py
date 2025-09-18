@@ -1,7 +1,7 @@
 """Backend-agnostic protocol types for waveform data.
 
 This module defines protocol types with the "W" prefix (for Waveform) that abstract
-away the specific backend implementation (pywellen or pylibfst). These protocols
+away the specific backend implementation (pyrox or pylibfst). These protocols
 define the interface contract without importing any backend-specific code.
 
 All components in the wavescout package should use these protocol types instead of

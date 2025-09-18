@@ -100,16 +100,16 @@ class SettingsManager(QObject):
     
     # FST Backend settings
     def get_fst_backend(self) -> str:
-        """Get the FST backend preference ('pywellen' or 'pylibfst')."""
+        """Get the FST backend preference ('pyrox' or 'pylibfst')."""
         if self._fst_backend_cache is None:
-            value: Any = self._settings.value("fst_backend", "pywellen", type=str)
-            self._fst_backend_cache = str(value) if value else "pywellen"
+            value: Any = self._settings.value("fst_backend", "pyrox", type=str)
+            self._fst_backend_cache = str(value) if value else "pyrox"
         return self._fst_backend_cache
     
     def set_fst_backend(self, backend: str) -> None:
         """Set the FST backend preference."""
-        if backend not in ["pywellen", "pylibfst"]:
-            backend = "pywellen"
+        if backend not in ["pyrox", "pylibfst"]:
+            backend = "pyrox"
         if self._fst_backend_cache != backend:
             self._fst_backend_cache = backend
             self._settings.setValue("fst_backend", backend)

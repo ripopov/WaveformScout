@@ -175,22 +175,22 @@ class WaveformDBProtocol(Protocol):
         ...
     
     # Backend selection capability
-    def get_backend_type(self) -> Literal["pywellen", "pylibfst"]:
+    def get_backend_type(self) -> Literal["pyrox", "pylibfst"]:
         """Get the current backend type.
-        
+
         Returns:
             The backend type being used
         """
         ...
-    
-    def set_backend_preference(self, backend: Literal["pywellen", "pylibfst"]) -> None:
+
+    def set_backend_preference(self, backend: Literal["pyrox", "pylibfst"]) -> None:
         """Set the preferred backend for next file load.
-        
+
         Args:
             backend: The backend to use for next file load
-        
+
         Note:
             This preference takes effect only when the next waveform file is loaded.
-            VCD files always use pywellen regardless of this setting.
+            VCD files always use pyrox regardless of this setting.
         """
         ...

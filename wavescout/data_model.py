@@ -202,7 +202,7 @@ class TimeUnit(Enum):
             'fs': cls.FEMTOSECONDS,
             'ps': cls.PICOSECONDS,
             'ns': cls.NANOSECONDS,
-            'us': cls.MICROSECONDS,  # Note: pywellen uses 'us' not 'μs'
+            'us': cls.MICROSECONDS,  # Note: wellen uses 'us' not 'μs'
             'μs': cls.MICROSECONDS,
             'ms': cls.MILLISECONDS,
             's': cls.SECONDS

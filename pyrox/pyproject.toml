@@ -1,0 +1,28 @@
+[project]
+name = "pyrox"
+requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+dynamic = ["version"]
+license = "BSD-3-Clause"
+description = "Fast VCD, GHW and FST wavedump reading."
+readme = "Readme.md"
+authors = [
+  { name = "WaveScout Team" },
+]
+
+[project.urls]
+Homepage = "https://github.com/wavescout/pyrox"
+Issues = "https://github.com/wavescout/pyrox/issues"
+
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]

@@ -573,7 +573,7 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBPro
                     break
         
         # Sample the signal at various points to find min/max
-        # We need to sample because pywellen doesn't provide a direct way to get all transitions
+        # We need to sample because wellen doesn't provide a direct way to get all transitions
         # Sample at a reasonable interval to capture the range
         num_samples = min(10000, end_time - start_time + 1)  # Limit samples for performance
         sample_interval = max(1, (end_time - start_time) // num_samples)

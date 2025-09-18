@@ -14,7 +14,7 @@ from .backends import BackendFactory, BackendType, WaveformBackend
 class WaveformDB:
     """Waveform database with backend-agnostic design for reading VCD/FST files."""
     
-    def __init__(self, backend_preference: Optional[Literal["pywellen", "pylibfst"]] = None) -> None:
+    def __init__(self, backend_preference: Optional[Literal["pyrox", "pylibfst"]] = None) -> None:
         self.waveform: Optional[WWaveform] = None
         self.hierarchy: Optional[WHierarchy] = None
         self.uri: Optional[str] = None
@@ -25,13 +25,18 @@ class WaveformDB:
         self._signal_ref_to_handle: Dict[int, SignalHandle] = {}  # Map SignalRef to our handle (for O(1) alias detection)
         self._handle_to_signal_ref: Dict[SignalHandle, int] = {}  # Map our handle to SignalRef
         self._backend: Optional[WaveformBackend] = None  # Current backend instance
-        self._backend_preference = backend_preference or "pywellen"  # Default to pywellen
-        self._current_backend_type: Optional[Literal["pywellen", "pylibfst"]] = None
+        self._backend_preference = backend_preference or "pyrox"  # Default to pyrox
+        self._current_backend_type: Optional[Literal["pyrox", "pylibfst"]] = None
 
     @property
     def file_path(self) -> Optional[str]:
         """Get the file path of the opened waveform."""
         return self.uri
+
+    @property
+    def backend(self) -> Optional[WaveformBackend]:
+        """Get the current backend instance."""
+        return self._backend
         
     def open(self, uri: str) -> None:
         """Open a waveform file using the configured backend."""
@@ -53,10 +58,10 @@ class WaveformDB:
         ext = path.suffix.lower()
         
         if ext == '.vcd':
-            # VCD files always use pywellen
-            backend_type = BackendType.PYWELLEN
-            self._current_backend_type = "pywellen"
-            print("  - Using pywellen backend (VCD file)")
+            # VCD files use pyrox
+            backend_type = BackendType.PYROX
+            self._current_backend_type = "pyrox"
+            print("  - Using pyrox backend (VCD file)")
         elif ext == '.fst':
             # FST files use the preferred backend
             if self._backend_preference == "pylibfst":
@@ -64,9 +69,10 @@ class WaveformDB:
                 self._current_backend_type = "pylibfst"
                 print("  - Using pylibfst backend (FST file, user preference)")
             else:
-                backend_type = BackendType.PYWELLEN
-                self._current_backend_type = "pywellen"
-                print("  - Using pywellen backend (FST file)")
+                # Default to pyrox
+                backend_type = BackendType.PYROX
+                self._current_backend_type = "pyrox"
+                print("  - Using pyrox backend (FST file)")
         else:
             raise ValueError(f"Unsupported file format: {ext}")
         
@@ -236,17 +242,17 @@ class WaveformDB:
         if not self.hierarchy:
             return
             
-        pywellen_timescale = self.hierarchy.timescale()
-        if pywellen_timescale:
+        backend_timescale = self.hierarchy.timescale()
+        if backend_timescale:
             # Import our TimeUnit and Timescale classes
             from .data_model import TimeUnit, Timescale
             
-            # pywellen's Timescale has unit and factor attributes
+            # Backend's Timescale has unit and factor attributes
             # but we need to access them carefully to satisfy the type checker
             try:
                 # Try to get unit and factor attributes
-                unit_str = str(getattr(pywellen_timescale, 'unit', ''))
-                factor = getattr(pywellen_timescale, 'factor', 1)
+                unit_str = str(getattr(backend_timescale, 'unit', ''))
+                factor = getattr(backend_timescale, 'factor', 1)
                 
                 time_unit = TimeUnit.from_string(unit_str)
                 if time_unit:
@@ -554,14 +560,14 @@ class WaveformDB:
         Returns:
             Current backend type or None if no backend is loaded
         """
-        if self._current_backend_type == "pywellen":
-            return BackendType.PYWELLEN
+        if self._current_backend_type == "pyrox":
+            return BackendType.PYROX
         elif self._current_backend_type == "pylibfst":
             return BackendType.PYLIBFST
         else:
             return None
     
-    def set_backend_preference(self, backend: Literal["pywellen", "pylibfst"]) -> None:
+    def set_backend_preference(self, backend: Literal["pyrox", "pylibfst"]) -> None:
         """Set the preferred backend for next file load.
         
         Args:
@@ -569,7 +575,7 @@ class WaveformDB:
         
         Note:
             This preference takes effect only when the next waveform file is loaded.
-            VCD files always use pywellen regardless of this setting.
+            VCD files always use pyrox regardless of this setting.
         """
-        if backend in ["pywellen", "pylibfst"]:
+        if backend in ["pyrox", "pylibfst"]:
             self._backend_preference = backend

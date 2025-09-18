@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 class BackendType(Enum):
     """Supported waveform backend types."""
-    PYWELLEN = "pywellen"
+    PYROX = "pyrox"
     PYLIBFST = "pylibfst"
 
 
@@ -174,11 +174,12 @@ class BackendFactory:
                 raise ValueError(f"Backend {backend_type} not registered")
             return cls._backends[backend_type](file_path)
         
-        # VCD files always use pywellen
+        # VCD files use pyrox
         if ext == '.vcd':
-            if BackendType.PYWELLEN not in cls._backends:
-                raise ValueError("Pywellen backend not registered but required for VCD files")
-            return cls._backends[BackendType.PYWELLEN](file_path)
+            if BackendType.PYROX in cls._backends:
+                return cls._backends[BackendType.PYROX](file_path)
+            else:
+                raise ValueError("No backend available for VCD files (pyrox required)")
         
         # FST files can use either backend based on preference
         if ext == '.fst':

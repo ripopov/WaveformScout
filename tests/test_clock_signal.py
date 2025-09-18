@@ -29,19 +29,19 @@ class TestClockUtils:
         """Test signal type validation for clock signals."""
         # Mock WVar objects
         wire_var = Mock()
-        wire_var.var_type.return_value = 'Wire'  # Proper case for pywellen
+        wire_var.var_type.return_value = 'Wire'  # Proper case for wellen
         assert is_valid_clock_signal(wire_var) == True
         
         event_var = Mock()
-        event_var.var_type.return_value = 'Event'  # Proper case for pywellen
+        event_var.var_type.return_value = 'Event'  # Proper case for wellen
         assert is_valid_clock_signal(event_var) == True
         
         string_var = Mock()
-        string_var.var_type.return_value = 'String'  # Proper case for pywellen
+        string_var.var_type.return_value = 'String'  # Proper case for wellen
         assert is_valid_clock_signal(string_var) == False
         
         real_var = Mock()
-        real_var.var_type.return_value = 'Real'  # Proper case for pywellen
+        real_var.var_type.return_value = 'Real'  # Proper case for wellen
         assert is_valid_clock_signal(real_var) == False
     
     def test_calculate_event_clock_period(self):

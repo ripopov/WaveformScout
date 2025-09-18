@@ -22,7 +22,7 @@ endif
 help:  ## Show this help
 ifeq ($(detected_OS),Windows)
 	@echo Available targets:
-	@echo   install      - Install dependencies and build pywellen and pylibfst
+	@echo   install      - Install dependencies and build pyrox and pylibfst
 	@echo   build        - Build the project
 	@echo   build-pylibfst - Build pylibfst Rust extension (includes libfst)
 	@echo   clean        - Clean build artifacts
@@ -38,14 +38,14 @@ endif
 build-pylibfst:  ## Build pylibfst Rust extension (includes libfst)
 	poetry run build-pylibfst
 
-install:  ## Install dependencies and build pywellen and pylibfst
+install:  ## Install dependencies and build pyrox and pylibfst
 	poetry config virtualenvs.in-project true
 	poetry install
-	poetry run build-pywellen
+	poetry run build-pyrox
 	poetry run build-pylibfst
 
 build:  ## Build the project
-	poetry run build-pywellen
+	poetry run build-pyrox
 	poetry run build-pylibfst
 	poetry build
 
@@ -53,14 +53,14 @@ clean:  ## Clean build artifacts
 ifeq ($(detected_OS),Windows)
 	@if exist dist $(RMDIR) dist 2>$(NULL) || echo.
 	@if exist build $(RMDIR) build 2>$(NULL) || echo.
-	@if exist wellen$(PATHSEP)target $(RMDIR) wellen$(PATHSEP)target 2>$(NULL) || echo.
+	@if exist pyrox$(PATHSEP)target $(RMDIR) pyrox$(PATHSEP)target 2>$(NULL) || echo.
 	@if exist pylibfst$(PATHSEP)target $(RMDIR) pylibfst$(PATHSEP)target 2>$(NULL) || echo.
 	@for /d /r . %%d in (__pycache__) do @if exist "%%d" $(RMDIR) "%%d" 2>$(NULL) || echo.
 	@for /r . %%f in (*.pyc) do @if exist "%%f" $(RM) "%%f" 2>$(NULL) || echo.
 	@for /r . %%f in (*.egg-info) do @if exist "%%f" $(RMDIR) "%%f" 2>$(NULL) || echo.
 else
 	$(RMDIR) dist build *.egg-info 2>$(NULL) || true
-	$(RMDIR) wellen/target 2>$(NULL) || true
+	$(RMDIR) pyrox/target 2>$(NULL) || true
 	$(RMDIR) pylibfst/target 2>$(NULL) || true
 	find . -type d -name __pycache__ -exec $(RMDIR) {} + 2>$(NULL) || true
 	find . -type f -name "*.pyc" -delete 2>$(NULL) || true
@@ -74,7 +74,7 @@ else
 endif
 
 test:  ## Run tests
-	QT_QPA_PLATFORM=offscreen poetry run pytest tests/ --ignore=wellen/
+	QT_QPA_PLATFORM=offscreen poetry run pytest tests/
 
 typecheck:  ## Run mypy type checker (strict mode)
 	poetry run mypy wavescout/ --strict --config-file mypy.ini
@@ -91,7 +91,6 @@ ifeq ($(detected_OS),Windows)
 		--include-package=yaml \
 		--include-package=rapidfuzz \
 		--include-package=qdarkstyle \
-		--include-data-dir=wellen=wellen \
 		--windows-console-mode=disable \
 		--assume-yes-for-downloads \
 		--no-progress-bar \
@@ -105,7 +104,6 @@ else
 		--include-package=yaml \
 		--include-package=rapidfuzz \
 		--include-package=qdarkstyle \
-		--include-data-dir=wellen=wellen \
 		--assume-yes-for-downloads \
 		--no-progress-bar \
 		--output-filename=WaveformScout \

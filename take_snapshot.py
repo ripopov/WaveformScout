@@ -6,7 +6,7 @@ Usage:
     python take_snapshot.py [--backend wellen|libfst] <session.yaml> [output.png]
     
 Args:
-    --backend    - FST backend to use: 'wellen' (pywellen) or 'libfst' (pylibfst)
+    --backend    - FST backend to use: 'wellen' (pyrox) or 'libfst' (pylibfst)
     session.yaml - WaveScout session file (auto-detected if omitted)
     output.png   - Output image path (default: snapshot.png)
 
@@ -38,7 +38,7 @@ def take_snapshot(session_file: str, output_file: str = "snapshot.png",
     print(f"Loading session from: {session_file}")
     if backend:
         print(f"Using backend: {backend}")
-        backend_pref = "pywellen" if backend == "wellen" else "pylibfst"
+        backend_pref = "pyrox" if backend == "wellen" else "pylibfst"
         session = load_session(Path(session_file), backend_preference=backend_pref)
     else:
         session = load_session(Path(session_file))
@@ -64,7 +64,7 @@ def take_snapshot(session_file: str, output_file: str = "snapshot.png",
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate PNG snapshots of WaveScout waveform viewer")
     parser.add_argument("--backend", choices=["wellen", "libfst"], 
-                        help="FST backend to use: 'wellen' (pywellen) or 'libfst' (pylibfst)")
+                        help="FST backend to use: 'wellen' (pyrox) or 'libfst' (pylibfst)")
     parser.add_argument("session_file", nargs="?", help="WaveScout session file (.json)")
     parser.add_argument("output_file", nargs="?", default="snapshot.png", 
                         help="Output PNG file (default: snapshot.png)")

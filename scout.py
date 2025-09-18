@@ -118,10 +118,10 @@ class WaveScoutMainWindow(FramelessWindow):
         # Store current waveform file for reload
         self.current_wave_file: str | None = None
         
-        # Initialize FST backend preference (default to pywellen)
+        # Initialize FST backend preference (default to pyrox)
         self.fst_backend_preference = self.settings_manager.get_fst_backend()
-        if self.fst_backend_preference not in ["pywellen", "pylibfst"]:
-            self.fst_backend_preference = "pywellen"
+        if self.fst_backend_preference not in ["pyrox", "pylibfst"]:
+            self.fst_backend_preference = "pyrox"
         
         # Initialize loading state management
         self._loading_state = LoadingState()
@@ -720,13 +720,13 @@ class WaveScoutMainWindow(FramelessWindow):
         fst_loader_group = QActionGroup(self)
         fst_loader_group.setExclusive(True)
         
-        # Pywellen backend option
-        self.pywellen_action = QAction("&Wellen", self)
-        self.pywellen_action.setCheckable(True)
-        self.pywellen_action.setChecked(self.fst_backend_preference == "pywellen")
-        self.pywellen_action.triggered.connect(lambda: self._set_fst_backend("pywellen"))
-        fst_loader_group.addAction(self.pywellen_action)
-        fst_loader_menu.addAction(self.pywellen_action)
+        # Pyrox backend option
+        self.pyrox_action = QAction("&Pyrox (Wellen)", self)
+        self.pyrox_action.setCheckable(True)
+        self.pyrox_action.setChecked(self.fst_backend_preference == "pyrox")
+        self.pyrox_action.triggered.connect(lambda: self._set_fst_backend("pyrox"))
+        fst_loader_group.addAction(self.pyrox_action)
+        fst_loader_menu.addAction(self.pyrox_action)
         
         # Pylibfst backend option
         self.pylibfst_action = QAction("&libfst", self)
@@ -1463,23 +1463,23 @@ class WaveScoutMainWindow(FramelessWindow):
         """Set the preferred FST backend for future file loads.
         
         Args:
-            backend: Either "pywellen" or "pylibfst"
+            backend: Either "pyrox" or "pylibfst"
         """
-        if backend not in ["pywellen", "pylibfst"]:
+        if backend not in ["pyrox", "pylibfst"]:
             return
             
         self.fst_backend_preference = backend
         self.settings_manager.set_fst_backend(backend)
         
         # Update menu checkmarks
-        if backend == "pywellen":
-            self.pywellen_action.setChecked(True)
+        if backend == "pyrox":
+            self.pyrox_action.setChecked(True)
         else:
             self.pylibfst_action.setChecked(True)
         
         # Notify user that change will take effect on next file load
         self.statusBar().showMessage(
-            f"FST backend set to {'Wellen' if backend == 'pywellen' else 'libfst'}. "
+            f"FST backend set to {'Pyrox (Wellen)' if backend == 'pyrox' else 'libfst'}. "
             "Change will take effect when next FST file is loaded.", 5000
         )
     

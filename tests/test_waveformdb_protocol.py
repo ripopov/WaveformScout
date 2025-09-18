@@ -9,7 +9,7 @@ from wavescout.protocols import WaveformDBProtocol
 from .test_utils import get_test_input_path, TestFiles
 
 if TYPE_CHECKING:
-    from pywellen import Var
+    from pyrox import Var
 
 
 def test_waveformdb_conforms_to_protocol():
