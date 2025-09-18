@@ -10,7 +10,7 @@ packages = [{include = "wavescout"}]
 python = ">=3.12,<3.14"
 pyside6 = "^6.9.1"
 numpy = "^2.0.0"
-rapidfuzz = "^3.13.0"
+rapidfuzz = "^3.14.1"
 qdarkstyle = "^3.2.3"
 PySideSix-Frameless-Window = "^0.7.3"
 
