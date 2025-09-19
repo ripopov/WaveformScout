@@ -1,193 +1,112 @@
-# Project Guidelines
+# WaveformScout Agent Guide
 
-This document provides an overview of the WaveformScout project and concrete guidelines for 
-CLAUDE, Junie, Codex, and other coding agents when making changes.
+This playbook aligns CLAUDE, Junie, Codex, and other coding agents on the current WaveformScout codebase so changes stay accurate and intentional.
 
-IF DEVELOPING ON WINDOWS, USE POWERSHELL FOR ALL COMMANDS. DON'T TRY TO USE BASH.
+**IF YOU ARE DEVELOPING ON WINDOWS, RUN EVERY COMMAND FROM POWERSHELL. DO NOT USE BASH.**
 
-## Overview
-- WaveformScout is a PySide6 (Qt6) digital/mixed-signal waveform viewer with a Rust-accelerated backend (Wellen via pywellen) for fast waveform processing.
-- Primary goals: performant waveform viewing, clean dataclass-based model layer, and an efficient Qt Model/View bridge.
+## Current Architecture Snapshot
+- PySide6/Qt6 front-end renders the waveform viewer and supporting tools (snippets, markers, analysis panes).
+- Python orchestrates state via dataclasses and protocols (`wavescout/data_model.py`, `wavescout/protocols.py`).
+- Rust extensions provide fast waveform access:
+  - `pyrox` (PyO3 bindings for the Wellen core) handles VCD and FST ingest.
+  - `pylibfst` supplies an alternative FST backend with a pywellen-compatible API.
+- Backend selection is coordinated through `wavescout/backends` and the `BackendFactory` in `wavescout/backends/base.py`.
 
-## Project Structure (high level)
-- wavescout/ — main Python package (widgets, models, rendering, canvas, etc.)
-- wellen/ — Wellen library submodule with Rust sources and Python bindings (pywellen)
-- scout.py — main application entry point
-- tests/ — pytest suite
-- scripts/ — helper scripts (incl. build_pywellen)
-- docs/, README.md — documentation and usage
-- Makefile — common developer commands
-- pyproject.toml — Poetry configuration
-- pytest.ini, mypy.ini — testing and type-checking settings
+## Directory Orientation
+- `wavescout/` — main application package. Key areas include:
+  - `application/` (event bus & domain events for cross-widget coordination)
+  - `backends/` (pyrox & pylibfst adapters plus typed backend contracts)
+  - `config.py`, `theme.py`, `color_utils.py` (UI customization and theming)
+  - `data_model.py`, `waveform_item_model.py`, `waveform_controller.py` (core state & Qt models)
+  - `wave_scout_widget.py`, `waveform_canvas.py`, `signal_renderer.py` (main widget & rendering pipeline)
+  - `snippet_*`, `markers_window.py`, `analysis_engine.py` (workflow-specific tooling)
+- `pyrox/` — Rust crate + maturin project that exposes the high-performance waveform API (`build-pyrox`).
+- `pylibfst/` — Rust crate that wraps the bundled `libfst` sources (`build-pylibfst`).
+- `libfst/` — vendored FST C implementation leveraged by `pylibfst` (with its own tests and PowerShell helpers).
+- `scripts/` — build helpers for pyrox and pylibfst (Linux/macOS plus Windows fallbacks).
+- `tests/` — pytest + pytest-qt suite (uses `test_inputs/` waveforms for integration coverage).
+- `docs/` — feature plans and technical notes (search here before inventing new patterns).
+- `take_snapshot.py` — utility to capture GUI snapshots during development.
+- `setup_env.ps1` — initializes the MSVC developer environment required to build Rust/PyO3 on Windows.
 
-For a detailed tree, see the Project Structure section in README.md.
+## Toolchain & Environment
+- Python ≥ 3.12 managed by Poetry (local `.venv`).
+- Rust toolchain with `maturin` to build PyO3 extensions.
+- PySide6 6.9.x, NumPy 2.x, RapidFuzz, QDarkStyle, and PySideSix-Frameless-Window for the UI.
+- Make is used as the primary command runner (`Makefile` normalizes Windows vs. POSIX flows).
 
-## Key Dependencies
-- Poetry  (uses in-project virtualenv .venv)
-- Python 3.12
-- PySide6 (Qt6 for Python)
-- pywellen (Python bindings for Wellen waveform library)
-- Rust toolchain (for building pywellen)
-
-## Important Commands
-
-### Initial Setup
-
-#### Windows Setup
-MSVC 2022, Rust, Python 3.12, and Poetry must be installed.
+## Setup Flow
+### Windows (PowerShell only)
 ```powershell
-# Open PowerShell and navigate to project directory
-cd <path-to-WaveScout>
-
-# Setup Visual Studio development environment (required for Windows)
+cd <path-to-WaveformScout>
 . .\setup_env.ps1
-
-# Install dependencies and build extensions
-make install
-
-# Run the application
-make dev
+make install  # installs Poetry deps, then builds pyrox and pylibfst
+make dev      # launches the Qt application
 ```
 
-#### Linux/macOS Setup
+### Linux / macOS
 ```bash
-# Install dependencies and build pywellen
-# This creates a local .venv in the project directory
-make install
+cd <path-to-WaveformScout>
+make install  # installs dependencies and builds pyrox + pylibfst
 
-# Or manually:
+# Manual path (if you need extra control)
 poetry config virtualenvs.in-project true
 poetry install
-poetry run build-pywellen
-```
-
-## Running
-- Demo application: make dev
-  - Equivalent: poetry run python scout.py
-
-### Virtual Environment
-The project uses Poetry with a local virtual environment (.venv) in the project directory.
-This ensures all dependencies are isolated and makes the project portable.
-
-To activate the virtual environment:
-```bash
-# Linux/macOS - Direct activation (recommended)
-source .venv/bin/activate
-
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-
-# Or use Poetry's env activate command (all platforms)
-poetry env activate
-
-# All poetry commands automatically use the virtual environment
-poetry run python scout.py
-poetry run pytest
-```
-
-### Building
-```bash
-# Build pywellen only
-poetry run build-pywellen
-
-# Build pylibfst (FST support)
+poetry run build-pyrox
 poetry run build-pylibfst
-
-# Build entire project
-make build
 ```
 
-## Tests
-**IMPORTANT: ALWAYS use `QT_QPA_PLATFORM=offscreen` when running tests to ensure they work in headless environments.**
+The install target runs `poetry run build-pyrox` and `poetry run build-pylibfst`, so the Rust extensions are always rebuilt after dependency changes.
 
-- Run all tests: make test
-  - Equivalent: `QT_QPA_PLATFORM=offscreen poetry run pytest tests/ --ignore=wellen/`
-- For individual test execution: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_file.py`
-- Pytest is configured via pytest.ini with testpaths = tests
-- The offscreen QT platform ensures tests can run without a display server, which is essential for CI/CD and remote development
+## Running & Developer Utilities
+- Launch the viewer: `make dev` (or `poetry run python scout.py`).
+- Start with a clean environment: `make clean`, `make clean-venv`.
+- Generate distributables: `make build` (Poetry build) or `make compile` (Nuitka standalone binaries; auto-selects platform flags).
 
-## Type Checking and Linting
-- Type checking (strict): make typecheck
-  - Equivalent: poetry run mypy wavescout/ --strict --config-file mypy.ini
-- mypy.ini includes exceptions for pywellen and specific PySide6 import behaviors.
-- There is no separate linter configured in this repo; follow readable, PEP8-ish style and keep type annotations accurate.
-
-## Coding Guidelines
-
-- DRY (Don’t Repeat Yourself) - every piece of knowledge or logic in a system should exist in a single, authoritative
-  place, avoiding duplication.
-- SRP (Single Responsibility Principle) - class, module, or function should have only one reason to change, i.e., it
-  should focus on a single, well-defined responsibility.
-
-### Strict Typing Requirements
-This project enforces strict type safety. All code must adhere to these guidelines:
-
-1. **No `Any` types**: Replace all `Any` types with specific type annotations
-2. **Use TypedDict**: Define structured dictionaries with `TypedDict` for better type safety
-3. **Explicit Optional**: Use `Optional[T]` for nullable values, never implicit `None`
-4. **Type all parameters and returns**: Every function must have complete type annotations
-5. **Use Union sparingly**: Prefer specific types or protocols over broad unions
-6. **Leverage TypeAlias**: Create type aliases for complex types to improve readability
-7. **No hasattr in production code**: Never use `hasattr` for checking object attributes (see Initialization Guidelines below)
-
-### Type Annotation Examples
-```python
-from typing import Optional, TypedDict, Protocol, TypeAlias
-from collections.abc import Sequence
-
-# Use TypedDict for structured data
-class SignalData(TypedDict):
-    name: str
-    value: int
-    transitions: list[int]
-
-# Use Protocol for interfaces
-class Renderable(Protocol):
-    def render(self, params: RenderParams) -> None: ...
-
-# Use TypeAlias for complex types
-SignalMap: TypeAlias = dict[str, SignalData]
-
-# Avoid Any - be specific
-# Bad:  def process(data: Any) -> Any
-# Good: def process(data: SignalData) -> ProcessedSignal
-```
-
-### MyPy Configuration
-The project uses strict mypy checking. Run type checks with:
+## Working in the Virtual Environment
+Poetry auto-uses the in-project `.venv`. Direct activation is optional but available:
 ```bash
-make typecheck
+source .venv/bin/activate        # Linux/macOS
+.\.venv\Scripts\Activate.ps1    # Windows
+poetry env activate               # cross-platform alternative
 ```
+Use `poetry run <command>` whenever unsure that the venv is active.
 
-Expected mypy configuration:
-- `strict = true`
-- `warn_return_any = true`
-- `disallow_any_explicit = true`
-- `disallow_untyped_defs = true`
+## Testing & Quality Gates
+- **Always** set `QT_QPA_PLATFORM=offscreen` for any pytest invocation to avoid GUI requirements.
+  - Full suite: `QT_QPA_PLATFORM=offscreen make test`
+  - Direct Pytest: `QT_QPA_PLATFORM=offscreen poetry run pytest tests/`
+  - Targeted test: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_file.py -k scenario`
+- Type checking: `make typecheck` → `poetry run mypy wavescout/ --strict --config-file mypy.ini`
+- GUI snapshot helper: `poetry run python take_snapshot.py --help`
+- When touching Rust backends, run the relevant integration tests (`tests/test_backend_compat.py`, `tests/test_dual_fst_backend.py`, `tests/test_fst_loading.py`).
 
-### Qt Type Annotations
-For PySide6/Qt types:
-- Use specific Qt types: `QWidget`, `QEvent`, `QPaintEvent`, etc.
-- Never use `Any` for Qt objects
-- Import types from appropriate modules: `from PySide6.QtCore import QEvent`
+## Coding Standards
+- Preserve DRY and Single Responsibility principles; prefer shared helpers in `wavescout/` over duplicating logic in widgets.
+- Follow repository style (PEP 8 leaning, explicit imports, module-level `__all__` where appropriate).
+- Qt widgets should derive from the existing base classes and plug into the event bus where possible instead of emitting ad-hoc signals.
 
-## Initialization Guidelines
+### Strict Typing Expectations
+1. Do not introduce `Any`; use precise protocols or concrete types from `wavescout.backend_types` and `wavescout.protocols`.
+2. Use `TypedDict`, `Protocol`, and `TypeAlias` for structured data instead of loose dicts.
+3. Annotate every parameter and return type; express optionality explicitly with `Optional[T]`.
+4. Prefer domain-specific aliases (`SignalHandle`, `Timescale`, etc.) over primitive types in signatures.
+5. Keep unions narrow—consider protocols or dataclasses before widening types.
 
-### No hasattr or delattr
-**NEVER use `hasattr` for checking object attributes or `delattr` for removing them.** All attributes must be properly initialized in `__init__` methods.
+### Initialization Contracts
+- Initialize every attribute in `__init__` (set to `None` or a default) and avoid `hasattr`/`delattr` in production code.
+- Use lifecycle flags (`self._initialized`, `self._ui_ready`) instead of probing for attributes.
+- For transient bundles of state, prefer dataclasses or small `NamedTuple`s declared next to their usage.
 
-#### Required Patterns
+## Backend & Data Flow Guidance
+- `WaveformDB` implements `WaveformDBProtocol` and mediates access to backend signals; keep protocol definitions in sync with backend adapters.
+- `BackendFactory` should be updated whenever new formats or backends are introduced; ensure `supports_file_format` handles file extensions consistently.
+- Pyrox is the default for VCD (and primary FST) support; pylibfst remains available for compatibility and dual-backend testing. Update both when changing waveform abstractions.
+- When modifying Rust crates, rerun `poetry run build-pyrox` / `poetry run build-pylibfst` and keep Cargo manifests locked. Commit generated `.pyd`/`.so` binaries **only** if the project already tracks them.
 
-1. **Initialize ALL attributes in __init__** - even if initially None
-2. **Use initialization flags** (`self._initialized`) for lifecycle management
-3. **Use dataclasses** for complex temporary state instead of dynamic attributes
-4. **Set to None** instead of delattr
+## Additional References
+- `docs/features/` captures historical plans (e.g., pyrox migration, dual FST backend) and is useful for understanding intent before altering implementations.
+- `pytest.ini` and `mypy.ini` document current test paths and typing exceptions—review before tweaking test discovery or type ignores.
+- `test_inputs/` contains canonical waveform samples (e.g., `swerv1.vcd`, `vicuna.fst`); reuse these in new tests to avoid bloating the repo.
 
-#### Only Acceptable hasattr Uses
-- Test code verifying protocol implementation
-- Checking data model objects for optional attributes (e.g., `node.children`)
-- Checking third-party objects for optional methods
-
-## Notes
-- The pywellen module provides access to VCD/FST waveform files
-- Rendering is optimized using Rust-based pixel region generation
+Stay aligned with these guardrails and surface ambiguities before coding—they usually have historical context captured in the docs directory.
