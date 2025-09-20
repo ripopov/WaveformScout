@@ -55,12 +55,14 @@ Replace the redundant `SignalHandle` type (currently just `int`) with the existi
 **Rust Side (`pyrox/src/lib.rs`)**
 - Line 257-259: `Var::signal_ref()` returns `usize` (the SignalRef index)
 - SignalRef is used internally but not exposed as a Python class
-- Lines 482-553: SignalRef used for signal loading and caching
+- Line 11: SignalRef imported from wellen but not wrapped for Python
+- Lines 537-548: SignalRef used for signal loading and caching with HashMap
 
 **Missing Functionality**
 1. SignalRef is not exposed as a Python class - needs PyClass wrapper
 2. No direct lookup of Var by full hierarchical name - needs new Rust function
 3. SignalRef comparison and hashing not available in Python
+4. No method to create SignalRef from index for backward compatibility
 
 ## 3. Implementation Planning
 
@@ -69,12 +71,12 @@ Replace the redundant `SignalHandle` type (currently just `int`) with the existi
 **File: `pyrox/src/lib.rs`**
 
 **Changes Needed:**
-- Add `SignalRef` as a PyClass with:
-  - `from_index(index: usize) -> Option<SignalRef>`
-  - `index() -> usize`
+- Add `SignalRef` as a PyClass wrapper around wellen::SignalRef with:
+  - `index() -> usize` - to get underlying index value (for serialization)
   - `__eq__`, `__hash__` implementations for Python dict usage
-  - `__repr__` for debugging
-- Add module registration for SignalRef class
+  - `__repr__` for debugging (e.g., `SignalRef(42)`)
+- Add module registration for SignalRef class in the module initialization
+- Note: No backward compatibility methods needed
 
 **File: `pyrox/src/lib.rs` (Extended functionality)**
 
@@ -215,20 +217,37 @@ def get_var(self, handle: pyrox.SignalRef) -> Optional[pyrox.Var]:
 - Update any SignalHandle references in signal selection logic
 - Ensure compatibility with new SignalRef type
 
-### Phase 6: Update Tests
+### Phase 6: Update Persistence Layer
 
-**File: `tests/test_signal_range_cache_format_fix.py`**
+**File: `wavescout/persistence.py`**
 
-**Changes:**
-- Update test fixtures to use SignalRef
-- Ensure tests properly mock or create SignalRef objects
+**Current State Analysis:**
+- Persistence already uses hierarchical names (node.name) as the primary identifier
+- The `_resolve_signal_handles()` function (lines 52-88) re-resolves handles from names when loading
+- This approach ensures correctness across different waveform file versions
 
-### Algorithm: Migration of Existing Sessions
+**Changes Needed:**
+- Line 34: Update to store `node.handle.index()` if handle is SignalRef (for JSON compatibility)
+- Line 123: When loading, the integer handle will be used directly to get SignalRef from waveform_db
+- The name-based resolution in `_resolve_signal_handles()` will continue to work correctly
 
-Since SignalRef internally uses the same index values as our current SignalHandle:
-1. During session loading, convert integer handles to SignalRef objects
-2. Use `SignalRef.from_index(handle_value)` for backward compatibility
-3. Sessions saved after migration will directly serialize SignalRef indices
+### Phase 7: Validate with Tests
+
+**Testing Strategy:**
+- Run `make test` after each phase to ensure no regressions
+- No need to maintain backward compatibility with old session files
+- Focus on ensuring all existing tests pass with the new SignalRef type
+
+**Key Test Files to Monitor:**
+- `tests/test_signal_range_cache_format_fix.py` - Uses SignalHandle directly
+- `tests/test_session_alias_loading.py` - Tests session loading
+- `tests/test_waveformdb_protocol.py` - Tests the protocol interface
+- Any test that saves/loads sessions or uses SignalHandle
+
+**Success Criteria:**
+- All tests pass with `QT_QPA_PLATFORM=offscreen make test`
+- No test modifications needed except updating SignalHandle to SignalRef imports
+- Performance should remain the same or improve
 
 ### Performance Considerations
 
@@ -241,13 +260,17 @@ Since SignalRef internally uses the same index values as our current SignalHandl
 - SignalRef objects have slight overhead vs raw integers
 - Mitigation: SignalRef is a thin wrapper around NonZeroU32, minimal impact
 
-### Backward Compatibility
+### Implementation Approach
 
-**Session Files:**
-- Add migration logic to handle old session files with integer handles
-- Convert integers to SignalRef during load
-- New sessions save SignalRef index directly
+**Clean Refactoring:**
+- No backward compatibility required for session files
+- Make clean, direct replacements of SignalHandle with SignalRef
+- Remove all redundant mapping code without preserving legacy paths
+- Validation through test suite (`make test`) is sufficient
 
-**API Compatibility:**
-- Type change is breaking for external code using SignalHandle
-- Document migration path in changelog
+**Simplified Migration:**
+- Since we don't need backward compatibility, we can:
+  - Directly replace SignalHandle type alias with SignalRef imports
+  - Remove all mapping dictionaries in one pass
+  - Update serialization to use SignalRef.index() without migration code
+  - Trust the test suite to catch any issues
