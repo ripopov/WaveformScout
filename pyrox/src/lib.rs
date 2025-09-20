@@ -11,6 +11,9 @@ use wellen::{
     LoadOptions, ScopeType, SignalRef, SignalValue, TimeTableIdx,
 };
 
+/// Opaque handle exposed to Python for signal lookups (0-based index).
+pub type SignalHandle = usize;
+
 pub trait PyErrExt<T> {
     fn toerr(self) -> PyResult<T>;
 }
@@ -342,10 +345,10 @@ impl Var {
         self.0.index().map(VarIndex)
     }
 
-    /// Get the signal reference as an integer for internal use
-    /// Two vars with the same signal_ref() are aliases
-    /// Returns 0-based index for Python use
-    pub fn signal_ref(&self) -> usize {
+    /// Get the signal reference as an integer for internal use.
+    /// Two vars with the same `signal_ref()` are aliases.
+    /// Returns a 0-based `SignalHandle` for Python code.
+    pub fn signal_ref(&self) -> SignalHandle {
         self.0.signal_ref().index()
     }
 }

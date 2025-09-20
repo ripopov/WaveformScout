@@ -6,6 +6,7 @@ from typing_extensions import Self
 # Type aliases for clarity
 Time = int
 SignalValue = Union[int, str, float]
+SignalHandle = int
 
 class VarIndex:
     """Variable bit range index."""
@@ -27,7 +28,7 @@ class Var:
     def is_bit_vector(self) -> bool: ...
     def is_1bit(self) -> bool: ...
     def index(self) -> Optional[VarIndex]: ...
-    def signal_ref(self) -> int: ...
+    def signal_ref(self) -> SignalHandle: ...
 
 class VarIter:
     """Iterator over variables."""

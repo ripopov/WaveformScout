@@ -44,7 +44,7 @@ Tree Node Structure:
     ├── bit_range: str     (e.g., "[31:0]", empty for 1-bit)
     ├── parent: Node       (Parent scope, None for root)
     ├── children: [Node]   (Child nodes, empty for signals)
-    ├── var_handle: SignalRef    (Database handle for signal lookup)
+    ├── var_handle: SignalHandle    (Database handle for signal lookup)
     │                      (Integer index used by WaveformDB to efficiently
     │                       retrieve signal data - like a primary key)
     └── var: pyrox.Var     (Pyrox variable reference)
@@ -62,7 +62,7 @@ from PySide6.QtGui import QIcon
 
 if TYPE_CHECKING:
     from pyrox import ScopeIter
-from .data_model import SignalRef
+from pyrox import SignalHandle
 from .protocols import WaveformDBProtocol
 import pyrox
 from .icon_cache import get_icon_cache
@@ -88,7 +88,7 @@ class DesignTreeNode:
         self.bit_range = bit_range
         self.parent = parent
         self.children: List['DesignTreeNode'] = []
-        self.var_handle: Optional[SignalRef] = None  # Wellen Var handle for database lookups
+        self.var_handle: Optional[SignalHandle] = None  # Wellen Var handle for database lookups
         self.var: Optional[pyrox.Var] = None  # Pyrox Var object reference
         self.scope: Optional[pyrox.Scope] = None  # Pyrox scope object for scope nodes
 
@@ -162,7 +162,7 @@ class DesignTreeModel(QAbstractItemModel):
 
         # OPTIMIZATION: Build a reverse mapping from variables to handles once
         # This allows O(1) handle lookups instead of O(n) searches
-        self._var_to_handle: Optional[Dict[int, SignalRef]] = {}
+        self._var_to_handle: Optional[Dict[int, SignalHandle]] = {}
         for handle, vars_list in self.waveform_db.iter_handles_and_vars():
             # Map each variable in the list to the same handle
             for var in vars_list:

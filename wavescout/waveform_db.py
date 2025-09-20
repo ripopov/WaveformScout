@@ -10,7 +10,9 @@ import threading
 
 import pyrox
 
-from .data_model import Time, SignalRef, Timescale, TimeUnit
+from pyrox import SignalHandle
+
+from .data_model import Time, Timescale, TimeUnit
 
 
 class WaveformDB:
@@ -20,7 +22,7 @@ class WaveformDB:
         self.waveform: Optional[pyrox.Waveform] = None
         self.hierarchy: Optional[pyrox.Hierarchy] = None
         self.uri: Optional[str] = None
-        self._signal_cache: Dict[SignalRef, pyrox.Signal] = {}  # Cache loaded signals
+        self._signal_cache: Dict[SignalHandle, pyrox.Signal] = {}  # Cache loaded signals
         self._timescale: Optional[Timescale] = None  # Store parsed timescale
 
     @property
@@ -59,7 +61,7 @@ class WaveformDB:
         total_time = time.time() - start_time
         print(f"  - Total load time: {total_time:.2f} seconds")
 
-    def top_signals(self) -> List[SignalRef]:
+    def top_signals(self) -> List[SignalHandle]:
         """Get handles for top-level signals."""
         if not self.waveform or not self.hierarchy:
             return []
@@ -84,7 +86,7 @@ class WaveformDB:
 
         return refs[:10]  # Return first 10 for testing
 
-    def transitions(self, handle: SignalRef, t0: Time, t1: Time) -> List[Tuple[Time, str]]:
+    def transitions(self, handle: SignalHandle, t0: Time, t1: Time) -> List[Tuple[Time, str]]:
         """Get signal transitions in time range."""
         signal = self.get_signal(handle)
         if not signal:
@@ -97,7 +99,7 @@ class WaveformDB:
 
         return transitions
 
-    def sample(self, handle: SignalRef, t: Time) -> str:
+    def sample(self, handle: SignalHandle, t: Time) -> str:
         """Get signal value at specific time."""
         signal = self.get_signal(handle)
         if not signal:
@@ -110,7 +112,7 @@ class WaveformDB:
 
         return ""
 
-    def sample_with_next_change(self, handle: SignalRef, t: Time) -> Tuple[str, Optional[Time]]:
+    def sample_with_next_change(self, handle: SignalHandle, t: Time) -> Tuple[str, Optional[Time]]:
         """Get signal value at specific time and the time of next change.
 
         Returns:
@@ -190,14 +192,14 @@ class WaveformDB:
             count += 1
         return count
 
-    def get_var(self, handle: SignalRef) -> Optional[pyrox.Var]:
+    def get_var(self, handle: SignalHandle) -> Optional[pyrox.Var]:
         """Get variable by handle. Returns pyrox Var object."""
         if not self.hierarchy:
             return None
         # Use the new Rust method to get var by signal ref
         return self.hierarchy.get_var_by_signal_ref(handle)  # type: ignore[attr-defined, no-any-return]
 
-    def get_all_vars_for_handle(self, handle: SignalRef) -> List[pyrox.Var]:
+    def get_all_vars_for_handle(self, handle: SignalHandle) -> List[pyrox.Var]:
         """Get all variables (including aliases) for a handle."""
         if not self.hierarchy:
             return []
@@ -210,7 +212,7 @@ class WaveformDB:
             return self.waveform.time_table
         return None
 
-    def get_signal(self, handle: SignalRef) -> Optional[pyrox.Signal]:
+    def get_signal(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle. Returns pyrox Signal object.
 
         This method implements lazy loading - signals are only loaded when first requested.
@@ -229,21 +231,21 @@ class WaveformDB:
 
         return self._signal_cache.get(handle)
 
-    def var_from_handle(self, handle: SignalRef) -> Optional[pyrox.Var]:
+    def var_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Var]:
         """Get the variable object for the given handle.
 
         Returns the first variable if there are aliases.
         """
         return self.get_var(handle)
 
-    def signal_from_handle(self, handle: SignalRef) -> Optional[pyrox.Signal]:
+    def signal_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle.
 
         This is an alias for get_signal() for consistency with var_from_handle().
         """
         return self.get_signal(handle)
 
-    def are_signals_cached(self, handles: List[SignalRef]) -> bool:
+    def are_signals_cached(self, handles: List[SignalHandle]) -> bool:
         """Check if all specified signals are already cached.
 
         Args:
@@ -254,7 +256,7 @@ class WaveformDB:
         """
         return all(handle in self._signal_cache for handle in handles)
 
-    def preload_signals(self, handles: List[SignalRef], multithreaded: bool = False) -> None:
+    def preload_signals(self, handles: List[SignalHandle], multithreaded: bool = False) -> None:
         """Preload multiple signals using efficient batch loading.
 
         Loading a group of signals is more efficient than loading each signal individually,
@@ -344,7 +346,7 @@ class WaveformDB:
 
     # Public APIs for accessing protected members
 
-    def get_all_handles(self) -> List[SignalRef]:
+    def get_all_handles(self) -> List[SignalHandle]:
         """Get all handle IDs in the database."""
         if not self.hierarchy:
             return []
@@ -354,7 +356,7 @@ class WaveformDB:
             refs.add(var.signal_ref())
         return list(refs)
 
-    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalRef]:
+    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalHandle]:
         """Get handle for a specific variable object.
 
         Args:
@@ -363,10 +365,10 @@ class WaveformDB:
         Returns:
             Handle ID if found, None otherwise
         """
-        # SignalRef is just the signal_ref() value
+        # SignalHandle is just the signal_ref() value
         return var.signal_ref()
 
-    def find_handle_by_name(self, name: str) -> Optional[SignalRef]:
+    def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
         """Find handle by variable name.
 
         Args:
@@ -410,7 +412,7 @@ class WaveformDB:
         """Clear the signal cache. Primarily for testing."""
         self._signal_cache.clear()
 
-    def is_signal_cached(self, handle: SignalRef) -> bool:
+    def is_signal_cached(self, handle: SignalHandle) -> bool:
         """Check if signal is cached for the given handle.
 
         Used in tests to verify caching behavior.
@@ -440,7 +442,7 @@ class WaveformDB:
             handle_to_vars[ref].append(var)
         return list(handle_to_vars.items())
 
-    def find_handle_by_path(self, path: str) -> Optional[SignalRef]:
+    def find_handle_by_path(self, path: str) -> Optional[SignalHandle]:
         """Find handle by hierarchical path.
 
         First tries to find by exact name. If not found and path doesn't
@@ -463,7 +465,7 @@ class WaveformDB:
 
         return None
 
-    def get_var_bitwidth(self, handle: SignalRef) -> int:
+    def get_var_bitwidth(self, handle: SignalHandle) -> int:
         """Get bit width for a signal.
 
         Args:

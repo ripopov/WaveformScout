@@ -6,7 +6,9 @@ from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics, QImage, Q
 from typing import List, Tuple, Dict, Optional, Union, Set
 from .waveform_item_model import WaveformItemModel
 from dataclasses import dataclass, field
-from .data_model import SignalNode, SignalRef, SignalNodeID, Time, TimeUnit, TimeRulerConfig, RenderType, Marker, GroupRenderMode
+from pyrox import SignalHandle
+
+from .data_model import SignalNode, SignalNodeID, Time, TimeUnit, TimeRulerConfig, RenderType, Marker, GroupRenderMode
 from .signal_sampling import (
     SignalDrawingData,
     generate_signal_draw_commands
@@ -39,7 +41,7 @@ class TransitionCache:
         self.access_times: Dict[Tuple[int, Time, Time], float] = {}
         self.max_entries = max_entries
 
-    def get(self, handle: SignalRef, start_time: Time, end_time: Time) -> Optional[List[Tuple[Time, str]]]:
+    def get(self, handle: SignalHandle, start_time: Time, end_time: Time) -> Optional[List[Tuple[Time, str]]]:
         """Get transitions from cache if available."""
         key = (handle, start_time, end_time)
         if key in self.cache:
@@ -47,7 +49,7 @@ class TransitionCache:
             return self.cache[key]
         return None
 
-    def put(self, handle: SignalRef, start_time: Time, end_time: Time, transitions: List[Tuple[Time, str]]) -> None:
+    def put(self, handle: SignalHandle, start_time: Time, end_time: Time, transitions: List[Tuple[Time, str]]) -> None:
         """Store transitions in cache."""
         # Evict old entries if cache is full
         if len(self.cache) >= self.max_entries:
@@ -988,7 +990,7 @@ class WaveformCanvas(QWidget):
             label = f"{time}"
             painter.drawText(x - 20, 5, 40, 20, Qt.AlignmentFlag.AlignCenter, label)
     
-    def _draw_row(self, painter: QPainter, node_info: NodeInfo, draw_commands: Dict[SignalRef, SignalDrawingData], row: int, y: int, row_height: int, params: RenderParams) -> None:
+    def _draw_row(self, painter: QPainter, node_info: NodeInfo, draw_commands: Dict[SignalHandle, SignalDrawingData], row: int, y: int, row_height: int, params: RenderParams) -> None:
         """Thread-safe version of row drawing."""
         # Determine background color
         if params.get('highlight_selected', False) and node_info.get('is_selected', False):

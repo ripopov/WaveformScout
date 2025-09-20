@@ -9,8 +9,10 @@ import pytest
 import math
 from typing import Dict, Optional
 
+from pyrox import SignalHandle
+
 from wavescout.data_model import (
-    SignalNodeID, SignalRef, AnalogScalingMode, DataFormat, 
+    SignalNodeID, AnalogScalingMode, DataFormat, 
     SignalRangeCache, DisplayFormat
 )
 from wavescout.signal_renderer import get_signal_range, compute_global_signal_range
@@ -42,10 +44,10 @@ class MockWaveformDB:
         self.time_table = [0, 100, 200, 300, 400, 500]
         self.hierarchy = None  # Mock hierarchy - tests will use 32-bit default
     
-    def add_signal(self, handle: SignalRef, values: Dict[int, int]):
+    def add_signal(self, handle: SignalHandle, values: Dict[int, int]):
         self.signals[handle] = MockSignal(values)
     
-    def get_signal(self, handle: SignalRef):
+    def get_signal(self, handle: SignalHandle):
         return self.signals.get(handle)
     
     def get_time_table(self):
@@ -71,7 +73,7 @@ def create_test_drawing_data(values: list[int]) -> SignalDrawingData:
 def test_signal_range_cache_format_invalidation():
     """Test that cache is invalidated when data format changes."""
     instance_id: SignalNodeID = 1
-    handle: SignalRef = 42
+    handle: SignalHandle = 42
     cache: Dict[SignalNodeID, SignalRangeCache] = {}
     
     # Create mock database with large value that differs in signed vs unsigned 32-bit  
@@ -134,7 +136,7 @@ def test_compute_global_signal_range_with_format():
     """Test that compute_global_signal_range respects data format."""
     # Create mock database with test signal
     mock_db = MockWaveformDB()
-    handle: SignalRef = 1
+    handle: SignalHandle = 1
     
     # Add signal with large value that differs in signed vs unsigned 32-bit
     large_value = 2147483648  # 2^31 - this will be negative in signed 32-bit
@@ -169,7 +171,7 @@ def test_compute_global_signal_range_with_format():
 def test_cache_preserved_for_same_format():
     """Test that cache is preserved when format doesn't change."""
     instance_id: SignalNodeID = 2
-    handle: SignalRef = 43
+    handle: SignalHandle = 43
     cache: Dict[SignalNodeID, SignalRangeCache] = {}
     
     drawing_data = create_test_drawing_data([100, 200])
@@ -205,7 +207,7 @@ def test_cache_preserved_for_same_format():
 def test_multiple_format_switches():
     """Test cache behavior through multiple format switches."""
     instance_id: SignalNodeID = 3
-    handle: SignalRef = 44
+    handle: SignalHandle = 44
     cache: Dict[SignalNodeID, SignalRangeCache] = {}
     
     # Test data: value that has different signed/unsigned interpretation
@@ -248,7 +250,7 @@ def test_multiple_format_switches():
 def test_global_vs_viewport_cache_format_invalidation():
     """Test that both global and viewport caches respect format changes."""
     instance_id: SignalNodeID = 4
-    handle: SignalRef = 45
+    handle: SignalHandle = 45
     cache: Dict[SignalNodeID, SignalRangeCache] = {}
     
     drawing_data = create_test_drawing_data([200])

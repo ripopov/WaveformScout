@@ -24,7 +24,9 @@ and sampling code; it contains no widget logic.
 from typing import Dict, Tuple, Optional, Union, TypedDict
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPolygonF
 from PySide6.QtCore import Qt, QPointF
-from .data_model import RenderType, Time, AnalogScalingMode, SignalRef, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat
+from pyrox import SignalHandle
+
+from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat
 from .signal_sampling import SignalDrawingData, ValueKind
 from . import config
 RENDERING = config.RENDERING
@@ -34,7 +36,7 @@ from .protocols import WaveformDBProtocol
 # Type definitions for node_info and params dictionaries
 class NodeInfo(TypedDict):
     name: str
-    handle: Optional[SignalRef]
+    handle: Optional[SignalHandle]
     is_group: bool
     format: DisplayFormat
     render_type: Optional[RenderType]
@@ -59,7 +61,7 @@ class RenderParams(TypedDict, total=False):
     header_height: int
     waveform_max_time: Optional[Time]
     signal_range_cache: Dict[SignalNodeID, SignalRangeCache]
-    draw_commands: Dict[SignalRef, SignalDrawingData]  # Draw commands for signals
+    draw_commands: Dict[SignalHandle, SignalDrawingData]  # Draw commands for signals
     highlight_selected: bool  # Whether to highlight selected signals
 
 
@@ -523,7 +525,7 @@ def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[T
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalRef, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED) -> Tuple[float, float]:
+def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED) -> Tuple[float, float]:
     """Estimate global min/max from the waveform database.
     
     Rationale
@@ -610,7 +612,7 @@ def compute_global_signal_range(handle: SignalRef, waveform_db: WaveformDBProtoc
         return 0.0, 1.0
 
 
-def get_signal_range(instance_id: SignalNodeID, handle: SignalRef,
+def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
                     drawing_data: SignalDrawingData, 
                     scaling_mode: AnalogScalingMode, 
                     signal_range_cache: Dict[SignalNodeID, SignalRangeCache],

@@ -39,20 +39,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING
 from enum import Enum
 
+from pyrox import SignalHandle
+
 if TYPE_CHECKING:
     from wavescout.protocols import WaveformDBProtocol
 
 Time = int  # In Timescale units
-
-# SignalRef is an opaque identifier used to efficiently reference signals in the waveform database.
-# Instead of using full hierarchical names (e.g., "top.cpu.core.alu.result[31:0]") for every
-# database query, which would be slow for string comparisons, we use integer refs that act
-# as primary keys. In addition, multiple hierarchical names can reference the same Signal,
-# so using SignalRef is less ambiguous.
-# The ref is obtained when first querying a signal by name, then reused for all subsequent
-# operations like getting transitions, sampling values, etc.
-# Important: Multiple Variables with different hierarchical names can reference the same Signal.
-SignalRef = int
 
 # SignalNodeID is a unique identifier for each SignalNode instance.
 # This allows multiple instances of the same signal (same handle) to be displayed
@@ -93,7 +85,7 @@ class DisplayFormat:
 class SignalNode:
     """A node in the signal/group tree. Can be a signal or a group."""
     name: str                          # Full hierarchical name (e.g., "top.tb.axi_bfm.clk")
-    handle: Optional[SignalRef] = None        # identifier understood by WaveformDB (None for groups)
+    handle: Optional[SignalHandle] = None        # identifier understood by WaveformDB (None for groups)
     format: DisplayFormat = field(default_factory=DisplayFormat)
     nickname: str = ""                  # User-defined display name
     children: List["SignalNode"] = field(default_factory=list)

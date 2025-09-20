@@ -1,5 +1,7 @@
 from pyrox.pyrox import *
 
+SignalHandle = int
+
 __all__ = [
     "Hierarchy",
     "Scope",
@@ -14,4 +16,5 @@ __all__ = [
     "VarIndex",
     "VarIter",
     "Waveform",
+    "SignalHandle",
 ]
