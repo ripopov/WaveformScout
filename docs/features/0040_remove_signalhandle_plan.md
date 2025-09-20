@@ -3,15 +3,15 @@
 ## 1. Use Cases and Requirements Analysis
 
 ### Core Requirement
-Replace the redundant `SignalHandle` type (currently just `int`) with the existing `pyrox::SignalRef` from the wellen library. This eliminates duplicate mapping layers and simplifies the codebase by relying on the Rust backend's signal reference system.
+Replace the redundant `SignalHandle` type alias with a new `SignalRef` type alias. Both are simple `int` type aliases, but `SignalRef` better aligns with the Rust backend terminology and eliminates unnecessary mapping layers.
 
 ### Specific Changes Requested
-1. Replace `SignalHandle = int` type alias with direct use of `pyrox::SignalRef`
+1. Replace `SignalHandle = int` type alias with `SignalRef = int` type alias
 2. Remove redundant mappings in `WaveformDB`:
-   - `_signal_ref_to_handle: Dict[int, SignalHandle]`
-   - `_handle_to_signal_ref: Dict[SignalHandle, int]`
+   - `_signal_ref_to_handle: Dict[int, SignalHandle]` - no longer needed
+   - `_handle_to_signal_ref: Dict[SignalHandle, int]` - no longer needed
 3. Replace `_var_name_to_handle: Dict[str, SignalHandle]` with new Rust-side functionality for fast variable lookup by full hierarchical name
-4. Update all uses of `SignalHandle` throughout the codebase to use `SignalRef` directly
+4. Update all uses of `SignalHandle` throughout the codebase to use `SignalRef`
 
 ### Benefits
 - Eliminates redundant abstraction layer
@@ -59,55 +59,54 @@ Replace the redundant `SignalHandle` type (currently just `int`) with the existi
 - Lines 537-548: SignalRef used for signal loading and caching with HashMap
 
 **Missing Functionality**
-1. SignalRef is not exposed as a Python class - needs PyClass wrapper
-2. No direct lookup of Var by full hierarchical name - needs new Rust function
-3. SignalRef comparison and hashing not available in Python
-4. No method to create SignalRef from index for backward compatibility
+1. No direct lookup of Var by full hierarchical name - needs new Rust function
+2. No method to get all variables (aliases) for a given SignalRef
+3. Need methods that work with 0-based integer SignalRefs
 
 ## 3. Implementation Planning
 
-### Phase 1: Expose SignalRef to Python
+### Phase 1: Add Rust-side Support for SignalRef Operations
+
+**SignalRef Implementation Strategy:**
+- Python side: `SignalRef = int` (simple type alias, 0-based integers)
+- Rust side: Convert between 0-based Python ints and 1-based Wellen `NonZeroU32`
+- No PyClass wrapper needed - SignalRef remains a plain integer
 
 **File: `pyrox/src/lib.rs`**
 
-**Changes Needed:**
-- Add `SignalRef` as a PyClass wrapper around wellen::SignalRef with:
-  - `index() -> usize` - to get underlying index value (for serialization)
-  - `__eq__`, `__hash__` implementations for Python dict usage
-  - `__repr__` for debugging (e.g., `SignalRef(42)`)
-- Add module registration for SignalRef class in the module initialization
-- Note: No backward compatibility methods needed
+**New Rust Methods to Add:**
+```rust
+// In Hierarchy implementation:
+fn find_var_by_full_name(&self, name: &str) -> Option<Var>
+  // Efficiently locate variable by full hierarchical path
 
-**File: `pyrox/src/lib.rs` (Extended functionality)**
+fn get_var_by_signal_ref(&self, signal_ref: usize) -> Option<Var>
+  // Get first variable that references this signal (0-based input)
+  // Convert to 1-based Wellen SignalRef internally
 
-**New Functions to Add:**
-- `Hierarchy::find_var_by_full_name(name: &str) -> Option<Var>`
-  - Efficiently locate variable by full hierarchical path
-  - Use internal hierarchy structures for O(log n) or better lookup
-- `Hierarchy::get_var_by_signal_ref(signal_ref: SignalRef) -> Option<Var>`
-  - Get the first variable that references this signal
-  - Needed for `get_var()` method in WaveformDB
-- `Hierarchy::get_all_vars_by_signal_ref(signal_ref: SignalRef) -> Vec<Var>`
-  - Get all variables (aliases) that reference this signal
-  - Needed for `get_all_vars_for_handle()` method
-- `Var::signal_ref_wrapped() -> SignalRef`
-  - Return wrapped SignalRef object instead of raw usize
+fn get_all_vars_by_signal_ref(&self, signal_ref: usize) -> Vec<Var>
+  // Get all variables (aliases) for a signal (0-based input)
+  // Convert to 1-based Wellen SignalRef internally
 
-### Phase 2: Update Data Model
+// In Var implementation:
+fn signal_ref(&self) -> usize
+  // Already exists, ensure it returns 0-based index
+  // Convert from 1-based Wellen SignalRef to 0-based
+```
+
+### Phase 2: Update Python Type Alias
 
 **File: `wavescout/data_model.py`**
+```python
+# Line 55: Simple rename
+SignalRef = int  # was: SignalHandle = int
 
-**Changes:**
-- Remove line 55: `SignalHandle = int`
-- Line 96: Change `handle: Optional[SignalHandle]` to `handle: Optional[pyrox.SignalRef]`
-- Import `SignalRef` from pyrox
-- Update all type annotations throughout the file
+# Line 96: Update type annotation
+handle: Optional[SignalRef]  # was: Optional[SignalHandle]
+```
 
 **File: `wavescout/__init__.py`**
-
-**Changes:**
-- Remove `SignalHandle` from exports
-- Add `SignalRef` import from pyrox if needed for public API
+- Export `SignalRef` instead of `SignalHandle`
 
 ### Phase 3: Refactor WaveformDB
 
@@ -143,13 +142,13 @@ def open(self, uri: str) -> None:
     # Extract and store timescale
     self._extract_timescale()
 
+    # No more mapping construction - everything is queried on-demand
     total_time = time.time() - start_time
     print(f"  - Total load time: {total_time:.2f} seconds")
-    # Note: Signal counting now happens on-demand via hierarchy
 ```
 
 **Method Updates:**
-- Update all method signatures to use `pyrox.SignalRef` instead of `SignalHandle`
+- Update all method signatures to use `SignalRef` (int) instead of `SignalHandle`
 - Methods now work directly with pyrox objects without intermediate mappings
 
 **New Implementation Patterns:**
@@ -161,16 +160,16 @@ def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
 def get_var(self, handle: SignalHandle) -> Optional[pyrox.Var]:
     return self._var_map.get(handle, [None])[0]
 
-# New pattern - direct hierarchy queries
-def find_handle_by_name(self, name: str) -> Optional[pyrox.SignalRef]:
+# New pattern - direct hierarchy queries (SignalRef is int)
+def find_handle_by_name(self, name: str) -> Optional[SignalRef]:
     if self.hierarchy:
         var = self.hierarchy.find_var_by_full_name(name)
-        return var.signal_ref_wrapped() if var else None
+        return var.signal_ref() if var else None  # Returns 0-based int
     return None
 
-def get_var(self, handle: pyrox.SignalRef) -> Optional[pyrox.Var]:
+def get_var(self, handle: SignalRef) -> Optional[pyrox.Var]:
     if self.hierarchy:
-        return self.hierarchy.get_var_by_signal_ref(handle)
+        return self.hierarchy.get_var_by_signal_ref(handle)  # Pass 0-based int
     return None
 ```
 
@@ -178,17 +177,20 @@ def get_var(self, handle: pyrox.SignalRef) -> Optional[pyrox.Var]:
 - `top_signals()`: Query hierarchy directly instead of using `_var_map`
 - `get_all_vars_for_handle()`: Use hierarchy to find all aliases
 - `iter_handles_and_vars()`: Iterate through hierarchy instead of `_var_map`
-- `get_handle_for_var()`: Use `var.signal_ref_wrapped()` directly
+- `get_handle_for_var()`: Use `var.signal_ref()` directly (returns 0-based int)
 - `num_vars()`: Count from hierarchy instead of summing `_var_map` lengths
 
 ### Phase 4: Update Protocol Interfaces
 
 **File: `wavescout/protocols.py`**
+```python
+from wavescout.data_model import SignalRef  # was: SignalHandle
 
-**Changes:**
-- Import `SignalRef` from pyrox
-- Update all method signatures in `WaveformDBProtocol`
-- Ensure type consistency across protocol definition
+# Update all method signatures:
+def find_handle_by_name(self, name: str) -> Optional[SignalRef]:
+def get_var(self, handle: SignalRef) -> Optional[pyrox.Var]:
+# ... etc for all methods using SignalHandle
+```
 
 ### Phase 5: Update UI Components
 
@@ -227,9 +229,10 @@ def get_var(self, handle: pyrox.SignalRef) -> Optional[pyrox.Var]:
 - This approach ensures correctness across different waveform file versions
 
 **Changes Needed:**
-- Line 34: Update to store `node.handle.index()` if handle is SignalRef (for JSON compatibility)
-- Line 123: When loading, the integer handle will be used directly to get SignalRef from waveform_db
+- Line 34: No change needed - SignalRef is already an int, stores directly
+- Line 123: No change needed - integer handle works as-is since SignalRef is int
 - The name-based resolution in `_resolve_signal_handles()` will continue to work correctly
+- Just update type imports to use SignalRef instead of SignalHandle
 
 ### Phase 7: Validate with Tests
 
@@ -239,15 +242,15 @@ def get_var(self, handle: pyrox.SignalRef) -> Optional[pyrox.Var]:
 - Focus on ensuring all existing tests pass with the new SignalRef type
 
 **Key Test Files to Monitor:**
-- `tests/test_signal_range_cache_format_fix.py` - Uses SignalHandle directly
+- `tests/test_signal_range_cache_format_fix.py` - Simple rename SignalHandle → SignalRef
 - `tests/test_session_alias_loading.py` - Tests session loading
 - `tests/test_waveformdb_protocol.py` - Tests the protocol interface
-- Any test that saves/loads sessions or uses SignalHandle
+- Since SignalRef = int (same as SignalHandle = int), tests should work with minimal changes
 
 **Success Criteria:**
 - All tests pass with `QT_QPA_PLATFORM=offscreen make test`
-- No test modifications needed except updating SignalHandle to SignalRef imports
-- Performance should remain the same or improve
+- Only change needed: rename SignalHandle → SignalRef in imports
+- Performance should improve due to eliminated mappings
 
 ### Performance Considerations
 
@@ -255,22 +258,23 @@ def get_var(self, handle: pyrox.SignalRef) -> Optional[pyrox.Var]:
 - Eliminated double lookup: No need to convert SignalRef ↔ SignalHandle
 - Reduced memory footprint: Removed two large dictionaries
 - Faster variable lookup: Direct Rust-side search instead of Python dict
+- No Python object overhead: SignalRef is just an int, not a wrapped object
 
-**Potential Issues:**
-- SignalRef objects have slight overhead vs raw integers
-- Mitigation: SignalRef is a thin wrapper around NonZeroU32, minimal impact
+**API Boundary Conversion:**
+- Minimal overhead: Simple +1/-1 conversion at Rust/Python boundary
+- Conversion happens in Rust code, transparent to Python users
 
-### Implementation Approach
+### Implementation Summary
 
-**Clean Refactoring:**
-- No backward compatibility required for session files
-- Make clean, direct replacements of SignalHandle with SignalRef
-- Remove all redundant mapping code without preserving legacy paths
-- Validation through test suite (`make test`) is sufficient
+**Key Points:**
+1. **SignalRef = int** - Simple type alias, not a class
+2. **No PyClass wrapper** - Just use plain integers
+3. **Rust boundary conversion** - Handle 0-based ↔ 1-based conversion in Rust
+4. **Direct refactoring** - Simple rename from SignalHandle to SignalRef
+5. **Remove mappings** - Eliminate redundant dictionary lookups
 
-**Simplified Migration:**
-- Since we don't need backward compatibility, we can:
-  - Directly replace SignalHandle type alias with SignalRef imports
-  - Remove all mapping dictionaries in one pass
-  - Update serialization to use SignalRef.index() without migration code
-  - Trust the test suite to catch any issues
+**Migration is straightforward:**
+- Find/replace `SignalHandle` → `SignalRef` across codebase
+- Remove mapping dictionaries from WaveformDB
+- Add Rust methods for hierarchy queries
+- Run tests to validate
