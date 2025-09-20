@@ -5,7 +5,11 @@ A widget that shows the design hierarchy with scopes in the top panel
 and filtered variables in the bottom panel.
 """
 
-from typing import Optional, List, cast, Union
+from __future__ import annotations
+from typing import Optional, List, cast, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pyrox import Var
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QPushButton,
     QLabel, QSplitter, QLineEdit, QTableView,
@@ -13,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QModelIndex, QSortFilterProxyModel, QEvent, QObject
 from PySide6.QtGui import QKeyEvent
-from .backend_types import WVar
+import pyrox
 
 from .design_tree_model import DesignTreeModel, DesignTreeNode
 from .data_model import SignalNode, SignalHandle, RenderType, DisplayFormat
@@ -419,7 +423,7 @@ class DesignTreeView(QWidget):
             self.signals_selected.emit(signal_nodes)
             self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
     
-    def _is_single_bit(self, var_obj: Optional[WVar], handle: Optional[SignalHandle]) -> bool:
+    def _is_single_bit(self, var_obj: Optional[Var], handle: Optional[SignalHandle]) -> bool:
         """Determine if a variable/signal is single-bit using wellen API.
         
         Tries the provided var object first; if not available, attempts to fetch

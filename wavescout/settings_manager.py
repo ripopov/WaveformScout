@@ -16,7 +16,6 @@ class SettingsManager(QObject):
     # Signals emitted when settings change
     hierarchy_levels_changed = Signal(int)
     ui_scale_changed = Signal(float)
-    fst_backend_changed = Signal(str)
     value_tooltips_changed = Signal(bool)
     highlight_selected_changed = Signal(bool)
     style_changed = Signal(str, str)  # style_name, style_type
@@ -41,7 +40,6 @@ class SettingsManager(QObject):
             # Cache for frequently accessed settings
             self._hierarchy_levels_cache: Optional[int] = None
             self._ui_scale_cache: Optional[float] = None
-            self._fst_backend_cache: Optional[str] = None
             self._value_tooltips_cache: Optional[bool] = None
             self._highlight_selected_cache: Optional[bool] = None
     
@@ -98,23 +96,6 @@ class SettingsManager(QObject):
             self._settings.sync()
             self.ui_scale_changed.emit(scale)
     
-    # FST Backend settings
-    def get_fst_backend(self) -> str:
-        """Get the FST backend preference ('pyrox' or 'pylibfst')."""
-        if self._fst_backend_cache is None:
-            value: Any = self._settings.value("fst_backend", "pyrox", type=str)
-            self._fst_backend_cache = str(value) if value else "pyrox"
-        return self._fst_backend_cache
-    
-    def set_fst_backend(self, backend: str) -> None:
-        """Set the FST backend preference."""
-        if backend not in ["pyrox", "pylibfst"]:
-            backend = "pyrox"
-        if self._fst_backend_cache != backend:
-            self._fst_backend_cache = backend
-            self._settings.setValue("fst_backend", backend)
-            self._settings.sync()
-            self.fst_backend_changed.emit(backend)
     
     # Value Tooltips settings
     def get_value_tooltips_enabled(self) -> bool:

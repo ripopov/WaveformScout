@@ -163,19 +163,15 @@ class FSTTestHelper:
         return added_signals
 
 
-@pytest.mark.parametrize("backend_preference", ["pyrox", "pylibfst"])
-def test_fst_loading_with_backend(backend_preference):
+def test_fst_loading():
     """
-    Test FST file loading and signal addition workflow with specified backend.
-    
-    Args:
-        backend_preference: The backend to use ("pyrox" or "pylibfst")
+    Test FST file loading and signal addition workflow.
     
     Test Scenario:
     ==============
     
     Step 1: Application Setup
-    - Start WaveScout and load test_inputs/des.fst with specified backend
+    - Start WaveScout and load test_inputs/des.fst
     - Wait for waveform database and design tree to initialize
     - Verify: Design tree populated with signal hierarchy
     
@@ -198,7 +194,7 @@ def test_fst_loading_with_backend(backend_preference):
     - Verify: Signal hierarchy preserved correctly
     
     Expected Results:
-    - FST file loads successfully with specified backend
+    - FST file loads successfully
     - Design tree shows correct hierarchy
     - 10 signals added to waveform
     - YAML contains all signals with correct paths
@@ -214,11 +210,11 @@ def test_fst_loading_with_backend(backend_preference):
     
     try:
         print("="*60)
-        print(f"FST LOADING INTEGRATION TEST - Backend: {backend_preference}")
+        print("FST LOADING INTEGRATION TEST")
         print("="*60)
         
         # Step 1: Start main application with test FST file and backend preference
-        print(f"\n1. Starting application with des.fst using {backend_preference} backend...")
+        print("\n1. Starting application with des.fst...")
         test_fst = get_test_input_path(TestFiles.DES_FST)
         assert test_fst.exists(), f"Test FST not found: {test_fst}"
         
@@ -227,7 +223,6 @@ def test_fst_loading_with_backend(backend_preference):
         window.show()
         
         # Set the backend preference and load our FST file
-        window.fst_backend_preference = backend_preference
         QTest.qWait(100)  # Give UI time to initialize
         window.load_file(str(test_fst))
         
@@ -239,10 +234,7 @@ def test_fst_loading_with_backend(backend_preference):
         # Verify correct backend was used
         session = window.wave_widget.session
         assert session.waveform_db is not None
-        assert session.waveform_db._current_backend_type == backend_preference, \
-            f"Expected backend {backend_preference}, got {session.waveform_db._current_backend_type}"
-        
-        print(f"   [OK] Application started and FST loaded with {backend_preference} backend")
+        print("   [OK] Application started and FST loaded")
         
         # Step 2: Navigate to top.des scope
         print("\n2. Navigating design tree to top.des scope...")
@@ -333,10 +325,10 @@ def test_fst_loading_with_backend(backend_preference):
             f"Unexpected db_uri: {yaml_data['db_uri']}"
         
         print("   [OK] YAML validation successful")
-        print(f"\n[TEST PASSED] FST loading with {backend_preference} backend successful!")
+        print("\n[TEST PASSED] FST loading successful!")
         
     except Exception as e:
-        print(f"\n[TEST FAILED] with {backend_preference} backend: {e}")
+        print(f"\n[TEST FAILED]: {e}")
         raise
     
     finally:
@@ -355,10 +347,6 @@ def test_fst_loading_with_backend(backend_preference):
             QApplication.processEvents()  # Ensure close is processed
 
 
-# Backwards compatibility - keep the original test function that tests with pyrox
-def test_fst_loading():
-    """Test FST loading with default (pyrox) backend for backwards compatibility."""
-    test_fst_loading_with_backend("pyrox")
 
 
 if __name__ == "__main__":

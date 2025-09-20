@@ -47,7 +47,7 @@ Tree Node Structure:
     ├── var_handle: SignalHandle    (Database handle for signal lookup)
     │                      (Integer index used by WaveformDB to efficiently
     │                       retrieve signal data - like a primary key)
-    └── var: WVar          (Backend-agnostic variable reference)
+    └── var: pyrox.Var     (Pyrox variable reference)
                            (The actual Wellen variable object from the
                             hierarchy - contains signal metadata)
 
@@ -55,12 +55,16 @@ Tree Node Structure:
  browse and select signals to add to the waveform display.
 """
 
+from __future__ import annotations
+from typing import Optional, List, overload, Dict, Union, TYPE_CHECKING
 from PySide6.QtCore import Qt, QAbstractItemModel, QModelIndex, QPersistentModelIndex, QObject
 from PySide6.QtGui import QIcon
-from typing import Optional, List, overload, Dict, Union
+
+if TYPE_CHECKING:
+    from pyrox import ScopeIter
 from .data_model import SignalHandle
 from .protocols import WaveformDBProtocol
-from .backend_types import WHierarchy, WVar, WScope, WScopeIter
+import pyrox
 from .icon_cache import get_icon_cache
 
 
@@ -85,8 +89,8 @@ class DesignTreeNode:
         self.parent = parent
         self.children: List['DesignTreeNode'] = []
         self.var_handle: Optional[SignalHandle] = None  # Wellen Var handle for database lookups
-        self.var: Optional[WVar] = None  # Backend-agnostic Var object reference
-        self.scope: Optional[WScope] = None  # Backend scope object for scope nodes
+        self.var: Optional[pyrox.Var] = None  # Pyrox Var object reference
+        self.scope: Optional[pyrox.Scope] = None  # Pyrox scope object for scope nodes
 
     def add_child(self, child: 'DesignTreeNode') -> None:
         """Add a child node to this node and set this node as its parent."""
@@ -170,7 +174,7 @@ class DesignTreeModel(QAbstractItemModel):
         # Clean up the temporary mapping
         self._var_to_handle = None
 
-    def _build_scope_recursive(self, scopes: WScopeIter, parent_node: DesignTreeNode, hierarchy: WHierarchy) -> None:
+    def _build_scope_recursive(self, scopes: ScopeIter, parent_node: DesignTreeNode, hierarchy: pyrox.Hierarchy) -> None:
         """Recursively build the tree structure for scopes and their contents.
         
         This method traverses the design hierarchy depth-first, creating nodes for:

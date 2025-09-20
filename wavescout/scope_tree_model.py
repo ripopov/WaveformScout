@@ -4,10 +4,14 @@ Scope-only tree model for split mode in DesignTreeView.
 This model filters out variables and shows only scopes (modules) in the hierarchy.
 """
 
-from typing import Optional, Union, overload, List, Dict
+from __future__ import annotations
+from typing import Optional, Union, overload, List, Dict, TYPE_CHECKING
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, Qt, Signal, QObject
 from PySide6.QtGui import QIcon
-from .backend_types import WHierarchy, WVar, WScope, WScopeIter
+
+if TYPE_CHECKING:
+    from pyrox import ScopeIter
+import pyrox
 from .protocols import WaveformDBProtocol
 from .vars_view import VariableData
 from .design_tree_model import DesignTreeNode
@@ -54,7 +58,7 @@ class ScopeTreeModel(QAbstractItemModel):
         # Build hierarchy from top scopes
         self._build_scope_recursive(hierarchy.top_scopes(), self.root_node, hierarchy)
     
-    def _build_scope_recursive(self, scopes: WScopeIter, parent_node: DesignTreeNode, hierarchy: WHierarchy) -> None:
+    def _build_scope_recursive(self, scopes: ScopeIter, parent_node: DesignTreeNode, hierarchy: pyrox.Hierarchy) -> None:
         """Recursively build scope nodes."""
         for scope in scopes:
             # Create node for this scope
@@ -134,7 +138,7 @@ class ScopeTreeModel(QAbstractItemModel):
         
         return variables
     
-    def _find_scope_by_path(self, path_parts: List[str], hierarchy: WHierarchy) -> Optional[WScope]:
+    def _find_scope_by_path(self, path_parts: List[str], hierarchy: pyrox.Hierarchy) -> Optional[pyrox.Scope]:
         """Find a scope by its path parts."""
         if not path_parts:
             return None
@@ -158,7 +162,7 @@ class ScopeTreeModel(QAbstractItemModel):
         
         return current_scope
     
-    def _format_bit_range(self, var: WVar) -> str:
+    def _format_bit_range(self, var: pyrox.Var) -> str:
         """Format the bit range for display."""
         # Try to get bitwidth using the same method as DesignTreeModel
         try:

@@ -1,11 +1,11 @@
 """Clock signal utilities for calculating clock periods from various signal types."""
 
 from typing import Optional
-from wavescout.backend_types import WSignal, WVar
+import pyrox
 from wavescout.data_model import Time
 
 
-def is_valid_clock_signal(var: WVar) -> bool:
+def is_valid_clock_signal(var: pyrox.Var) -> bool:
     """Check if a signal type is valid for use as a clock.
     
     Valid types:
@@ -31,7 +31,7 @@ def is_valid_clock_signal(var: WVar) -> bool:
     return True
 
 
-def calculate_event_clock_period(signal: WSignal) -> Optional[tuple[Time, Time]]:
+def calculate_event_clock_period(signal: pyrox.Signal) -> Optional[tuple[Time, Time]]:
     """Calculate clock period and phase offset for Event type signals.
     
     Algorithm:
@@ -67,7 +67,7 @@ def calculate_event_clock_period(signal: WSignal) -> Optional[tuple[Time, Time]]
     return None
 
 
-def calculate_digital_clock_period(signal: WSignal) -> Optional[tuple[Time, Time]]:
+def calculate_digital_clock_period(signal: pyrox.Signal) -> Optional[tuple[Time, Time]]:
     """Calculate clock period and phase offset for 1-bit digital signals.
     
     Algorithm:
@@ -132,7 +132,7 @@ def calculate_digital_clock_period(signal: WSignal) -> Optional[tuple[Time, Time
     return None
 
 
-def calculate_counter_clock_period(signal: WSignal, bit_width: int) -> Optional[tuple[Time, Time]]:
+def calculate_counter_clock_period(signal: pyrox.Signal, bit_width: int) -> Optional[tuple[Time, Time]]:
     """Calculate clock period and phase offset for bus/counter signals.
     
     Algorithm:
@@ -205,7 +205,7 @@ def calculate_counter_clock_period(signal: WSignal, bit_width: int) -> Optional[
     return None
 
 
-def calculate_clock_period(signal: WSignal, var: WVar) -> Optional[tuple[Time, Time]]:
+def calculate_clock_period(signal: pyrox.Signal, var: pyrox.Var) -> Optional[tuple[Time, Time]]:
     """Calculate clock period and phase offset for any valid clock signal type.
     
     Determines the signal type and applies the appropriate algorithm.

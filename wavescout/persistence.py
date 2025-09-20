@@ -2,11 +2,11 @@
 
 import json
 import pathlib
-from typing import Dict, Any, List, Optional, Union, Literal, cast
+from typing import Dict, Any, List, Optional, Union, cast
 from dataclasses import asdict
 from enum import Enum
 from datetime import datetime
-from .backend_types import WVar, WHierarchy, WScope
+import pyrox
 from .protocols import WaveformDBProtocol
 from .data_model import (
     WaveformSession, SignalNode, DisplayFormat, DataFormat, 
@@ -356,13 +356,12 @@ def save_session(session: WaveformSession, path: pathlib.Path) -> None:
         json.dump(data, f, indent=2)
 
 
-def load_session(path: pathlib.Path, backend_preference: Optional[Literal["pyrox", "pylibfst"]] = None) -> WaveformSession:
+def load_session(path: pathlib.Path) -> WaveformSession:
     """
     Deserialize JSON to dataclasses and reconnect to waveform DB.
 
     Args:
         path: Path to the session file
-        backend_preference: Optional backend preference ("pyrox" or "pylibfst") for FST files
     """
     # Check file extension
     if not path.suffix.lower() == '.json':
@@ -376,7 +375,7 @@ def load_session(path: pathlib.Path, backend_preference: Optional[Literal["pyrox
     waveform_db = None
     db_uri = data.get('db_uri')
     if db_uri and pathlib.Path(db_uri).exists():
-        waveform_db = WaveformDB(backend_preference=backend_preference)
+        waveform_db = WaveformDB()
         waveform_db.open(db_uri)
     
     # Deserialize viewport

@@ -1,42 +1,37 @@
 """WaveformDB implementation with backend-agnostic design."""
 
-from typing import List, Tuple, Optional, Dict, Literal
+from __future__ import annotations
+from typing import List, Tuple, Optional, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pyrox import Scope
 from pathlib import Path
 import threading
 
+import pyrox
+
 from .data_model import Time, SignalHandle, Timescale, TimeUnit
-from .backend_types import (
-    WWaveform, WVar, WHierarchy, WSignal, WTimeTable, WScope
-)
-from .backends import BackendFactory, BackendType, WaveformBackend
 
 
 class WaveformDB:
     """Waveform database with backend-agnostic design for reading VCD/FST files."""
     
-    def __init__(self, backend_preference: Optional[Literal["pyrox", "pylibfst"]] = None) -> None:
-        self.waveform: Optional[WWaveform] = None
-        self.hierarchy: Optional[WHierarchy] = None
+    def __init__(self) -> None:
+        self.waveform: Optional[pyrox.Waveform] = None
+        self.hierarchy: Optional[pyrox.Hierarchy] = None
         self.uri: Optional[str] = None
-        self._var_map: Dict[SignalHandle, List[WVar]] = {}  # Map handles to list of variables (for aliases)
-        self._signal_cache: Dict[SignalHandle, WSignal] = {}  # Cache loaded signals
+        self._var_map: Dict[SignalHandle, List[pyrox.Var]] = {}  # Map handles to list of variables (for aliases)
+        self._signal_cache: Dict[SignalHandle, pyrox.Signal] = {}  # Cache loaded signals
         self._timescale: Optional[Timescale] = None  # Store parsed timescale
         self._var_name_to_handle: Dict[str, SignalHandle] = {}  # Map var full name to handle
         self._signal_ref_to_handle: Dict[int, SignalHandle] = {}  # Map SignalRef to our handle (for O(1) alias detection)
         self._handle_to_signal_ref: Dict[SignalHandle, int] = {}  # Map our handle to SignalRef
-        self._backend: Optional[WaveformBackend] = None  # Current backend instance
-        self._backend_preference = backend_preference or "pyrox"  # Default to pyrox
-        self._current_backend_type: Optional[Literal["pyrox", "pylibfst"]] = None
 
     @property
     def file_path(self) -> Optional[str]:
         """Get the file path of the opened waveform."""
         return self.uri
 
-    @property
-    def backend(self) -> Optional[WaveformBackend]:
-        """Get the current backend instance."""
-        return self._backend
         
     def open(self, uri: str) -> None:
         """Open a waveform file using the configured backend."""
@@ -53,38 +48,10 @@ class WaveformDB:
         
         print(f"Loading {file_name} ({file_size_mb:.1f} MB)...")
         
-        # Determine backend based on file type and preference
-        path = Path(uri)
-        ext = path.suffix.lower()
-        
-        if ext == '.vcd':
-            # VCD files use pyrox
-            backend_type = BackendType.PYROX
-            self._current_backend_type = "pyrox"
-            print("  - Using pyrox backend (VCD file)")
-        elif ext == '.fst':
-            # FST files use the preferred backend
-            if self._backend_preference == "pylibfst":
-                backend_type = BackendType.PYLIBFST
-                self._current_backend_type = "pylibfst"
-                print("  - Using pylibfst backend (FST file, user preference)")
-            else:
-                # Default to pyrox
-                backend_type = BackendType.PYROX
-                self._current_backend_type = "pyrox"
-                print("  - Using pyrox backend (FST file)")
-        else:
-            raise ValueError(f"Unsupported file format: {ext}")
-        
-        # Create backend using factory
+        # Load waveform using pyrox
         load_start = time.time()
-        self._backend = BackendFactory.create_backend(
-            file_path=uri,
-            backend_type=backend_type
-        )
-        # Load waveform
-        self.waveform = self._backend.load_waveform()
-        self.hierarchy = self._backend.get_hierarchy()
+        self.waveform = pyrox.Waveform(uri)
+        self.hierarchy = self.waveform.hierarchy
         load_end = time.time()
         
         print(f"  - Waveform loaded in {load_end - load_start:.2f} seconds")
@@ -103,15 +70,16 @@ class WaveformDB:
         # Only collect if hierarchy exists
         if self.hierarchy is not None:
             # Recursively collect all variables from the hierarchy
-            def collect_vars_recursive(scope: WScope) -> None:
+            def collect_vars_recursive(scope: Scope) -> None:
                 # Add direct variables from this scope
-                for var in scope.vars(self.hierarchy):  # type: ignore[arg-type]
+                assert self.hierarchy is not None  # Already checked above
+                for var in scope.vars(self.hierarchy):
                     var_id = id(var)
                     if var_id not in seen_vars:
                         all_variables.append(var)
                         seen_vars.add(var_id)
                 # Recurse into child scopes
-                for child_scope in scope.scopes(self.hierarchy):  # type: ignore[arg-type]
+                for child_scope in scope.scopes(self.hierarchy):
                     collect_vars_recursive(child_scope)
             
             # Start from all top scopes
@@ -162,7 +130,7 @@ class WaveformDB:
         assert hierarchy is not None  # We already checked this above
         
         # Get variables from all top scopes recursively
-        def collect_vars_recursive(scope: WScope) -> None:
+        def collect_vars_recursive(scope: Scope) -> None:
             # Add direct variables
             for var in scope.vars(hierarchy):
                 for handle, mapped_vars in self._var_map.items():
@@ -234,8 +202,6 @@ class WaveformDB:
         self._var_name_to_handle.clear()
         self._signal_ref_to_handle.clear()
         self._handle_to_signal_ref.clear()
-        self._backend = None
-        self._current_backend_type = None
         
     def _extract_timescale(self) -> None:
         """Extract timescale from the hierarchy."""
@@ -287,23 +253,23 @@ class WaveformDB:
             total += len(vars_list)
         return total
         
-    def get_var(self, handle: SignalHandle) -> Optional[WVar]:
-        """Get variable by handle. Returns backend-agnostic Var object."""
+    def get_var(self, handle: SignalHandle) -> Optional[pyrox.Var]:
+        """Get variable by handle. Returns pyrox Var object."""
         vars_list = self._var_map.get(handle, [])
         return vars_list[0] if vars_list else None
     
-    def get_all_vars_for_handle(self, handle: SignalHandle) -> List[WVar]:
+    def get_all_vars_for_handle(self, handle: SignalHandle) -> List[pyrox.Var]:
         """Get all variables (including aliases) for a handle."""
         return self._var_map.get(handle, [])
     
-    def get_time_table(self) -> Optional[WTimeTable]:
-        """Get the time table from the waveform. Returns backend-agnostic TimeTable object."""
+    def get_time_table(self) -> Optional[pyrox.TimeTable]:
+        """Get the time table from the waveform. Returns pyrox TimeTable object."""
         if self.waveform:
             return self.waveform.time_table
         return None
     
-    def get_signal(self, handle: SignalHandle) -> Optional[WSignal]:
-        """Get the signal object for the given handle. Returns backend-agnostic Signal object.
+    def get_signal(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
+        """Get the signal object for the given handle. Returns pyrox Signal object.
         
         This method implements lazy loading - signals are only loaded when first requested.
         """
@@ -317,15 +283,15 @@ class WaveformDB:
         
         # Load signal lazily if not cached
         if handle not in self._signal_cache:
-            if self._backend is not None:
+            if self.waveform is not None:
                 var = vars_list[0]
-                signal = self._backend.get_signal(var)
+                signal = self.waveform.get_signal(var)
                 if signal is not None:
                     self._signal_cache[handle] = signal
             
         return self._signal_cache.get(handle)
     
-    def var_from_handle(self, handle: SignalHandle) -> Optional[WVar]:
+    def var_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Var]:
         """Get the variable object for the given handle.
         
         Returns the first variable if there are aliases.
@@ -338,7 +304,7 @@ class WaveformDB:
             return var_list[0]
         return None
     
-    def signal_from_handle(self, handle: SignalHandle) -> Optional[WSignal]:
+    def signal_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle.
         
         This is an alias for get_signal() for consistency with var_from_handle().
@@ -368,9 +334,9 @@ class WaveformDB:
         """
         import time
         
-        if not self._backend:
+        if not self.waveform:
             return
-        
+
         start_time = time.perf_counter()
         
         # Deduplicate handles first to avoid loading the same signal multiple times
@@ -396,7 +362,7 @@ class WaveformDB:
             return
             
         # Convert handles to Var objects
-        vars_to_load : List[WVar] = []
+        vars_to_load : List[pyrox.Var] = []
         handle_to_var_map = {}
         for handle in handles_to_load:
             vars_list = self._var_map.get(handle, [])
@@ -410,10 +376,13 @@ class WaveformDB:
             print(f"preload_signals: No valid signals to load (took {elapsed:.3f}s)")
             return
             
-        # Batch load signals using backend API
+        # Batch load signals using pyrox API
         try:
             load_start = time.perf_counter()
-            loaded_signals = self._backend.load_signals(vars_to_load, multithreaded)
+            if multithreaded:
+                loaded_signals = self.waveform.load_signals_multithreaded(vars_to_load)
+            else:
+                loaded_signals = self.waveform.load_signals(vars_to_load)
             load_time = time.perf_counter() - load_start
             
             # Cache the loaded signals
@@ -430,7 +399,7 @@ class WaveformDB:
             already_cached = len(unique_handles) - len(handles_to_load)
             
             print(f"preload_signals: Loaded {cached_count} new signals, {already_cached} already cached")
-            print(f"  - Backend loading: {load_time:.3f}s")
+            print(f"  - Pyrox loading: {load_time:.3f}s")
             print(f"  - Cache storage: {cache_time:.3f}s")
             print(f"  - Total time: {total_time:.3f}s")
             if multithreaded:
@@ -448,11 +417,11 @@ class WaveformDB:
         """Get all handle IDs in the database."""
         return list(self._var_map.keys())
     
-    def get_handle_for_var(self, var: WVar) -> Optional[SignalHandle]:
+    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalHandle]:
         """Get handle for a specific variable object.
-        
+
         Args:
-            var: Backend-agnostic variable object
+            var: Pyrox variable object
             
         Returns:
             Handle ID if found, None otherwise
@@ -474,11 +443,11 @@ class WaveformDB:
         """
         return self._var_name_to_handle.get(name)
     
-    def get_var_to_handle_mapping(self) -> Dict[WVar, int]:
+    def get_var_to_handle_mapping(self) -> Dict[pyrox.Var, int]:
         """Get complete variable-to-handle mapping.
-        
+
         Returns:
-            Dictionary mapping backend-agnostic variable objects to handle IDs
+            Dictionary mapping pyrox variable objects to handle IDs
         """
         var_to_handle = {}
         for handle, vars_list in self._var_map.items():
@@ -507,7 +476,7 @@ class WaveformDB:
         """
         return handle in self._signal_cache
     
-    def iter_handles_and_vars(self) -> List[Tuple[int, List[WVar]]]:
+    def iter_handles_and_vars(self) -> List[Tuple[int, List[pyrox.Var]]]:
         """Iterate over all handles and their associated variables.
         
         Returns:
@@ -554,28 +523,3 @@ class WaveformDB:
                 return int(width)
         return 32  # Default bit width
     
-    def get_backend_type(self) -> Optional[BackendType]:
-        """Get the current backend type.
-        
-        Returns:
-            Current backend type or None if no backend is loaded
-        """
-        if self._current_backend_type == "pyrox":
-            return BackendType.PYROX
-        elif self._current_backend_type == "pylibfst":
-            return BackendType.PYLIBFST
-        else:
-            return None
-    
-    def set_backend_preference(self, backend: Literal["pyrox", "pylibfst"]) -> None:
-        """Set the preferred backend for next file load.
-        
-        Args:
-            backend: The backend to use for next file load
-        
-        Note:
-            This preference takes effect only when the next waveform file is loaded.
-            VCD files always use pyrox regardless of this setting.
-        """
-        if backend in ["pyrox", "pylibfst"]:
-            self._backend_preference = backend

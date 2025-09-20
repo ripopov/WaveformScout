@@ -1,10 +1,9 @@
 """Protocol definitions for decoupling UI from WaveformDB implementation."""
 
-from typing import Protocol, Optional, Iterable, Dict, Literal
+from typing import Protocol, Optional, Iterable, Dict
 from collections.abc import Iterable as ABCIterable
 
-# Import backend-agnostic protocol types
-from .backend_types import WVar, WHierarchy, WSignal, WWaveform, WTimeTable, WTimescale
+import pyrox
 
 # Import our data model types
 from .data_model import SignalHandle, Timescale
@@ -17,11 +16,11 @@ class WaveformDBProtocol(Protocol):
     internals, providing a typed interface for all waveform operations.
     """
     
-    # Required attributes  
+    # Required attributes
     # These are Optional because WaveformDB starts empty before open() is called
     # Components should check if waveform_db itself is None, not these attributes
-    waveform: Optional[WWaveform]
-    hierarchy: Optional[WHierarchy]
+    waveform: Optional[pyrox.Waveform]
+    hierarchy: Optional[pyrox.Hierarchy]
     
     def find_handle_by_path(self, name: str) -> Optional[SignalHandle]:
         """Find signal handle by hierarchical path.
@@ -45,40 +44,40 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_handle_for_var(self, var: WVar) -> Optional[SignalHandle]:
+    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalHandle]:
         """Get handle for a specific backend variable.
-        
+
         Args:
-            var: Backend-agnostic WVar object
+            var: Pyrox Var object
         
         Returns:
             Signal handle if found, None otherwise
         """
         ...
     
-    def get_var(self, handle: SignalHandle) -> Optional[WVar]:
+    def get_var(self, handle: SignalHandle) -> Optional[pyrox.Var]:
         """Get backend variable by handle.
-        
+
         Args:
             handle: Signal handle
-        
+
         Returns:
-            First backend WVar object for this handle, None if not found
+            First pyrox Var object for this handle, None if not found
         """
         ...
     
-    def get_all_vars_for_handle(self, handle: SignalHandle) -> list[WVar]:
+    def get_all_vars_for_handle(self, handle: SignalHandle) -> list[pyrox.Var]:
         """Get all variables (including aliases) for a handle.
-        
+
         Args:
             handle: Signal handle
-        
+
         Returns:
-            List of backend WVar objects (may be empty)
+            List of pyrox Var objects (may be empty)
         """
         ...
     
-    def iter_handles_and_vars(self) -> ABCIterable[tuple[SignalHandle, list[WVar]]]:
+    def iter_handles_and_vars(self) -> ABCIterable[tuple[SignalHandle, list[pyrox.Var]]]:
         """Iterate over all handles and their associated variables.
         
         Returns:
@@ -97,11 +96,11 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_time_table(self) -> Optional[WTimeTable]:
+    def get_time_table(self) -> Optional[pyrox.TimeTable]:
         """Get the time table from the waveform.
-        
+
         Returns:
-            Backend WTimeTable object if available, None otherwise
+            Pyrox TimeTable object if available, None otherwise
         """
         ...
     
@@ -123,11 +122,11 @@ class WaveformDBProtocol(Protocol):
         """
         return None
     
-    def get_var_to_handle_mapping(self) -> Optional[Dict[WVar, SignalHandle]]:
-        """Get mapping from WVar objects to handles for persistence.
-        
+    def get_var_to_handle_mapping(self) -> Optional[Dict[pyrox.Var, SignalHandle]]:
+        """Get mapping from pyrox.Var objects to handles for persistence.
+
         Returns:
-            Dictionary mapping WVar to SignalHandle if available, None otherwise
+            Dictionary mapping pyrox.Var to SignalHandle if available, None otherwise
         """
         return None
     
@@ -139,58 +138,38 @@ class WaveformDBProtocol(Protocol):
         """
         return None
     
-    def get_signal(self, handle: SignalHandle) -> Optional[WSignal]:
+    def get_signal(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle.
-        
+
         Args:
             handle: Signal handle
-        
+
         Returns:
-            Backend WSignal object if available, None otherwise
+            Pyrox Signal object if available, None otherwise
         """
         ...
     
-    def var_from_handle(self, handle: SignalHandle) -> Optional[WVar]:
+    def var_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Var]:
         """Get the variable object for the given handle.
-        
+
         Args:
             handle: Signal handle
-        
+
         Returns:
-            Backend WVar object if available, None otherwise
+            Pyrox Var object if available, None otherwise
         """
         ...
     
-    def signal_from_handle(self, handle: SignalHandle) -> Optional[WSignal]:
+    def signal_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle.
-        
+
         This is an alias for get_signal() for consistency.
-        
+
         Args:
             handle: Signal handle
-        
+
         Returns:
-            Backend WSignal object if available, None otherwise
+            Pyrox Signal object if available, None otherwise
         """
         ...
     
-    # Backend selection capability
-    def get_backend_type(self) -> Literal["pyrox", "pylibfst"]:
-        """Get the current backend type.
-
-        Returns:
-            The backend type being used
-        """
-        ...
-
-    def set_backend_preference(self, backend: Literal["pyrox", "pylibfst"]) -> None:
-        """Set the preferred backend for next file load.
-
-        Args:
-            backend: The backend to use for next file load
-
-        Note:
-            This preference takes effect only when the next waveform file is loaded.
-            VCD files always use pyrox regardless of this setting.
-        """
-        ...

@@ -118,10 +118,6 @@ class WaveScoutMainWindow(FramelessWindow):
         # Store current waveform file for reload
         self.current_wave_file: str | None = None
         
-        # Initialize FST backend preference (default to pyrox)
-        self.fst_backend_preference = self.settings_manager.get_fst_backend()
-        if self.fst_backend_preference not in ["pyrox", "pylibfst"]:
-            self.fst_backend_preference = "pyrox"
         
         # Initialize loading state management
         self._loading_state = LoadingState()
@@ -714,29 +710,6 @@ class WaveScoutMainWindow(FramelessWindow):
         
         # Edit menu
         edit_menu = menubar.addMenu("&Edit")
-        
-        # FST Loader submenu for backend selection
-        fst_loader_menu = edit_menu.addMenu("&FST Loader")
-        fst_loader_group = QActionGroup(self)
-        fst_loader_group.setExclusive(True)
-        
-        # Pyrox backend option
-        self.pyrox_action = QAction("&Pyrox (Wellen)", self)
-        self.pyrox_action.setCheckable(True)
-        self.pyrox_action.setChecked(self.fst_backend_preference == "pyrox")
-        self.pyrox_action.triggered.connect(lambda: self._set_fst_backend("pyrox"))
-        fst_loader_group.addAction(self.pyrox_action)
-        fst_loader_menu.addAction(self.pyrox_action)
-        
-        # Pylibfst backend option
-        self.pylibfst_action = QAction("&libfst", self)
-        self.pylibfst_action.setCheckable(True)
-        self.pylibfst_action.setChecked(self.fst_backend_preference == "pylibfst")
-        self.pylibfst_action.triggered.connect(lambda: self._set_fst_backend("pylibfst"))
-        fst_loader_group.addAction(self.pylibfst_action)
-        fst_loader_menu.addAction(self.pylibfst_action)
-        
-        edit_menu.addSeparator()
         self.drop_marker_action = QAction("&Drop Marker", self)
         self.drop_marker_action.setShortcut(QKeySequence("Ctrl+M"))
         self.drop_marker_action.triggered.connect(self._drop_marker)
@@ -966,7 +939,7 @@ class WaveScoutMainWindow(FramelessWindow):
         self.statusBar().showMessage(f"Loading {file_name}...")
         
         # Create and run loader with backend preference, but defer start slightly to ensure dialog paints first
-        loader = LoaderRunnable(create_sample_session, file_path, self.fst_backend_preference)
+        loader = LoaderRunnable(create_sample_session, file_path)
         loader.signals.finished.connect(self._on_waveform_load_finished)
         loader.signals.error.connect(self._on_waveform_load_error)
         # Process events so the dialog is shown before starting heavy work
@@ -1140,7 +1113,7 @@ class WaveScoutMainWindow(FramelessWindow):
         self._loading_session_path = file_path
         
         # Create and run loader with backend preference, but defer start slightly to ensure dialog paints first
-        loader = LoaderRunnable(load_session, Path(file_path), backend_preference=self.fst_backend_preference)
+        loader = LoaderRunnable(load_session, Path(file_path))
         loader.signals.finished.connect(self._on_session_load_finished)
         loader.signals.error.connect(self._on_session_load_error)
         # Process events so the dialog is shown before starting heavy work
@@ -1458,30 +1431,6 @@ class WaveScoutMainWindow(FramelessWindow):
             model.layoutChanged.emit()
             
         self.statusBar().showMessage(f"Added signal: {new_node.name}")
-    
-    def _set_fst_backend(self, backend: str):
-        """Set the preferred FST backend for future file loads.
-        
-        Args:
-            backend: Either "pyrox" or "pylibfst"
-        """
-        if backend not in ["pyrox", "pylibfst"]:
-            return
-            
-        self.fst_backend_preference = backend
-        self.settings_manager.set_fst_backend(backend)
-        
-        # Update menu checkmarks
-        if backend == "pyrox":
-            self.pyrox_action.setChecked(True)
-        else:
-            self.pylibfst_action.setChecked(True)
-        
-        # Notify user that change will take effect on next file load
-        self.statusBar().showMessage(
-            f"FST backend set to {'Pyrox (Wellen)' if backend == 'pyrox' else 'libfst'}. "
-            "Change will take effect when next FST file is loaded.", 5000
-        )
     
     def _drop_marker(self):
         """Add a marker at the current cursor position."""
