@@ -1136,28 +1136,21 @@ class WaveformCanvas(QWidget):
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"
-        
+
         # Debug timing
         total_start = time_module.time()
-        signal_times = []
-        
+        signal_times: List[Tuple[str, float]] = []
+
         # Process each signal
         for node in signal_nodes:
             if node.handle is not None:
-                sig_start = time_module.time()
                 drawing_data = generate_signal_draw_commands(
-                    node, start_time, end_time, canvas_width, waveform_db, 
+                    node, start_time, end_time, canvas_width, waveform_db,
                     self._waveform_max_time
                 )
-                sig_time = (time_module.time() - sig_start) * 1000
-                signal_times.append((node.name, sig_time))
-                
                 if drawing_data:
                     result.draw_commands[node.handle] = drawing_data
-        
-        total_time = (time_module.time() - total_start) * 1000
-        
-        
+
         return result
     
     def _time_to_x(self, time: Time) -> int:

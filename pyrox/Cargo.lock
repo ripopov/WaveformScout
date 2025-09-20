@@ -301,6 +301,7 @@ version = "0.1.0"
 dependencies = [
  "num-bigint",
  "pyo3",
+ "rustc-hash 1.1.0",
  "wellen",
 ]
 
@@ -332,6 +333,12 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
 ]
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
@@ -462,7 +469,7 @@ dependencies = [
  "miniz_oxide",
  "num_enum",
  "rayon",
- "rustc-hash",
+ "rustc-hash 2.1.1",
  "thiserror",
 ]
 

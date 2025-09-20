@@ -149,10 +149,10 @@ def generate_signal_draw_commands(
     waveform_max_time: Optional[Time] = None
 ) -> Optional[SignalDrawingData]:
     """Generate drawing commands for a single signal.
-    
+
     Uses a unified algorithm that works for all zoom levels by following
     signal transitions and marking pixels with multiple transitions.
-    
+
     Args:
         signal: The signal node to generate commands for
         start_time: Start of the visible time range
@@ -160,21 +160,21 @@ def generate_signal_draw_commands(
         canvas_width: Width of the canvas in pixels
         waveform_db: Waveform database instance
         waveform_max_time: Maximum valid time in the waveform (optional)
-        
+
     Returns:
         SignalDrawingData with samples ready for rendering, or None if unable to generate
     """
     if not waveform_db:
         return None
-        
+
     # Skip if entire range is outside valid bounds
     if waveform_max_time is not None and (end_time < 0 or start_time > waveform_max_time + 1):
         return None
-    
+
     try:
         if signal.handle is None:
             return None
-            
+
         signal_obj = waveform_db.get_signal(signal.handle)
         if not signal_obj:
             return None
@@ -199,17 +199,17 @@ def generate_signal_draw_commands(
         # Safety limit
         max_iterations = canvas_width * RENDERING.MAX_ITERATIONS_SAFETY
         iterations = 0
-        
+
         while iterations < max_iterations:
             iterations += 1
             
             # Query signal at current time
             query_result = signal_obj.query_signal(int(current_time))
-            
+
             # Parse the signal value with data format
             # None values are handled by parse_signal_value and become UNDEFINED
             value_str, value_float, value_bool = parse_signal_value(
-                query_result.value, 
+                query_result.value,
                 signal.format.data_format,
                 bit_width
             )
@@ -265,7 +265,7 @@ def generate_signal_draw_commands(
             else:
                 # Move to next transition
                 current_time = query_result.next_time
-        
+
         return drawing_data if drawing_data.samples else None
                 
     except Exception:

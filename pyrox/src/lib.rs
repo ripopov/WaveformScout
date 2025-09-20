@@ -7,6 +7,7 @@ use convert::Mappable;
 use num_bigint::BigUint;
 use pyo3::types::PyInt;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
+use rustc_hash::FxHashMap;
 
 use wellen::{
     viewers::{self, ReadBodyContinuation},
@@ -495,6 +496,12 @@ struct Waveform {
 
     // Store info for lazy body loading
     body_continuation: Option<Box<ReadBodyContinuation<std::io::BufReader<std::fs::File>>>>,
+
+    // Signal caches - using 0-based signal refs as keys
+    signal_cache: FxHashMap<usize, Arc<wellen::Signal>>,
+    signal_to_vars: FxHashMap<usize, Vec<Var>>,
+    // Cache unique signals to avoid repeated expensive calls
+    unique_signals_cache: Option<Vec<Option<wellen::Var>>>,
 }
 
 #[pymethods]
@@ -529,7 +536,10 @@ impl Waveform {
             hierarchy: hier,
             wave_source,
             time_table,
-            body_continuation
+            body_continuation,
+            signal_cache: FxHashMap::default(),
+            signal_to_vars: FxHashMap::default(),
+            unique_signals_cache: None,
         })
     }
 
@@ -553,6 +563,10 @@ impl Waveform {
 
         self.wave_source = Some(body.source);
         self.time_table = Some(TimeTable(Arc::new(body.time_table)));
+
+        // Clear signal cache when body is loaded (signals may change)
+        self.signal_cache.clear();
+
         Ok(())
     }
 
@@ -682,6 +696,69 @@ impl Waveform {
         self.load_signals_impl(vars, py, true)
     }
 
+    /// Load and cache signals by their 0-based handles
+    fn preload_signals_by_handles(&mut self, handles: Vec<usize>, py: Python) -> PyResult<usize> {
+        // Ensure body is loaded
+        self.load_body()?;
+
+        // Get or build the unique signals cache
+        if self.unique_signals_cache.is_none() {
+            self.unique_signals_cache = Some(self.hierarchy.0.get_unique_signals_vars());
+        }
+
+        let unique_vars = self.unique_signals_cache.as_ref().unwrap();
+        let wave_source = self.wave_source.as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
+        let time_table = self.time_table.as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
+
+        // Collect wellen signal refs and their corresponding 0-based handles
+        let mut signal_refs_to_load = Vec::new();
+        let mut handle_map = std::collections::HashMap::new();
+
+        for handle in handles {
+            // Skip if already cached
+            if self.signal_cache.contains_key(&handle) {
+                continue;
+            }
+
+            // Get var for this handle
+            if handle < unique_vars.len() {
+                if let Some(var) = &unique_vars[handle] {
+                    let wellen_ref = var.signal_ref();
+                    signal_refs_to_load.push(wellen_ref);
+                    handle_map.insert(wellen_ref, handle);
+
+                    // Also update signal_to_vars map
+                    if !self.signal_to_vars.contains_key(&handle) {
+                        self.signal_to_vars.insert(handle, vec![Var(var.clone())]);
+                    }
+                }
+            }
+        }
+
+        if signal_refs_to_load.is_empty() {
+            return Ok(0);  // Nothing to load
+        }
+
+        // Load signals in batch
+        let hierarchy = &self.hierarchy.0;
+        let loaded_signals = py.allow_threads(|| {
+            wave_source.load_signals(&signal_refs_to_load, hierarchy, false)
+        });
+
+        // Cache the loaded signals with their 0-based handles
+        let mut loaded_count = 0;
+        for (wellen_ref, signal) in loaded_signals {
+            if let Some(&handle) = handle_map.get(&wellen_ref) {
+                self.signal_cache.insert(handle, Arc::new(signal));
+                loaded_count += 1;
+            }
+        }
+
+        Ok(loaded_count)
+    }
+
     /// Unload signals from memory
     fn unload_signals(&mut self, signals: Vec<PyRef<Signal>>) -> PyResult<()> {
         // In the current implementation, signals are reference counted (Arc)
@@ -689,6 +766,129 @@ impl Waveform {
         // This method is provided for API compatibility and future optimization.
         drop(signals);
         Ok(())
+    }
+
+    /// Build the mapping from signal refs to variables
+    fn build_signal_to_vars_map(&mut self) {
+        self.signal_to_vars.clear();
+
+        // Use get_unique_signals_vars to get the mapping
+        // The index in this vector IS the 0-based signal handle used by Python
+        let unique_vars = self.hierarchy.0.get_unique_signals_vars();
+
+        for (zero_based_idx, var_opt) in unique_vars.iter().enumerate() {
+            if let Some(var) = var_opt {
+                // Also collect all aliases for this signal
+                let signal_ref = var.signal_ref();
+
+                // Collect all vars with this signal_ref
+                let mut vars_with_same_ref = Vec::new();
+
+                // Helper function to recursively collect variables
+                fn collect_vars_with_ref(
+                    scope_ref: wellen::ScopeRef,
+                    hier: &wellen::Hierarchy,
+                    target_ref: wellen::SignalRef,
+                    result: &mut Vec<Var>
+                ) {
+                    // Check variables in this scope
+                    for var_ref in hier[scope_ref].vars(hier) {
+                        let var = &hier[var_ref];
+                        if var.signal_ref() == target_ref {
+                            result.push(Var(var.clone()));
+                        }
+                    }
+
+                    // Recurse into child scopes
+                    for child_ref in hier[scope_ref].scopes(hier) {
+                        collect_vars_with_ref(child_ref, hier, target_ref, result);
+                    }
+                }
+
+                // Collect all vars with this signal ref
+                for scope_ref in self.hierarchy.0.scopes() {
+                    collect_vars_with_ref(scope_ref, &self.hierarchy.0, signal_ref, &mut vars_with_same_ref);
+                }
+
+                if !vars_with_same_ref.is_empty() {
+                    self.signal_to_vars.insert(zero_based_idx, vars_with_same_ref);
+                }
+            }
+        }
+    }
+
+    /// Get a signal by its signal reference (0-based), using cache
+    fn get_signal_by_ref<'py>(&mut self, signal_ref: usize, py: Python<'py>) -> PyResult<Bound<'py, Signal>> {
+        // Check cache first
+        if let Some(cached_signal) = self.signal_cache.get(&signal_ref) {
+            // Return cached signal
+            return Bound::new(
+                py,
+                Signal {
+                    signal: cached_signal.clone(),
+                    all_times: self.time_table.as_ref()
+                        .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?
+                        .clone(),
+                },
+            );
+        }
+
+        // Ensure body is loaded
+        self.load_body()?;
+
+        // Check if we have the mapping for this signal ref, if not build it lazily
+        if !self.signal_to_vars.contains_key(&signal_ref) {
+            // Get or build the unique signals cache
+            if self.unique_signals_cache.is_none() {
+                self.unique_signals_cache = Some(self.hierarchy.0.get_unique_signals_vars());
+            }
+
+            // Get the var from the cached unique signals list
+            if let Some(unique_vars) = &self.unique_signals_cache {
+                if signal_ref < unique_vars.len() {
+                    if let Some(var) = &unique_vars[signal_ref] {
+                        // For now, just add the single var to the map
+                        // In the future, we could find all aliases if needed
+                        self.signal_to_vars.insert(signal_ref, vec![Var(var.clone())]);
+                    }
+                }
+            }
+        }
+
+        // Get the first var for this signal from mapping
+        let var = self.signal_to_vars.get(&signal_ref)
+            .and_then(|vars| vars.first())
+            .ok_or_else(|| PyRuntimeError::new_err(format!("No variable found for signal ref {}", signal_ref)))?;
+
+        // Load the signal
+        let wave_source = self.wave_source.as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
+        let time_table = self.time_table.as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
+
+        // Get the actual wellen SignalRef from the var
+        let wellen_ref = var.0.signal_ref();
+
+        // Release GIL while loading signal (heavy I/O operation)
+        let hierarchy = &self.hierarchy.0;
+        let mut signals = py.allow_threads(|| {
+            wave_source.load_signals(&[wellen_ref], hierarchy, true)
+        });
+
+        let (_sr, sig) = signals.swap_remove(0);
+        let signal_arc = Arc::new(sig);
+
+        // Cache the loaded signal
+        self.signal_cache.insert(signal_ref, signal_arc.clone());
+
+        // Return the signal
+        Bound::new(
+            py,
+            Signal {
+                signal: signal_arc,
+                all_times: time_table.clone(),
+            },
+        )
     }
 }
 
