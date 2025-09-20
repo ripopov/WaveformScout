@@ -1,4 +1,4 @@
 [submodule "pyrox/wellen"]
 	path = pyrox/wellen
 	url = https://github.com/ripopov/wellen.git
-	branch = vcd-events
+	branch = scout
