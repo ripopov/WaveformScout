@@ -421,10 +421,10 @@ class WaveformDB:
     def clear_signal_cache(self) -> None:
         """Clear the signal cache. Primarily for testing.
 
-        Note: Caching is now handled in Rust, this is a no-op.
+        Note: Caching is now handled in Rust.
         """
-        # Caches are now maintained in Rust, nothing to clear here
-        pass
+        if self.waveform and hasattr(self.waveform, 'clear_signal_cache'):
+            self.waveform.clear_signal_cache()
 
     def is_signal_cached(self, handle: SignalHandle) -> bool:
         """Check if signal is cached for the given handle.
@@ -435,9 +435,10 @@ class WaveformDB:
             handle: Handle ID to check
 
         Returns:
-            Always returns False as caching is now handled in Rust
+            True if signal is cached, False otherwise
         """
-        # Rust-side caching is automatic, no way to check from Python
+        if self.waveform and hasattr(self.waveform, 'is_signal_cached'):
+            return bool(self.waveform.is_signal_cached(handle))
         return False
 
     def iter_handles_and_vars(self) -> List[Tuple[int, List[pyrox.Var]]]:

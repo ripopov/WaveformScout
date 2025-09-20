@@ -502,6 +502,8 @@ struct Waveform {
     signal_to_vars: FxHashMap<usize, Vec<Var>>,
     // Cache unique signals to avoid repeated expensive calls
     unique_signals_cache: Option<Vec<Option<wellen::Var>>>,
+    // Cache Python Signal objects for identity consistency
+    python_signal_cache: FxHashMap<usize, Py<Signal>>,
 }
 
 #[pymethods]
@@ -540,6 +542,7 @@ impl Waveform {
             signal_cache: FxHashMap::default(),
             signal_to_vars: FxHashMap::default(),
             unique_signals_cache: None,
+            python_signal_cache: FxHashMap::default(),
         })
     }
 
@@ -759,6 +762,19 @@ impl Waveform {
         Ok(loaded_count)
     }
 
+    /// Check if a signal is cached by its 0-based handle
+    fn is_signal_cached(&self, signal_ref: usize) -> bool {
+        self.signal_cache.contains_key(&signal_ref)
+    }
+
+    /// Clear the signal cache (for testing)
+    fn clear_signal_cache(&mut self) {
+        self.signal_cache.clear();
+        self.signal_to_vars.clear();
+        self.unique_signals_cache = None;
+        self.python_signal_cache.clear();
+    }
+
     /// Unload signals from memory
     fn unload_signals(&mut self, signals: Vec<PyRef<Signal>>) -> PyResult<()> {
         // In the current implementation, signals are reference counted (Arc)
@@ -819,10 +835,16 @@ impl Waveform {
 
     /// Get a signal by its signal reference (0-based), using cache
     fn get_signal_by_ref<'py>(&mut self, signal_ref: usize, py: Python<'py>) -> PyResult<Bound<'py, Signal>> {
-        // Check cache first
+        // Check Python signal cache first for object identity
+        if let Some(cached_py_signal) = self.python_signal_cache.get(&signal_ref) {
+            // Return cached Python Signal object
+            return Ok(cached_py_signal.bind(py).clone());
+        }
+
+        // Check Rust signal cache
         if let Some(cached_signal) = self.signal_cache.get(&signal_ref) {
-            // Return cached signal
-            return Bound::new(
+            // Create new Python Signal object and cache it
+            let py_signal = Bound::new(
                 py,
                 Signal {
                     signal: cached_signal.clone(),
@@ -830,7 +852,11 @@ impl Waveform {
                         .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?
                         .clone(),
                 },
-            );
+            )?;
+
+            // Cache the Python object for future calls
+            self.python_signal_cache.insert(signal_ref, py_signal.clone().unbind());
+            return Ok(py_signal);
         }
 
         // Ensure body is loaded
@@ -881,14 +907,19 @@ impl Waveform {
         // Cache the loaded signal
         self.signal_cache.insert(signal_ref, signal_arc.clone());
 
-        // Return the signal
-        Bound::new(
+        // Create and cache the Python signal object
+        let py_signal = Bound::new(
             py,
             Signal {
                 signal: signal_arc,
                 all_times: time_table.clone(),
             },
-        )
+        )?;
+
+        // Cache the Python object for future calls
+        self.python_signal_cache.insert(signal_ref, py_signal.clone().unbind());
+
+        Ok(py_signal)
     }
 }
 
