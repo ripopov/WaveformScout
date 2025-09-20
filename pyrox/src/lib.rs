@@ -44,14 +44,28 @@ struct Hierarchy(pub(crate) Arc<wellen::Hierarchy>);
 #[pymethods]
 impl Hierarchy {
     fn all_vars(&self) -> VarIter {
-        VarIter(Box::new(
-            //TODO: optimize me
-            self.0
-                .get_unique_signals_vars()
-                .into_iter()
-                .flatten()
-                .map(Var),
-        ))
+        // Return ALL variables from all scopes, including aliases
+        let hier = self.0.clone();
+        let mut all_vars = Vec::new();
+
+        // Recursively collect variables from all scopes
+        fn collect_vars(scope_ref: wellen::ScopeRef, hier: &wellen::Hierarchy, vars: &mut Vec<wellen::Var>) {
+            // Add variables from this scope
+            for var_ref in hier[scope_ref].vars(hier) {
+                vars.push(hier[var_ref].clone());
+            }
+            // Recurse into child scopes
+            for child_ref in hier[scope_ref].scopes(hier) {
+                collect_vars(child_ref, hier, vars);
+            }
+        }
+
+        // Start from all top-level scopes
+        for scope_ref in hier.scopes() {
+            collect_vars(scope_ref, &hier, &mut all_vars);
+        }
+
+        VarIter(Box::new(all_vars.into_iter().map(Var)))
     }
 
     fn top_scopes(&self) -> ScopeIter {
@@ -62,6 +76,82 @@ impl Hierarchy {
                 .collect::<Vec<_>>()
                 .into_iter()
         }))
+    }
+
+    /// Find a variable by its full hierarchical name
+    fn find_var_by_full_name(&self, name: &str) -> Option<Var> {
+        // Parse the dotted path
+        let parts: Vec<&str> = name.split('.').collect();
+        if parts.is_empty() {
+            return None;
+        }
+
+        // Split into scope path and variable name
+        let (path, var_name) = if parts.len() == 1 {
+            // Just a variable name at top level
+            (&[][..], parts[0])
+        } else {
+            // Scope path + variable name
+            (&parts[0..parts.len() - 1], parts[parts.len() - 1])
+        };
+
+        // Use the hierarchy's lookup_var method (expects &str references)
+        self.0.lookup_var(path, &var_name).map(|var_ref| {
+            Var(self.0[var_ref].clone())
+        })
+    }
+
+    /// Get the first variable that references this signal (0-based index)
+    fn get_var_by_signal_ref(&self, signal_ref: usize) -> Option<Var> {
+        // Get the unique signals vars and find the one for this signal
+        // The index in get_unique_signals_vars corresponds to 0-based signal refs
+        let vars = self.0.get_unique_signals_vars();
+        if signal_ref < vars.len() {
+            vars[signal_ref].as_ref().map(|var| Var(var.clone()))
+        } else {
+            None
+        }
+    }
+
+    /// Get all variables (aliases) for a signal (0-based index)
+    fn get_all_vars_by_signal_ref(&self, signal_ref: usize) -> Vec<Var> {
+        // Empirically, when Python passes signal_ref X, we need to look for wellen ref X
+        // So even though SignalRef::from_index expects 1-based, and signal_ref is 0-based,
+        // we just pass signal_ref directly. This works because the actual signal identifiers
+        // in the file start from 1, not 0, so there's an inherent off-by-one
+        if let Some(wellen_ref) = SignalRef::from_index(signal_ref) {
+            // Collect all vars that have the same signal_ref
+            let mut result = Vec::new();
+
+            // Helper function to recursively collect variables
+            fn collect_matching_vars(
+                scope_ref: wellen::ScopeRef,
+                hier: &wellen::Hierarchy,
+                target_ref: wellen::SignalRef,
+                result: &mut Vec<Var>
+            ) {
+                // Check variables in this scope
+                for var_ref in hier[scope_ref].vars(hier) {
+                    let var = &hier[var_ref];
+                    if var.signal_ref() == target_ref {
+                        result.push(Var(var.clone()));
+                    }
+                }
+                // Recurse into child scopes
+                for child_ref in hier[scope_ref].scopes(hier) {
+                    collect_matching_vars(child_ref, hier, target_ref, result);
+                }
+            }
+
+            // Start from all top-level scopes
+            for scope_ref in self.0.scopes() {
+                collect_matching_vars(scope_ref, &self.0, wellen_ref, &mut result);
+            }
+
+            result
+        } else {
+            Vec::new()
+        }
     }
 
     /// Get the date metadata from the waveform file
@@ -254,6 +344,7 @@ impl Var {
 
     /// Get the signal reference as an integer for internal use
     /// Two vars with the same signal_ref() are aliases
+    /// Returns 0-based index for Python use
     pub fn signal_ref(&self) -> usize {
         self.0.signal_ref().index()
     }
@@ -479,7 +570,7 @@ impl Waveform {
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
         // Release GIL while loading signal (heavy I/O operation)
-        let signal_ref = var.0.signal_ref();
+        let signal_ref = var.0.signal_ref(); // This is the actual Wellen SignalRef (1-based)
         let hierarchy = &self.hierarchy.0;
         let mut signal = py.allow_threads(|| {
             wave_source.load_signals(&[signal_ref], hierarchy, true)
@@ -534,7 +625,7 @@ impl Waveform {
         let time_table = self.time_table.as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
-        let signal_refs: Vec<SignalRef> = vars.iter().map(|var| var.0.signal_ref()).collect();
+        let signal_refs: Vec<SignalRef> = vars.iter().map(|var| var.0.signal_ref()).collect(); // These are Wellen SignalRefs
 
         // Release GIL while loading signals (heavy I/O operation)
         let hierarchy = &self.hierarchy.0;
@@ -549,7 +640,7 @@ impl Waveform {
         // Return signals in the same order as the input vars
         let mut result = Vec::new();
         for var in vars.iter() {
-            let signal_ref = var.0.signal_ref();
+            let signal_ref = var.0.signal_ref(); // This is the actual Wellen SignalRef
             if let Some(sig) = signal_map.remove(&signal_ref) {
                 let signal = Bound::new(
                     py,

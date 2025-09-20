@@ -20,7 +20,7 @@ from PySide6.QtGui import QKeyEvent
 import pyrox
 
 from .design_tree_model import DesignTreeModel, DesignTreeNode
-from .data_model import SignalNode, SignalHandle, RenderType, DisplayFormat
+from .data_model import SignalNode, SignalRef, RenderType, DisplayFormat
 from .settings_manager import SettingsManager
 from .scope_tree_model import ScopeTreeModel
 from .vars_view import VarsView
@@ -180,7 +180,7 @@ class DesignTreeView(QWidget):
             is_multi_bit=not is_single_bit
         )
     
-    def _find_signal_handle(self, full_path: str) -> Optional[SignalHandle]:
+    def _find_signal_handle(self, full_path: str) -> Optional[SignalRef]:
         """Find signal handle in waveform database"""
         if not self.waveform_db:
             return None
@@ -423,7 +423,7 @@ class DesignTreeView(QWidget):
             self.signals_selected.emit(signal_nodes)
             self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
     
-    def _is_single_bit(self, var_obj: Optional[Var], handle: Optional[SignalHandle]) -> bool:
+    def _is_single_bit(self, var_obj: Optional[Var], handle: Optional[SignalRef]) -> bool:
         """Determine if a variable/signal is single-bit using wellen API.
         
         Tries the provided var object first; if not available, attempts to fetch

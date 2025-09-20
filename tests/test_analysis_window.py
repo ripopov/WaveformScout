@@ -34,7 +34,7 @@ def test_analysis_with_analog_signals():
     db.open(str(get_test_input_path(TestFiles.ANALOG_SIGNALS_SHORT_VCD)))
     
     print(f"Loaded waveform file")
-    print(f"Number of unique signals: {len(db._var_map)}")
+    print(f"Number of unique signals: {len(db.get_all_handles())}")
     
     # Get time range
     time_table = db.get_time_table()
@@ -43,8 +43,9 @@ def test_analysis_with_analog_signals():
     
     # List all signals
     all_signals = []
-    if hasattr(db, '_var_map') and db._var_map:
-        for handle in db._var_map.keys():
+    handles = db.get_all_handles()
+    if handles:
+        for handle in handles:
             var = db.var_from_handle(handle)
             if var:
                 signal_name = var.full_name(db.hierarchy)
@@ -170,8 +171,8 @@ def test_analysis_window_integration():
         all_signals = []
         clk_cnt_signal = None
         
-        if waveform_db and hasattr(waveform_db, '_var_map'):
-            for handle in list(waveform_db._var_map.keys())[:10]:  # First 10 signals
+        if waveform_db:
+            for handle in waveform_db.get_all_handles()[:10]:  # First 10 signals
                 var = waveform_db.var_from_handle(handle)
                 if var:
                     signal = SignalNode(

@@ -34,32 +34,39 @@ def add_signals_from_vcd(session, count=10, include_groups=True):
     """Helper to add signals from the VCD file to the session."""
     if not session.waveform_db:
         return
-    
+
     db = session.waveform_db
     hierarchy = db.hierarchy
-    num_vars = db.num_vars()
-    
+
+    # Get actual signal handles from the database
+    all_handles = list(db.get_all_handles())
+    if not all_handles:
+        return
+
+    # Sort handles for consistent ordering
+    all_handles.sort()
+
     # Add individual signals
     signals_added = 0
-    for i in range(min(num_vars, count)):
-        var = db.get_var(i)
+    for handle in all_handles[:count]:
+        var = db.get_var(handle)
         if var:
-            node = create_signal_node_from_var(var, hierarchy, i)
+            node = create_signal_node_from_var(var, hierarchy, handle)
             session.root_nodes.append(node)
             signals_added += 1
-    
+
     # Add a group with some children if requested
-    if include_groups and num_vars > count:
+    if include_groups and len(all_handles) > count:
         group = SignalNode(name="Test Group", is_group=True, is_expanded=True)
-        
+
         # Add 3 children to the group
-        for i in range(count, min(count + 3, num_vars)):
-            var = db.get_var(i)
+        for handle in all_handles[count:count + 3]:
+            var = db.get_var(handle)
             if var:
-                child = create_signal_node_from_var(var, hierarchy, i)
+                child = create_signal_node_from_var(var, hierarchy, handle)
                 child.parent = group
                 group.children.append(child)
-        
+
         if group.children:
             session.root_nodes.append(group)
 

@@ -6,7 +6,7 @@ from collections.abc import Iterable as ABCIterable
 import pyrox
 
 # Import our data model types
-from .data_model import SignalHandle, Timescale
+from .data_model import SignalRef, Timescale
 
 
 class WaveformDBProtocol(Protocol):
@@ -22,7 +22,7 @@ class WaveformDBProtocol(Protocol):
     waveform: Optional[pyrox.Waveform]
     hierarchy: Optional[pyrox.Hierarchy]
     
-    def find_handle_by_path(self, name: str) -> Optional[SignalHandle]:
+    def find_handle_by_path(self, name: str) -> Optional[SignalRef]:
         """Find signal handle by hierarchical path.
         
         Args:
@@ -33,7 +33,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
+    def find_handle_by_name(self, name: str) -> Optional[SignalRef]:
         """Find signal handle by exact name.
         
         Args:
@@ -44,7 +44,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalHandle]:
+    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalRef]:
         """Get handle for a specific backend variable.
 
         Args:
@@ -55,7 +55,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_var(self, handle: SignalHandle) -> Optional[pyrox.Var]:
+    def get_var(self, handle: SignalRef) -> Optional[pyrox.Var]:
         """Get backend variable by handle.
 
         Args:
@@ -66,7 +66,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_all_vars_for_handle(self, handle: SignalHandle) -> list[pyrox.Var]:
+    def get_all_vars_for_handle(self, handle: SignalRef) -> list[pyrox.Var]:
         """Get all variables (including aliases) for a handle.
 
         Args:
@@ -77,7 +77,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def iter_handles_and_vars(self) -> ABCIterable[tuple[SignalHandle, list[pyrox.Var]]]:
+    def iter_handles_and_vars(self) -> ABCIterable[tuple[SignalRef, list[pyrox.Var]]]:
         """Iterate over all handles and their associated variables.
         
         Returns:
@@ -85,7 +85,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_var_bitwidth(self, handle: SignalHandle) -> int:
+    def get_var_bitwidth(self, handle: SignalRef) -> int:
         """Get bit width for a signal.
         
         Args:
@@ -122,23 +122,23 @@ class WaveformDBProtocol(Protocol):
         """
         return None
     
-    def get_var_to_handle_mapping(self) -> Optional[Dict[pyrox.Var, SignalHandle]]:
+    def get_var_to_handle_mapping(self) -> Optional[Dict[pyrox.Var, SignalRef]]:
         """Get mapping from pyrox.Var objects to handles for persistence.
 
         Returns:
-            Dictionary mapping pyrox.Var to SignalHandle if available, None otherwise
+            Dictionary mapping pyrox.Var to SignalRef if available, None otherwise
         """
         return None
     
-    def get_next_available_handle(self) -> Optional[SignalHandle]:
+    def get_next_available_handle(self) -> Optional[SignalRef]:
         """Get next available handle for new signals.
         
         Returns:
-            Next available SignalHandle if supported, None otherwise
+            Next available SignalRef if supported, None otherwise
         """
         return None
     
-    def get_signal(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
+    def get_signal(self, handle: SignalRef) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle.
 
         Args:
@@ -149,7 +149,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def var_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Var]:
+    def var_from_handle(self, handle: SignalRef) -> Optional[pyrox.Var]:
         """Get the variable object for the given handle.
 
         Args:
@@ -160,7 +160,7 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def signal_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
+    def signal_from_handle(self, handle: SignalRef) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle.
 
         This is an alias for get_signal() for consistency.

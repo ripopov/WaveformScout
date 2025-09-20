@@ -2,11 +2,11 @@
 
 from typing import List, Dict, cast
 import pyrox
-from .data_model import SignalNode, SignalHandle, DisplayFormat, DataFormat, WaveformSession, RenderType
+from .data_model import SignalNode, SignalRef, DisplayFormat, DataFormat, WaveformSession, RenderType
 from .waveform_db import WaveformDB
 
 
-def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, handle: SignalHandle) -> SignalNode:
+def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, handle: SignalRef) -> SignalNode:
     """Create a SignalNode from a backend variable."""
     # Get variable info
     full_name = var.full_name(hierarchy)

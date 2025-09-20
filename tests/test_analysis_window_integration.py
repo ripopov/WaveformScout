@@ -39,7 +39,7 @@ def test_analysis_with_analog_signals():
     all_signals = []
     clk_cnt_signal = None
     
-    for handle in db._var_map.keys():
+    for handle in db.get_all_handles():
         var = db.var_from_handle(handle)
         if var:
             name = var.full_name(db.hierarchy)

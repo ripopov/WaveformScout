@@ -33,34 +33,23 @@ def main_window(qt_app):
 @pytest.fixture
 def main_window_with_signals(main_window):
     """Create main window with signals added to session."""
-    # Add some signals to the session
-    design_view = main_window.design_tree_view.scope_tree
-    model = main_window.design_tree_view.scope_tree_model
-    
-    if model:
-        # Find and add first 3 signals
-        added = 0
-        for r in range(model.rowCount(QModelIndex())):
-            idx = model.index(r, 0, QModelIndex())
-            if idx.isValid():
-                design_view.expand(idx)
-                QTest.qWait(50)
-                
-                for cr in range(model.rowCount(idx)):
-                    cidx = model.index(cr, 0, idx)
-                    if cidx.isValid():
-                        node_ptr = cidx.internalPointer()
-                        if node_ptr and not node_ptr.is_scope:
-                            signal_node = main_window.design_tree_view._create_signal_node(node_ptr)
-                            if signal_node:
-                                main_window.design_tree_view.signals_selected.emit([signal_node])
-                                QTest.qWait(30)
-                                added += 1
-                                if added >= 3:
-                                    break
-                if added >= 3:
-                    break
-    
+    # Add some signals to the session directly from the waveform database
+    if main_window.wave_widget.session and main_window.wave_widget.session.waveform_db:
+        db = main_window.wave_widget.session.waveform_db
+        handles = db.get_all_handles()[:3]  # Get first 3 signal handles
+
+        signals_to_add = []
+        for handle in handles:
+            var = db.var_from_handle(handle)
+            if var:
+                from wavescout.waveform_loader import create_signal_node_from_var
+                signal_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                signals_to_add.append(signal_node)
+
+        # Add all signals at once
+        if signals_to_add:
+            main_window.wave_widget.controller.insert_nodes(signals_to_add)
+
     QTest.qWait(100)
     return main_window
 

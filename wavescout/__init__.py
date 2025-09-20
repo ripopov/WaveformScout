@@ -3,7 +3,7 @@
 __version__ = "0.1.0"
 
 from .data_model import (
-    SignalNode, SignalHandle, DisplayFormat, DataFormat, GroupRenderMode, RenderType,
+    SignalNode, SignalRef, DisplayFormat, DataFormat, GroupRenderMode, RenderType,
     Viewport, Marker, AnalysisMode,
     WaveformSession
 )
@@ -17,7 +17,7 @@ from .persistence import save_session, load_session
 from .config import RENDERING, COLORS, UI, TIME_RULER
 
 __all__ = [
-    'SignalNode', 'SignalHandle', 'DisplayFormat', 'DataFormat', 'GroupRenderMode', 'RenderType',
+    'SignalNode', 'SignalRef', 'DisplayFormat', 'DataFormat', 'GroupRenderMode', 'RenderType',
     'Viewport', 'Marker', 'AnalysisMode',
     'WaveformSession', 'WaveformItemModel', 'WaveScoutWidget', 'WaveformController',
     'WaveformDB', 'create_sample_session',

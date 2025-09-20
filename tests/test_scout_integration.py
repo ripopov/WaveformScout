@@ -165,32 +165,34 @@ class WaveScoutTestHelper:
     def add_signals_to_session(db, session, hierarchy, signal_patterns: dict) -> dict:
         """
         Find and add signals matching patterns to a session.
-        
+
         Args:
             db: Waveform database
             session: WaveScout session
             hierarchy: Signal hierarchy
             signal_patterns: Dict of name -> (suffix, handle) patterns to match
-            
+
         Returns:
             Dict of name -> SignalNode for found signals
         """
         found_nodes = {}
-        
+
+        # Use iter_handles_and_vars to get ALL variables for each handle, including aliases
         for handle, vars_list in db.iter_handles_and_vars():
             for var in vars_list:
                 full_name = var.full_name(hierarchy)
-                
+
                 for key, (suffix, _) in signal_patterns.items():
                     if full_name.endswith(suffix):
                         node = create_signal_node_from_var(var, hierarchy, handle)
                         node.name = full_name
                         found_nodes[key] = node
                         session.root_nodes.append(node)
-                        
+                        break  # Don't add the same signal multiple times
+
             if len(found_nodes) == len(signal_patterns):
                 break
-        
+
         return found_nodes
 
 

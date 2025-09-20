@@ -40,8 +40,10 @@ def test_copy_results():
         
         # Add some test signals
         test_signals = []
-        if session.waveform_db and hasattr(session.waveform_db, '_var_map'):
-            for i, handle in enumerate(list(session.waveform_db._var_map.keys())[:3]):
+        if session.waveform_db:
+            # Get first 3 signal handles using the new API
+            handles = session.waveform_db.get_all_handles()[:3]
+            for handle in handles:
                 var = session.waveform_db.var_from_handle(handle)
                 if var:
                     signal = SignalNode(
