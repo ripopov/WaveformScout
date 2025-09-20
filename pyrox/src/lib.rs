@@ -1,4 +1,6 @@
 mod convert;
+mod design_tree_model;
+
 use std::sync::Arc;
 
 use convert::Mappable;
@@ -37,12 +39,13 @@ fn pyrox(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TimescaleUnit>()?;
     m.add_class::<QueryResult>()?;
     m.add_class::<TimeTable>()?;
+    m.add_class::<design_tree_model::PyDesignTreeModel>()?;
     Ok(())
 }
 
 #[pyclass]
 #[derive(Clone)]
-struct Hierarchy(pub(crate) Arc<wellen::Hierarchy>);
+pub(crate) struct Hierarchy(pub(crate) Arc<wellen::Hierarchy>);
 
 #[pymethods]
 impl Hierarchy {
@@ -184,7 +187,7 @@ impl Hierarchy {
 }
 
 #[pyclass]
-struct Scope(pub(crate) wellen::Scope);
+pub(crate) struct Scope(pub(crate) wellen::Scope);
 
 #[pymethods]
 impl Scope {
@@ -290,7 +293,7 @@ impl VarIndex {
 }
 
 #[pyclass]
-struct Var(pub(crate) wellen::Var);
+pub(crate) struct Var(pub(crate) wellen::Var);
 
 #[pymethods]
 impl Var {

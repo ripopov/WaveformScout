@@ -2,6 +2,7 @@
 """WaveScout Main Application Window"""
 
 import sys
+import time
 import argparse
 import os
 import subprocess
@@ -25,6 +26,7 @@ from wavescout.config import RENDERING
 from wavescout.theme import theme_manager, ThemeName, apply_saved_theme
 from wavescout.data_model import WaveformSession, SignalNode
 from wavescout.settings_manager import SettingsManager
+from wavescout.timing_utils import set_startup_time, tprint
 import qdarkstyle
 
 
@@ -87,6 +89,8 @@ class WaveScoutMainWindow(FramelessWindow):
     """Main window for WaveScout App."""
     
     def __init__(self, session_file=None, wave_file: str | None = None, exit_after_load: bool = False):
+        init_start = time.time()
+        tprint(f"  WaveScoutMainWindow.__init__ starting...")
         super().__init__()
         self.setWindowTitle("WaveScout - Waveform Viewer")
         self.resize(1400, 800)
@@ -108,6 +112,7 @@ class WaveScoutMainWindow(FramelessWindow):
         
         # Connect theme change signal for automatic repainting
         theme_manager.themeChanged.connect(self._on_theme_changed)
+        tprint(f"  Theme connections set")
         
         # Connect to system theme changes if available
         from PySide6.QtWidgets import QStyleFactory
@@ -130,9 +135,11 @@ class WaveScoutMainWindow(FramelessWindow):
         self._status_bar = QStatusBar()
         
         # Setup title bar with menu and panel toggle buttons
+        tprint(f"  Setting up title bar...")
         self._setup_title_bar()
-        
+
         # Apply FramelessWindow theme styling after components are created
+        tprint(f"  Applying frameless styling...")
         self._apply_frameless_styling()
         
         # Create main container widget that fills the window below title bar
@@ -186,6 +193,7 @@ class WaveScoutMainWindow(FramelessWindow):
         self.horizontal_splitter.addWidget(self.left_panel)
         
         # Create wave view widget (center panel)
+        tprint(f"  Creating WaveScoutWidget...")
         self.wave_widget = WaveScoutWidget()
         self.horizontal_splitter.addWidget(self.wave_widget)
         
@@ -280,6 +288,8 @@ class WaveScoutMainWindow(FramelessWindow):
             # No file specified, start with empty application
             # Ensure waveform-related actions are disabled until a file is loaded
             self._set_waveform_actions_enabled(False)
+
+        tprint(f"  WaveScoutMainWindow.__init__ completed in {time.time() - init_start:.3f}s")
         
     def _setup_title_bar(self):
         """Setup the title bar with menu bar and panel toggle buttons."""
@@ -915,9 +925,10 @@ class WaveScoutMainWindow(FramelessWindow):
             
     def load_file(self, file_path: str):
         """Load a waveform file asynchronously using thread pool."""
+        tprint(f"Loading file: {file_path}")
         # Store the file path for reload functionality
         self.current_wave_file = file_path
-        
+
         # Show loading status
         file_name = os.path.basename(file_path)
         
@@ -949,6 +960,7 @@ class WaveScoutMainWindow(FramelessWindow):
         
     def _on_waveform_load_finished(self, session):
         """Handle successful waveform load."""
+        tprint(f"Waveform loaded successfully")
         # Store session for later use
         self._loading_state.pending_session = session
         self._finalize_waveform_load()
@@ -2029,33 +2041,43 @@ class WaveScoutMainWindow(FramelessWindow):
 
 def main():
     """Run the demo application."""
+    # Set startup time for global timing
+    startup_time = time.time()
+    set_startup_time(startup_time)
+    tprint("WaveScout starting...")
+
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="WaveScout Waveform Viewer Demo")
     parser.add_argument("--load_session", type=str, help="Load a session file on startup")
-    parser.add_argument("--load_wave", nargs='+', metavar=('WAVE_FILE', 'SNIPPET'), 
+    parser.add_argument("--load_wave", nargs='+', metavar=('WAVE_FILE', 'SNIPPET'),
                        help="Load waveform file followed by optional snippet files")
     parser.add_argument("--exit_after_load", action="store_true", help="Exit the application after loading completes (for automation/testing)")
     args = parser.parse_args()
+    tprint(f"Arguments parsed")
     
     # Load saved UI scale and apply it before creating QApplication
     # We need to use SettingsManager here before QApplication exists
+    tprint("Loading settings...")
     settings_manager = SettingsManager()
     saved_scale = settings_manager.get_ui_scale()
-    
+
     # Set the QT_SCALE_FACTOR environment variable
     if saved_scale != 1.0:
         os.environ["QT_SCALE_FACTOR"] = str(saved_scale)
-    
+        tprint(f"UI scale set to {saved_scale}")
+
     # Enable high DPI scaling
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    
+
+    tprint("Creating QApplication...")
     app = QApplication(sys.argv)
     app.setOrganizationName("WaveScout")
     app.setApplicationName("Scout")
     
     # Apply saved UI style if available
+    tprint("Applying theme...")
     style_type = settings_manager.get_style_type()
-    
+
     if style_type == "qdarkstyle_dark":
         # Apply QDarkStyle dark theme
         try:
@@ -2083,28 +2105,34 @@ def main():
                 pass
     
     # Create main window with optional session or wave file
+    tprint("Creating main window...")
     window = WaveScoutMainWindow(session_file=args.load_session, wave_file=args.load_wave, exit_after_load=args.exit_after_load)
+    tprint("Main window created, showing...")
     window.show()
-    
-    print("WaveScout - Digital Waveform Viewer")
-    print("====================================")
+    tprint("Main window shown")
+
+    tprint("WaveScout - Digital Waveform Viewer")
+    tprint("====================================")
     if args.load_session:
-        print(f"- Loading session from: {args.load_session}")
+        tprint(f"- Loading session from: {args.load_session}")
     elif args.load_wave:
         wave_file = args.load_wave[0] if isinstance(args.load_wave, list) else args.load_wave
-        print(f"- Loading waveform from: {wave_file}")
+        tprint(f"- Loading waveform from: {wave_file}")
         if isinstance(args.load_wave, list) and len(args.load_wave) > 1:
-            print(f"- With snippets: {', '.join(args.load_wave[1:])}")
+            tprint(f"- With snippets: {', '.join(args.load_wave[1:])}")
     else:
-        print("- No waveform file specified")
-        print("- Use File -> Open to load a VCD or FST file")
-    print("- Click on waveform to move cursor")
-    print("- Use View menu to zoom in/out")
-    print("- Expand/collapse signal groups in the tree")
-    print()
-    
+        tprint("- No waveform file specified")
+        tprint("- Use File -> Open to load a VCD or FST file")
+    tprint("- Click on waveform to move cursor")
+    tprint("- Use View menu to zoom in/out")
+    tprint("- Expand/collapse signal groups in the tree")
+    tprint("")
+
     # Run with standard Qt event loop
-    app.exec()
+    tprint("Starting application event loop...")
+    result = app.exec()
+    tprint(f"Application closed")
+    tprint(f"Total runtime: {time.time() - startup_time:.3f} seconds")
 
 
 if __name__ == "__main__":

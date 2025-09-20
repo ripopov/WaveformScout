@@ -2,7 +2,9 @@
 
 import json
 import pathlib
+import time
 from typing import Dict, Any, List, Optional, Union, cast
+from .timing_utils import tprint
 from dataclasses import asdict
 from enum import Enum
 from datetime import datetime
@@ -363,45 +365,58 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     Args:
         path: Path to the session file
     """
+    load_start = time.time()
+
     # Check file extension
     if not path.suffix.lower() == '.json':
         raise ValueError(f"Expected .json file, got {path.suffix}")
-    
+
     # Read JSON
+    json_start = time.time()
     with open(path, 'r') as f:
         data = json.load(f)
-    
+    tprint(f"  load_session.read_json: {time.time() - json_start:.3f}s")
+
     # Reconnect to waveform database if URI is provided
     waveform_db = None
     db_uri = data.get('db_uri')
     if db_uri and pathlib.Path(db_uri).exists():
+        db_start = time.time()
         waveform_db = WaveformDB()
         waveform_db.open(db_uri)
-    
+        tprint(f"  load_session.open_waveform_db: {time.time() - db_start:.3f}s")
+
     # Deserialize viewport
+    viewport_start = time.time()
     viewport_data = data.get('viewport', {})
     # Extract config data and create ViewportConfig object
     config_data = viewport_data.pop('config', {})
     viewport_config = ViewportConfig(**config_data)
     # Create viewport with proper config object
     viewport = Viewport(**viewport_data, config=viewport_config)
-    
+    tprint(f"  load_session.deserialize_viewport: {time.time() - viewport_start:.3f}s")
+
     # Deserialize markers
+    markers_start = time.time()
     markers = []
     for marker_data in data.get('markers', []):
         markers.append(Marker(**marker_data))
-    
+    tprint(f"  load_session.deserialize_markers: {time.time() - markers_start:.3f}s")
+
     # Deserialize analysis mode
     analysis_data = data.get('analysis_mode', {})
     analysis_mode = AnalysisMode(**analysis_data)
-    
+
     # Deserialize nodes
+    nodes_start = time.time()
     root_nodes = []
     for node_data in data.get('root_nodes', []):
         node = _deserialize_node(node_data)
         root_nodes.append(node)
-    
+    tprint(f"  load_session.deserialize_nodes ({len(root_nodes)} root nodes): {time.time() - nodes_start:.3f}s")
+
     # Create session
+    session_start = time.time()
     session = WaveformSession(
         waveform_db=cast(WaveformDBProtocol, waveform_db) if waveform_db else None,
         root_nodes=root_nodes,
@@ -411,7 +426,8 @@ def load_session(path: pathlib.Path) -> WaveformSession:
         analysis_mode=analysis_mode,
         selected_nodes=[]  # Start with empty selection
     )
-    
+    tprint(f"  load_session.create_session: {time.time() - session_start:.3f}s")
+
     # Restore timescale if available
     timescale_data = data.get('timescale')
     if timescale_data:
@@ -496,6 +512,7 @@ def load_session(path: pathlib.Path) -> WaveformSession:
             if sampling_node:
                 session.sampling_signal = sampling_node
     
+    tprint(f"  load_session TOTAL: {time.time() - load_start:.3f}s")
     return session
 
 

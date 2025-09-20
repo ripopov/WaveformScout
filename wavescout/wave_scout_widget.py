@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout,
 from PySide6.QtCore import Qt, Signal, QModelIndex, QItemSelectionModel, QItemSelection, QEvent, QTimer, QObject
 from PySide6.QtGui import QKeyEvent, QWheelEvent
 from typing import Optional, cast, List
+import time
+from .timing_utils import tprint
 from .waveform_item_model import WaveformItemModel
 from .waveform_canvas import WaveformCanvas
 from .data_model import WaveformSession, SignalNode, GroupRenderMode
@@ -31,6 +33,7 @@ class WaveScoutWidget(QWidget):
     cursorChanged = Signal(object)  # Using object to handle large time values
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
+        init_start = time.time()
         super().__init__(parent)
         # Initialize ALL attributes upfront
         self.session: Optional[WaveformSession] = None
@@ -40,7 +43,7 @@ class WaveScoutWidget(QWidget):
         self._selection_model: Optional[QItemSelectionModel] = None
         self._updating_selection: bool = False
         self._initialized: bool = False
-        
+
         # Initialize UI components - will be set in _setup_ui
         # Using cast to satisfy mypy while allowing initialization check
         self._info_bar: QLabel = cast(QLabel, None)
@@ -48,19 +51,22 @@ class WaveScoutWidget(QWidget):
         self._names_view: SignalNamesView = cast(SignalNamesView, None)
         self._values_view: SignalValuesView = cast(SignalValuesView, None)
         self._canvas: WaveformCanvas = cast(WaveformCanvas, None)
-        
+
         # Now setup UI (which will assign real objects)
+        ui_start = time.time()
         self._setup_ui()
+        tprint(f"  WaveScoutWidget._setup_ui: {time.time() - ui_start:.3f}s")
         self._initialized = True
-        
+
         # Bind controller events to view updates
         self.controller.on("viewport_changed", self._update_canvas_time_range)
         self.controller.on("cursor_changed", self._on_controller_cursor_changed)
         self.controller.on("markers_changed", self._on_controller_markers_changed)
-        
+
         # Connect to theme changes to update signal colors
         from .theme import theme_manager
         theme_manager.themeChanged.connect(self._on_theme_changed)
+        tprint(f"  WaveScoutWidget.__init__ total: {time.time() - init_start:.3f}s")
         
     def _setup_ui(self) -> None:
         """Set up the user interface."""
@@ -133,12 +139,30 @@ class WaveScoutWidget(QWidget):
         
     def setSession(self, session: WaveformSession) -> None:
         """Set the waveform session and create the model."""
+        set_start = time.time()
+
+        cleanup_start = time.time()
         self._cleanup_previous_session()
+        tprint(f"  setSession._cleanup_previous_session: {time.time() - cleanup_start:.3f}s")
+
+        init_start = time.time()
         self._initialize_new_session(session)
+        tprint(f"  setSession._initialize_new_session: {time.time() - init_start:.3f}s")
+
         # Inform controller last so it can emit events after canvas is ready
+        ctrl_start = time.time()
         self.controller.set_session(session)
+        tprint(f"  setSession.controller.set_session: {time.time() - ctrl_start:.3f}s")
+
+        conn_start = time.time()
         self._setup_model_connections()
+        tprint(f"  setSession._setup_model_connections: {time.time() - conn_start:.3f}s")
+
+        restore_start = time.time()
         self._restore_ui_state()
+        tprint(f"  setSession._restore_ui_state: {time.time() - restore_start:.3f}s")
+
+        tprint(f"  setSession total: {time.time() - set_start:.3f}s")
     
     def _cleanup_previous_session(self) -> None:
         """Clean up the previous session resources."""
@@ -190,21 +214,28 @@ class WaveScoutWidget(QWidget):
         """Initialize the new session and create models."""
         # Set new session
         self.session = session
+
+        model_start = time.time()
         self.model = WaveformItemModel(session, controller=self.controller, parent=self)
-        
+        tprint(f"    create WaveformItemModel: {time.time() - model_start:.3f}s")
+
         # Create shared selection model
         self._selection_model = QItemSelectionModel(self.model)
-        
+
         # Set model and selection model on all views
+        views_start = time.time()
         self._names_view.setModel(self.model)
         self._names_view.setSelectionModel(self._selection_model)
         self._values_view.setModel(self.model)
         self._values_view.setSelectionModel(self._selection_model)
         self._canvas.setModel(self.model)
-        
+        tprint(f"    set models on views: {time.time() - views_start:.3f}s")
+
         # Set canvas time range from viewport
+        canvas_start = time.time()
         self._canvas.setTimeRange(session.viewport.start_time, session.viewport.end_time)
         self._canvas.setCursorTime(session.cursor_time)
+        tprint(f"    configure canvas: {time.time() - canvas_start:.3f}s")
     
     def set_value_tooltips_enabled(self, enabled: bool) -> None:
         """Enable or disable value tooltips at cursor."""

@@ -80,7 +80,8 @@ class TestNavigateSplitMode:
         scope_current = scope_tree.currentIndex()
         
         if scope_current.isValid():
-            scope_node = scope_current.internalPointer()
+            scope_model = window.design_tree_view.scope_tree_model
+            scope_node = scope_model.data(scope_current, Qt.ItemDataRole.UserRole)
             if scope_node and hasattr(scope_node, 'name'):
                 print(f"Split mode - Scope tree selected: {scope_node.name}")
                 assert scope_node.name == "dut", f"Expected 'dut' scope, got '{scope_node.name}'"
@@ -163,7 +164,8 @@ class TestNavigateSplitMode:
         scope_current = scope_tree.currentIndex()
         
         if scope_current.isValid():
-            scope_node = scope_current.internalPointer()
+            scope_model = window.design_tree_view.scope_tree_model
+            scope_node = scope_model.data(scope_current, Qt.ItemDataRole.UserRole)
             if scope_node and hasattr(scope_node, 'name'):
                 print(f"Signal emission test - Scope selected: {scope_node.name}")
                 assert scope_node.name == "apb_testbench", f"Expected 'apb_testbench', got '{scope_node.name}'"

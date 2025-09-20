@@ -111,7 +111,8 @@ class WaveScoutTestHelper:
         Returns:
             True if signal was successfully added, False otherwise
         """
-        node = idx.internalPointer()
+        model = window.design_tree_view.design_tree_model
+        node = model.data(idx, Qt.ItemDataRole.UserRole)
         if node and not node.is_scope:
             signal_node = window.design_tree_view._create_signal_node(node)
             if signal_node:

@@ -3,6 +3,8 @@
 from PySide6.QtCore import Qt, QModelIndex, QAbstractItemModel, QPersistentModelIndex, QObject, QMimeData, QByteArray
 from typing import overload, List, Optional, Union, Tuple, Any, Sequence, TYPE_CHECKING
 import json
+import time
+from .timing_utils import tprint
 from .data_model import WaveformSession, SignalNode, RenderType
 from .signal_sampling import parse_signal_value
 from .application.events import StructureChangedEvent, FormatChangedEvent
@@ -16,27 +18,33 @@ class WaveformItemModel(QAbstractItemModel):
     """Exposes SignalNode tree to Qt views while keeping dataclass purity."""
 
     def __init__(self, session: WaveformSession, controller: 'WaveformController', parent: Optional[QObject] = None) -> None:
+        init_start = time.time()
         super().__init__(parent)
         self._session = session
         self._controller = controller
         self._headers = ["Signal", "Value", "Format", "Waveform", "Analysis"]
         self._cleanup_done = False
-        
+
         # Get settings manager instance
+        settings_start = time.time()
         self._settings_manager = SettingsManager()
-        
+
         # Cache hierarchy levels for performance
         self._cached_hierarchy_levels = self._settings_manager.get_hierarchy_levels()
-        
+
         # Connect to hierarchy levels changed signal
         self._settings_manager.hierarchy_levels_changed.connect(self._on_hierarchy_levels_changed)
-        
+        tprint(f"      WaveformItemModel settings: {time.time() - settings_start:.3f}s")
+
         # Subscribe to controller events
+        events_start = time.time()
         self._controller.event_bus.subscribe(StructureChangedEvent, self._on_structure_changed)
         self._controller.event_bus.subscribe(FormatChangedEvent, self._on_format_changed)
-        
+        tprint(f"      WaveformItemModel events: {time.time() - events_start:.3f}s")
+
         # Connect to destroyed signal for cleanup
         self.destroyed.connect(self._cleanup)
+        tprint(f"      WaveformItemModel.__init__ total: {time.time() - init_start:.3f}s")
     
     def _cleanup(self) -> None:
         """Clean up event subscriptions before deletion."""

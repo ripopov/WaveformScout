@@ -111,7 +111,7 @@ class MarkerTestHelper:
                 if not idx.isValid():
                     continue
                 
-                node = idx.internalPointer()
+                node = model.data(idx, Qt.ItemDataRole.UserRole)
                 if node and not node.is_scope:
                     # Found a signal - create SignalNode and add it
                     signal_node = window.design_tree_view._create_signal_node(node)

@@ -21,7 +21,9 @@ from . import config
 RENDERING = config.RENDERING
 MARKER_LABELS = config.MARKER_LABELS
 import time as time_module
+import time
 import math
+from .timing_utils import tprint
 from .protocols import WaveformDBProtocol
 from .data_model import SignalRangeCache
 from .time_grid_renderer import TimeGridRenderer, TickInfo
@@ -223,6 +225,7 @@ class WaveformCanvas(QWidget):
         
     def setModel(self, model: Optional[WaveformItemModel]) -> None:
         """Set the data model and connect to its signals."""
+        setmodel_start = time.time()
         # Disconnect from old model and controller if exists
         if self._model:
             try:
@@ -252,7 +255,10 @@ class WaveformCanvas(QWidget):
                 self._model._controller.on("selection_changed", self._on_selection_changed)
             
             # Update visible nodes
+            update_start = time.time()
             self.updateVisibleNodes()
+            tprint(f"      WaveformCanvas.updateVisibleNodes: {time.time() - update_start:.3f}s")
+        tprint(f"      WaveformCanvas.setModel total: {time.time() - setmodel_start:.3f}s")
     
     def _on_model_layout_changed(self) -> None:
         """Handle model layout changes."""
@@ -422,7 +428,12 @@ class WaveformCanvas(QWidget):
         """Paint the waveforms with caching."""
         # Start timing
         paint_start_time = time_module.time()
-        
+
+        # Log first paint event
+        if not hasattr(self, '_first_paint_logged'):
+            self._first_paint_logged = True
+            tprint(f"  WaveformCanvas: First paintEvent triggered")
+
         # Increment frame counter
         self._paint_frame_counter += 1
         
@@ -795,7 +806,12 @@ class WaveformCanvas(QWidget):
         """Render waveforms to an image (runs in thread pool)."""
         # Start timing
         render_start_time = time_module.time()
-        
+
+        # Log first render
+        if not hasattr(self, '_first_render_logged'):
+            self._first_render_logged = True
+            tprint(f"  WaveformCanvas: First render triggered")
+
         # Timing for draw command generation
         draw_cmd_start = time_module.time()
         
@@ -892,9 +908,14 @@ class WaveformCanvas(QWidget):
         
         # Calculate render time
         render_time_ms = (time_module.time() - render_start_time) * 1000
-        
-        
-        
+
+        # Log first render timing
+        if hasattr(self, '_first_render_logged') and self._first_render_logged:
+            self._first_render_logged = False  # Reset flag
+            tprint(f"    First render completed in {render_time_ms:.1f}ms")
+            tprint(f"      Draw commands generation: {(draw_cmd_time):.1f}ms")
+            tprint(f"      Actual painting: {paint_time:.1f}ms")
+
         return image, generation, render_time_ms
     
     
