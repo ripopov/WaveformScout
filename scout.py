@@ -1187,12 +1187,15 @@ class WaveScoutMainWindow(FramelessWindow):
         if session.waveform_db:
             # Defer heavy UI updates to allow UI to remain responsive
             from PySide6.QtCore import QTimer
-            
+
             def update_design_tree():
                 """Update design tree with loaded waveform."""
+                tprint(f"QTimer callback: updating design tree")
                 if session.waveform_db and self.design_tree_view:
                     self.design_tree_view.set_waveform_db(session.waveform_db)
-            
+                tprint(f"QTimer callback: design tree updated")
+
+            tprint(f"Scheduling design tree update via QTimer (10ms delay)")
             QTimer.singleShot(10, update_design_tree)
 
     def _expand_tree_levels(self, tree_view: QTreeView, levels: int, parent=None):
@@ -1316,14 +1319,17 @@ class WaveScoutMainWindow(FramelessWindow):
             # Update design tree if we have a waveform
             # Defer heavy UI updates to allow UI to remain responsive
             from PySide6.QtCore import QTimer
-            
+
             def update_design_tree():
                 """Update design tree with loaded waveform."""
+                tprint(f"QTimer callback: updating design tree")
                 if session.waveform_db and self.design_tree_view:
                     self.design_tree_view.set_waveform_db(session.waveform_db)
-                
+                tprint(f"QTimer callback: design tree updated")
+
                 # Load CLI snippets after design tree is ready
                 if self._loading_state.cli_snippets:
+                    tprint(f"Scheduling CLI snippets load (100ms delay)")
                     QTimer.singleShot(100, lambda: self._load_cli_snippets(self._loading_state.cli_snippets))
                 else:
                     # Check if we should exit after loading (when no snippets to load)
@@ -1334,7 +1340,8 @@ class WaveScoutMainWindow(FramelessWindow):
                             sys.stdout.flush()
                             QApplication.instance().quit()
                         QTimer.singleShot(200, exit_after_load)
-            
+
+            tprint(f"Scheduling design tree update via QTimer (10ms delay)")
             QTimer.singleShot(10, update_design_tree)
     
     def _load_signals_async(self, signal_nodes, handles):

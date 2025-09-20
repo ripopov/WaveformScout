@@ -6,6 +6,7 @@ This model filters out variables and shows only scopes (modules) in the hierarch
 
 from __future__ import annotations
 from typing import Optional, Union, overload, List, Dict, TYPE_CHECKING
+import time
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, Qt, Signal, QObject
 from PySide6.QtGui import QIcon
 
@@ -16,6 +17,7 @@ from .protocols import WaveformDBProtocol
 from .vars_view import VariableData
 from .design_tree_model import DesignTreeNode
 from .icon_cache import get_icon_cache
+from .timing_utils import tprint
 
 
 class ScopeTreeModel(QAbstractItemModel):
@@ -26,37 +28,47 @@ class ScopeTreeModel(QAbstractItemModel):
     
     def __init__(self, waveform_db: Optional[WaveformDBProtocol] = None, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
+        tprint(f"ScopeTreeModel.__init__ called with waveform_db={waveform_db is not None}")
         self.waveform_db = waveform_db
         self.root_node: Optional[DesignTreeNode] = None
         self._icon_cache = get_icon_cache()
-        
+
         if waveform_db:
             self.load_hierarchy(waveform_db)
     
     
     def load_hierarchy(self, waveform_db: WaveformDBProtocol) -> None:
         """Load the hierarchy from waveform database, filtering to show only scopes."""
+        tprint("ScopeTreeModel.load_hierarchy starting")
+        start_time = time.time()
+
         self.beginResetModel()
         self.waveform_db = waveform_db
         self.root_node = None
-        
+
         if waveform_db and waveform_db.hierarchy:
             self._build_scope_hierarchy()
-        
+
         self.endResetModel()
+        tprint(f"  ScopeTreeModel.load_hierarchy completed (took {time.time() - start_time:.3f}s)")
     
     def _build_scope_hierarchy(self) -> None:
         """Build the scope-only tree from the waveform database hierarchy."""
         if not self.waveform_db or not self.waveform_db.hierarchy:
             return
-        
+
+        tprint("  _build_scope_hierarchy starting")
+        build_start = time.time()
+
         hierarchy = self.waveform_db.hierarchy
-        
+
         # Create root node
         self.root_node = DesignTreeNode("TOP", is_scope=True)
-        
+
         # Build hierarchy from top scopes
         self._build_scope_recursive(hierarchy.top_scopes(), self.root_node, hierarchy)
+
+        tprint(f"    _build_scope_hierarchy completed (took {time.time() - build_start:.3f}s)")
     
     def _build_scope_recursive(self, scopes: ScopeIter, parent_node: DesignTreeNode, hierarchy: pyrox.Hierarchy) -> None:
         """Recursively build scope nodes."""

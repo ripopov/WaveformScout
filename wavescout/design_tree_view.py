@@ -7,6 +7,7 @@ and filtered variables in the bottom panel.
 
 from __future__ import annotations
 from typing import Optional, List, cast, Union, TYPE_CHECKING
+import time
 
 if TYPE_CHECKING:
     from pyrox import Var
@@ -29,6 +30,7 @@ from .vars_view import VarsView
 
 from .protocols import WaveformDBProtocol
 from .vars_view import VariableData
+from .timing_utils import tprint
 
 
 class DesignTreeView(QWidget):
@@ -98,27 +100,41 @@ class DesignTreeView(QWidget):
     
     def set_waveform_db(self, waveform_db: Optional['WaveformDBProtocol']) -> None:
         """Set the waveform database and initialize models"""
+        tprint(f"DesignTreeView.set_waveform_db called with waveform_db={waveform_db is not None}")
+        start_time = time.time()
+
         self.waveform_db = waveform_db
-        
+
         if waveform_db is None:
             self.design_tree_model = None
             self.scope_tree_model = None
             self.scope_tree.setModel(None)
             if self.vars_view:
                 self.vars_view.set_variables([])
+            tprint(f"  DesignTreeView cleared (took {time.time() - start_time:.3f}s)")
             return
-        
+
         # Create and set the models
+        model_start = time.time()
         self.design_tree_model = DesignTreeModel(waveform_db)  # Keep for compatibility
-        
+        tprint(f"  Created DesignTreeModel (took {time.time() - model_start:.3f}s)")
+
         # Create scope tree model
+        scope_model_start = time.time()
         self.scope_tree_model = ScopeTreeModel(waveform_db)
+        tprint(f"  Created ScopeTreeModel (took {time.time() - scope_model_start:.3f}s)")
+
+        # Set the model on the view
+        set_model_start = time.time()
         self.scope_tree.setModel(self.scope_tree_model)
         self.scope_tree.selectionModel().currentChanged.connect(self._on_scope_selection_changed)
-        
+        tprint(f"  Set model on scope_tree view (took {time.time() - set_model_start:.3f}s)")
+
         # Clear variables view
         if self.vars_view:
             self.vars_view.set_variables([])
+
+        tprint(f"  DesignTreeView.set_waveform_db completed (total: {time.time() - start_time:.3f}s)")
     
     def _create_signal_node(self, node: DesignTreeNode) -> Optional[SignalNode]:
         """Create a SignalNode from a tree node"""
