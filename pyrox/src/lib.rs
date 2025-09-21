@@ -35,7 +35,7 @@ enum AsyncEvent {
 /// Request types for async operations
 #[derive(Debug)]
 enum AsyncRequest {
-    LoadHeader(String, LoadOptions),
+    LoadHeader(LoadOptions),
     LoadBody,
     LoadSignals(Vec<SignalHandle>),
     Shutdown,
@@ -43,6 +43,7 @@ enum AsyncRequest {
 
 /// Shared state between main thread and worker
 struct SharedState {
+    file_path: Arc<Mutex<String>>,
     hierarchy: Arc<Mutex<Option<Arc<wellen::Hierarchy>>>>,
     wave_source: Arc<Mutex<Option<wellen::SignalSource>>>,
     time_table: Arc<Mutex<Option<Arc<wellen::TimeTable>>>>,
@@ -491,9 +492,12 @@ fn async_worker(
             match request {
                 AsyncRequest::Shutdown => break,
 
-                AsyncRequest::LoadHeader(path, opts) => {
+                AsyncRequest::LoadHeader(opts) => {
                     // Emit start event
                     emit_event(&shared_state, AsyncEvent::HeaderStartLoad);
+
+                    // Get the file path from shared state
+                    let path = shared_state.file_path.lock().unwrap().clone();
 
                     // Load header
                     match viewers::read_header_from_file(&path, &opts) {
@@ -684,6 +688,7 @@ impl Waveform {
 
                 // Create shared state with loaded header and body
                 Arc::new(SharedState {
+                    file_path: Arc::new(Mutex::new(path.clone())),
                     hierarchy: Arc::new(Mutex::new(Some(hier))),
                     wave_source: Arc::new(Mutex::new(Some(body.source))),
                     time_table: Arc::new(Mutex::new(Some(Arc::new(body.time_table)))),
@@ -697,6 +702,7 @@ impl Waveform {
             } else {
                 // Create shared state with header only
                 Arc::new(SharedState {
+                    file_path: Arc::new(Mutex::new(path.clone())),
                     hierarchy: Arc::new(Mutex::new(Some(hier))),
                     wave_source: Arc::new(Mutex::new(None)),
                     time_table: Arc::new(Mutex::new(None)),
@@ -711,6 +717,7 @@ impl Waveform {
         } else {
             // Nothing loaded - store path for later async loading
             Arc::new(SharedState {
+                file_path: Arc::new(Mutex::new(path)),
                 hierarchy: Arc::new(Mutex::new(None)),
                 wave_source: Arc::new(Mutex::new(None)),
                 time_table: Arc::new(Mutex::new(None)),
@@ -798,14 +805,15 @@ impl Waveform {
     }
 
     /// Load header asynchronously
-    fn load_header_async(&self, path: String, multi_threaded: bool, remove_scopes_with_empty_name: bool) -> PyResult<()> {
+    #[pyo3(signature = (multi_threaded = true, remove_scopes_with_empty_name = false))]
+    fn load_header_async(&self, multi_threaded: bool, remove_scopes_with_empty_name: bool) -> PyResult<()> {
         let opts = LoadOptions {
             multi_thread: multi_threaded,
             remove_scopes_with_empty_name,
         };
 
         if let Some(sender) = &self.request_sender {
-            sender.send(AsyncRequest::LoadHeader(path, opts))
+            sender.send(AsyncRequest::LoadHeader(opts))
                 .map_err(|_| PyRuntimeError::new_err("Failed to send async request"))?;
         } else {
             return Err(PyRuntimeError::new_err("Async worker not initialized"));

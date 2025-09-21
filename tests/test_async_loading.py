@@ -82,7 +82,7 @@ class TestAsyncLoading:
         wf.set_async_callback(collector)
 
         # Load header asynchronously
-        wf.load_header_async(test_file, multi_threaded=True, remove_scopes_with_empty_name=False)
+        wf.load_header_async(multi_threaded=True, remove_scopes_with_empty_name=False)
         assert collector.wait_for_header(timeout=10)
 
         # Check header events

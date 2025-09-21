@@ -120,7 +120,6 @@ class Waveform:
     def set_async_callback(self, callback: Optional[AsyncCallback]) -> None: ...
     def load_header_async(
         self,
-        path: str,
         multi_threaded: bool = True,
         remove_scopes_with_empty_name: bool = False
     ) -> None: ...
