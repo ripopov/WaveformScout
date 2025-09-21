@@ -110,14 +110,10 @@ impl Hierarchy {
 
     /// Get the first variable that references this signal (0-based index)
     fn get_var_by_signal_ref(&self, signal_ref: usize) -> Option<Var> {
-        // Get the unique signals vars and find the one for this signal
-        // The index in get_unique_signals_vars corresponds to 0-based signal refs
-        let vars = self.0.get_unique_signals_vars();
-        if signal_ref < vars.len() {
-            vars[signal_ref].as_ref().map(|var| Var(var.clone()))
-        } else {
-            None
-        }
+        // Convert 0-based index to wellen SignalRef (which is 1-based internally)
+        let wellen_ref = wellen::SignalRef::from_index(signal_ref)?;
+        self.0.get_var_by_signal_ref(wellen_ref)
+            .map(|var_ref| Var(self.0[var_ref].clone()))
     }
 
     /// Get the date metadata from the waveform file
@@ -458,8 +454,6 @@ struct Waveform {
 
     // Signal caches - using 0-based signal refs as keys
     signal_cache: FxHashMap<usize, Arc<wellen::Signal>>,
-    // Cache unique signals to avoid repeated expensive calls
-    unique_signals_cache: Option<Vec<Option<wellen::Var>>>,
     // Cache Python Signal objects for identity consistency
     python_signal_cache: FxHashMap<usize, Py<Signal>>,
 }
@@ -498,7 +492,6 @@ impl Waveform {
             time_table,
             body_continuation,
             signal_cache: FxHashMap::default(),
-            unique_signals_cache: None,
             python_signal_cache: FxHashMap::default(),
         })
     }
@@ -661,12 +654,6 @@ impl Waveform {
         // Ensure body is loaded
         self.load_body()?;
 
-        // Get or build the unique signals cache
-        if self.unique_signals_cache.is_none() {
-            self.unique_signals_cache = Some(self.hierarchy.0.get_unique_signals_vars());
-        }
-
-        let unique_vars = self.unique_signals_cache.as_ref().unwrap();
         let wave_source = self.wave_source.as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
         let time_table = self.time_table.as_ref()
@@ -682,10 +669,9 @@ impl Waveform {
                 continue;
             }
 
-            // Get var for this handle
-            if handle < unique_vars.len() {
-                if let Some(var) = &unique_vars[handle] {
-                    let wellen_ref = var.signal_ref();
+            // Convert 0-based handle to wellen SignalRef and check if var exists
+            if let Some(wellen_ref) = wellen::SignalRef::from_index(handle) {
+                if let Some(_var_ref) = self.hierarchy.0.get_var_by_signal_ref(wellen_ref) {
                     signal_refs_to_load.push(wellen_ref);
                     handle_map.insert(wellen_ref, handle);
                 }
@@ -722,7 +708,6 @@ impl Waveform {
     /// Clear the signal cache (for testing)
     fn clear_signal_cache(&mut self) {
         self.signal_cache.clear();
-        self.unique_signals_cache = None;
         self.python_signal_cache.clear();
     }
 
@@ -764,20 +749,10 @@ impl Waveform {
         // Ensure body is loaded
         self.load_body()?;
 
-        // Get or build the unique signals cache
-        if self.unique_signals_cache.is_none() {
-            self.unique_signals_cache = Some(self.hierarchy.0.get_unique_signals_vars());
-        }
-
-        // Get the var from the cached unique signals list
-        let var = self.unique_signals_cache.as_ref()
-            .and_then(|unique_vars| {
-                if signal_ref < unique_vars.len() {
-                    unique_vars[signal_ref].as_ref().map(|v| Var(v.clone()))
-                } else {
-                    None
-                }
-            })
+        // Convert 0-based handle to wellen SignalRef and get the var
+        let wellen_ref = wellen::SignalRef::from_index(signal_ref)
+            .ok_or_else(|| PyRuntimeError::new_err(format!("Invalid signal ref {}", signal_ref)))?;
+        let _var_ref = self.hierarchy.0.get_var_by_signal_ref(wellen_ref)
             .ok_or_else(|| PyRuntimeError::new_err(format!("No variable found for signal ref {}", signal_ref)))?;
 
         // Load the signal
@@ -785,9 +760,6 @@ impl Waveform {
             .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
         let time_table = self.time_table.as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
-
-        // Get the actual wellen SignalRef from the var
-        let wellen_ref = var.0.signal_ref();
 
         // Release GIL while loading signal (heavy I/O operation)
         let hierarchy = &self.hierarchy.0;
