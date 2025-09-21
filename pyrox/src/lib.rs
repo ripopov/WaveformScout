@@ -109,7 +109,7 @@ impl Hierarchy {
     }
 
     /// Get the first variable that references this signal (0-based index)
-    fn get_var_by_signal_ref(&self, signal_ref: usize) -> Option<Var> {
+    fn get_var_by_signal_ref(&self, signal_ref: SignalHandle) -> Option<Var> {
         // Convert 0-based index to wellen SignalRef (which is 1-based internally)
         let wellen_ref = wellen::SignalRef::from_index(signal_ref)?;
         self.0.get_var_by_signal_ref(wellen_ref)
@@ -453,9 +453,9 @@ struct Waveform {
     body_continuation: Option<Box<ReadBodyContinuation<std::io::BufReader<std::fs::File>>>>,
 
     // Signal caches - using 0-based signal refs as keys
-    signal_cache: FxHashMap<usize, Arc<wellen::Signal>>,
+    signal_cache: FxHashMap<SignalHandle, Arc<wellen::Signal>>,
     // Cache Python Signal objects for identity consistency
-    python_signal_cache: FxHashMap<usize, Py<Signal>>,
+    python_signal_cache: FxHashMap<SignalHandle, Py<Signal>>,
 }
 
 #[pymethods]
@@ -650,7 +650,7 @@ impl Waveform {
     }
 
     /// Load and cache signals by their 0-based handles
-    fn preload_signals_by_handles(&mut self, handles: Vec<usize>, py: Python) -> PyResult<usize> {
+    fn preload_signals_by_handles(&mut self, handles: Vec<SignalHandle>, py: Python) -> PyResult<usize> {
         // Ensure body is loaded
         self.load_body()?;
 
@@ -701,7 +701,7 @@ impl Waveform {
     }
 
     /// Check if a signal is cached by its 0-based handle
-    fn is_signal_cached(&self, signal_ref: usize) -> bool {
+    fn is_signal_cached(&self, signal_ref: SignalHandle) -> bool {
         self.signal_cache.contains_key(&signal_ref)
     }
 
@@ -721,7 +721,7 @@ impl Waveform {
     }
 
     /// Get a signal by its signal reference (0-based), using cache
-    fn get_signal_by_ref<'py>(&mut self, signal_ref: usize, py: Python<'py>) -> PyResult<Bound<'py, Signal>> {
+    fn get_signal_by_ref<'py>(&mut self, signal_ref: SignalHandle, py: Python<'py>) -> PyResult<Bound<'py, Signal>> {
         // Check Python signal cache first for object identity
         if let Some(cached_py_signal) = self.python_signal_cache.get(&signal_ref) {
             // Return cached Python Signal object
