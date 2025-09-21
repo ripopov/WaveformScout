@@ -1,15 +1,18 @@
 mod convert;
 mod design_tree_model;
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::thread;
 
 use convert::Mappable;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use num_bigint::BigUint;
 use pyo3::types::PyInt;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use rustc_hash::FxHashMap;
-use crossbeam_channel::{unbounded, Sender, Receiver};
 use tokio::runtime::Runtime;
 
 use wellen::{
@@ -43,16 +46,16 @@ enum AsyncRequest {
 
 /// Shared state between main thread and worker
 struct SharedState {
-    file_path: Arc<Mutex<String>>,
-    hierarchy: Arc<Mutex<Option<Arc<wellen::Hierarchy>>>>,
-    wave_source: Arc<Mutex<Option<wellen::SignalSource>>>,
-    time_table: Arc<Mutex<Option<Arc<wellen::TimeTable>>>>,
-    body_continuation: Arc<Mutex<Option<Box<ReadBodyContinuation<std::io::BufReader<std::fs::File>>>>>>,
-    signal_cache: Arc<Mutex<FxHashMap<SignalHandle, Arc<wellen::Signal>>>>,
-    python_signal_cache: Arc<Mutex<FxHashMap<SignalHandle, Py<Signal>>>>,
-    callback: Arc<Mutex<Option<PyObject>>>,
-    header_loaded: Arc<AtomicBool>,
-    body_loaded: Arc<AtomicBool>,
+    file_path: String,
+    hierarchy: Mutex<Option<Arc<wellen::Hierarchy>>>,
+    wave_source: Mutex<Option<wellen::SignalSource>>,
+    time_table: Mutex<Option<Arc<wellen::TimeTable>>>,
+    body_continuation: Mutex<Option<Box<ReadBodyContinuation<std::io::BufReader<std::fs::File>>>>>,
+    signal_cache: Mutex<FxHashMap<SignalHandle, Arc<wellen::Signal>>>,
+    python_signal_cache: Mutex<FxHashMap<SignalHandle, Py<Signal>>>,
+    callback: Mutex<Option<PyObject>>,
+    header_loaded: AtomicBool,
+    body_loaded: AtomicBool,
 }
 
 pub trait PyErrExt<T> {
@@ -94,7 +97,11 @@ impl Hierarchy {
         let mut all_vars = Vec::new();
 
         // Recursively collect variables from all scopes
-        fn collect_vars(scope_ref: wellen::ScopeRef, hier: &wellen::Hierarchy, vars: &mut Vec<wellen::Var>) {
+        fn collect_vars(
+            scope_ref: wellen::ScopeRef,
+            hier: &wellen::Hierarchy,
+            vars: &mut Vec<wellen::Var>,
+        ) {
             // Add variables from this scope
             for var_ref in hier[scope_ref].vars(hier) {
                 vars.push(hier[var_ref].clone());
@@ -141,16 +148,17 @@ impl Hierarchy {
         };
 
         // Use the hierarchy's lookup_var method (expects &str references)
-        self.0.lookup_var(path, &var_name).map(|var_ref| {
-            Var(self.0[var_ref].clone())
-        })
+        self.0
+            .lookup_var(path, &var_name)
+            .map(|var_ref| Var(self.0[var_ref].clone()))
     }
 
     /// Get the first variable that references this signal (0-based index)
     fn get_var_by_signal_ref(&self, signal_ref: SignalHandle) -> Option<Var> {
         // Convert 0-based index to wellen SignalRef (which is 1-based internally)
         let wellen_ref = wellen::SignalRef::from_index(signal_ref)?;
-        self.0.get_var_by_signal_ref(wellen_ref)
+        self.0
+            .get_var_by_signal_ref(wellen_ref)
             .map(|var_ref| Var(self.0[var_ref].clone()))
     }
 
@@ -480,10 +488,7 @@ impl TimeTable {
 }
 
 /// Worker thread function for async operations
-fn async_worker(
-    receiver: Receiver<AsyncRequest>,
-    shared_state: Arc<SharedState>,
-) {
+fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>) {
     // Create a tokio runtime for this thread
     let runtime = Runtime::new().expect("Failed to create Tokio runtime");
 
@@ -497,7 +502,7 @@ fn async_worker(
                     emit_event(&shared_state, AsyncEvent::HeaderStartLoad);
 
                     // Get the file path from shared state
-                    let path = shared_state.file_path.lock().unwrap().clone();
+                    let path = shared_state.file_path.clone();
 
                     // Load header
                     match viewers::read_header_from_file(&path, &opts) {
@@ -506,7 +511,8 @@ fn async_worker(
 
                             // Update shared state
                             *shared_state.hierarchy.lock().unwrap() = Some(hier.clone());
-                            *shared_state.body_continuation.lock().unwrap() = Some(Box::new(header_result.body));
+                            *shared_state.body_continuation.lock().unwrap() =
+                                Some(Box::new(header_result.body));
                             shared_state.header_loaded.store(true, Ordering::Relaxed);
 
                             // Emit loaded event
@@ -531,7 +537,8 @@ fn async_worker(
                                 Ok(body) => {
                                     // Update shared state
                                     *shared_state.wave_source.lock().unwrap() = Some(body.source);
-                                    *shared_state.time_table.lock().unwrap() = Some(Arc::new(body.time_table));
+                                    *shared_state.time_table.lock().unwrap() =
+                                        Some(Arc::new(body.time_table));
                                     shared_state.body_loaded.store(true, Ordering::Relaxed);
 
                                     // Clear signal cache
@@ -546,10 +553,16 @@ fn async_worker(
                                 }
                             }
                         } else {
-                            emit_event(&shared_state, AsyncEvent::Error("Hierarchy not loaded".to_string()));
+                            emit_event(
+                                &shared_state,
+                                AsyncEvent::Error("Hierarchy not loaded".to_string()),
+                            );
                         }
                     } else {
-                        emit_event(&shared_state, AsyncEvent::Error("Body continuation not available".to_string()));
+                        emit_event(
+                            &shared_state,
+                            AsyncEvent::Error("Body continuation not available".to_string()),
+                        );
                     }
                 }
 
@@ -567,18 +580,28 @@ fn async_worker(
                         // Load signals one by one
                         for handle in handles.iter() {
                             // Check if already cached
-                            let is_cached = shared_state.signal_cache.lock().unwrap().contains_key(handle);
+                            let is_cached = shared_state
+                                .signal_cache
+                                .lock()
+                                .unwrap()
+                                .contains_key(handle);
 
                             if !is_cached {
                                 // Load signal - need to access wave_source for each signal
                                 let signal_ref = SignalRef::from_index(*handle).unwrap();
 
                                 // We need to load signals within the lock scope
-                                if let Some(source) = &mut *shared_state.wave_source.lock().unwrap() {
+                                if let Some(source) = &mut *shared_state.wave_source.lock().unwrap()
+                                {
                                     if let Some(hier) = &hierarchy {
-                                        let signals = source.load_signals(&[signal_ref], hier, true);
+                                        let signals =
+                                            source.load_signals(&[signal_ref], hier, true);
                                         if let Some((_ref, sig)) = signals.into_iter().next() {
-                                            shared_state.signal_cache.lock().unwrap().insert(*handle, Arc::new(sig));
+                                            shared_state
+                                                .signal_cache
+                                                .lock()
+                                                .unwrap()
+                                                .insert(*handle, Arc::new(sig));
                                             loaded_handles.push(*handle);
                                         }
                                     }
@@ -591,7 +614,10 @@ fn async_worker(
                             emit_event(&shared_state, AsyncEvent::SignalLoaded(loaded_handles));
                         }
                     } else {
-                        emit_event(&shared_state, AsyncEvent::Error("Wave source or hierarchy not loaded".to_string()));
+                        emit_event(
+                            &shared_state,
+                            AsyncEvent::Error("Wave source or hierarchy not loaded".to_string()),
+                        );
                     }
                 }
             }
@@ -688,45 +714,45 @@ impl Waveform {
 
                 // Create shared state with loaded header and body
                 Arc::new(SharedState {
-                    file_path: Arc::new(Mutex::new(path.clone())),
-                    hierarchy: Arc::new(Mutex::new(Some(hier))),
-                    wave_source: Arc::new(Mutex::new(Some(body.source))),
-                    time_table: Arc::new(Mutex::new(Some(Arc::new(body.time_table)))),
-                    body_continuation: Arc::new(Mutex::new(None)),
-                    signal_cache: Arc::new(Mutex::new(FxHashMap::default())),
-                    python_signal_cache: Arc::new(Mutex::new(FxHashMap::default())),
-                    callback: Arc::new(Mutex::new(None)),
-                    header_loaded: Arc::new(AtomicBool::new(true)),
-                    body_loaded: Arc::new(AtomicBool::new(true)),
+                    file_path: path.clone(),
+                    hierarchy: Mutex::new(Some(hier)),
+                    wave_source: Mutex::new(Some(body.source)),
+                    time_table: Mutex::new(Some(Arc::new(body.time_table))),
+                    body_continuation: Mutex::new(None),
+                    signal_cache: Mutex::new(FxHashMap::default()),
+                    python_signal_cache: Mutex::new(FxHashMap::default()),
+                    callback: Mutex::new(None),
+                    header_loaded: AtomicBool::new(true),
+                    body_loaded: AtomicBool::new(true),
                 })
             } else {
                 // Create shared state with header only
                 Arc::new(SharedState {
-                    file_path: Arc::new(Mutex::new(path.clone())),
-                    hierarchy: Arc::new(Mutex::new(Some(hier))),
-                    wave_source: Arc::new(Mutex::new(None)),
-                    time_table: Arc::new(Mutex::new(None)),
-                    body_continuation: Arc::new(Mutex::new(Some(Box::new(header_result.body)))),
-                    signal_cache: Arc::new(Mutex::new(FxHashMap::default())),
-                    python_signal_cache: Arc::new(Mutex::new(FxHashMap::default())),
-                    callback: Arc::new(Mutex::new(None)),
-                    header_loaded: Arc::new(AtomicBool::new(true)),
-                    body_loaded: Arc::new(AtomicBool::new(false)),
+                    file_path: path.clone(),
+                    hierarchy: Mutex::new(Some(hier)),
+                    wave_source: Mutex::new(None),
+                    time_table: Mutex::new(None),
+                    body_continuation: Mutex::new(Some(Box::new(header_result.body))),
+                    signal_cache: Mutex::new(FxHashMap::default()),
+                    python_signal_cache: Mutex::new(FxHashMap::default()),
+                    callback: Mutex::new(None),
+                    header_loaded: AtomicBool::new(true),
+                    body_loaded: AtomicBool::new(false),
                 })
             }
         } else {
             // Nothing loaded - store path for later async loading
             Arc::new(SharedState {
-                file_path: Arc::new(Mutex::new(path)),
-                hierarchy: Arc::new(Mutex::new(None)),
-                wave_source: Arc::new(Mutex::new(None)),
-                time_table: Arc::new(Mutex::new(None)),
-                body_continuation: Arc::new(Mutex::new(None)),
-                signal_cache: Arc::new(Mutex::new(FxHashMap::default())),
-                python_signal_cache: Arc::new(Mutex::new(FxHashMap::default())),
-                callback: Arc::new(Mutex::new(None)),
-                header_loaded: Arc::new(AtomicBool::new(false)),
-                body_loaded: Arc::new(AtomicBool::new(false)),
+                file_path: path,
+                hierarchy: Mutex::new(None),
+                wave_source: Mutex::new(None),
+                time_table: Mutex::new(None),
+                body_continuation: Mutex::new(None),
+                signal_cache: Mutex::new(FxHashMap::default()),
+                python_signal_cache: Mutex::new(FxHashMap::default()),
+                callback: Mutex::new(None),
+                header_loaded: AtomicBool::new(false),
+                body_loaded: AtomicBool::new(false),
             })
         };
 
@@ -754,16 +780,22 @@ impl Waveform {
         }
 
         // Get body continuation from shared state
-        let body_continuation = self.shared_state.body_continuation.lock().unwrap().take()
-            .ok_or_else(|| PyRuntimeError::new_err("Body continuation already consumed or not available"))?;
+        let body_continuation = self
+            .shared_state
+            .body_continuation
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or_else(|| {
+                PyRuntimeError::new_err("Body continuation already consumed or not available")
+            })?;
 
         // Release GIL while reading body (heavy I/O operation)
         let hierarchy = self.get_hierarchy_internal()?;
         let body = Python::with_gil(|py| {
-            py.allow_threads(|| {
-                viewers::read_body(*body_continuation, &hierarchy, None)
-            })
-        }).map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+            py.allow_threads(|| viewers::read_body(*body_continuation, &hierarchy, None))
+        })
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
 
         // Update shared state
         *self.shared_state.wave_source.lock().unwrap() = Some(body.source);
@@ -772,7 +804,11 @@ impl Waveform {
 
         // Clear signal cache when body is loaded
         self.shared_state.signal_cache.lock().unwrap().clear();
-        self.shared_state.python_signal_cache.lock().unwrap().clear();
+        self.shared_state
+            .python_signal_cache
+            .lock()
+            .unwrap()
+            .clear();
 
         Ok(())
     }
@@ -791,11 +827,13 @@ impl Waveform {
     /// Get the hierarchy (returns None if not loaded)
     #[getter]
     fn hierarchy(&self) -> Option<Hierarchy> {
-        self.shared_state.hierarchy.lock().unwrap()
+        self.shared_state
+            .hierarchy
+            .lock()
+            .unwrap()
             .as_ref()
             .map(|h| Hierarchy(h.clone()))
     }
-
 
     /// Set the async callback for receiving events
     #[pyo3(signature = (callback=None))]
@@ -806,14 +844,19 @@ impl Waveform {
 
     /// Load header asynchronously
     #[pyo3(signature = (multi_threaded = true, remove_scopes_with_empty_name = false))]
-    fn load_header_async(&self, multi_threaded: bool, remove_scopes_with_empty_name: bool) -> PyResult<()> {
+    fn load_header_async(
+        &self,
+        multi_threaded: bool,
+        remove_scopes_with_empty_name: bool,
+    ) -> PyResult<()> {
         let opts = LoadOptions {
             multi_thread: multi_threaded,
             remove_scopes_with_empty_name,
         };
 
         if let Some(sender) = &self.request_sender {
-            sender.send(AsyncRequest::LoadHeader(opts))
+            sender
+                .send(AsyncRequest::LoadHeader(opts))
                 .map_err(|_| PyRuntimeError::new_err("Failed to send async request"))?;
         } else {
             return Err(PyRuntimeError::new_err("Async worker not initialized"));
@@ -825,7 +868,8 @@ impl Waveform {
     /// Load body asynchronously
     fn load_body_async(&self) -> PyResult<()> {
         if let Some(sender) = &self.request_sender {
-            sender.send(AsyncRequest::LoadBody)
+            sender
+                .send(AsyncRequest::LoadBody)
                 .map_err(|_| PyRuntimeError::new_err("Failed to send async request"))?;
         } else {
             return Err(PyRuntimeError::new_err("Async worker not initialized"));
@@ -837,7 +881,8 @@ impl Waveform {
     /// Load signals asynchronously
     fn load_signals_async(&self, handles: Vec<SignalHandle>) -> PyResult<()> {
         if let Some(sender) = &self.request_sender {
-            sender.send(AsyncRequest::LoadSignals(handles))
+            sender
+                .send(AsyncRequest::LoadSignals(handles))
                 .map_err(|_| PyRuntimeError::new_err("Failed to send async request"))?;
         } else {
             return Err(PyRuntimeError::new_err("Async worker not initialized"));
@@ -858,7 +903,8 @@ impl Waveform {
 
         // Get time table from shared state
         let shared_tt = self.shared_state.time_table.lock().unwrap();
-        let time_table = shared_tt.as_ref()
+        let time_table = shared_tt
+            .as_ref()
             .map(|tt| TimeTable(tt.clone()))
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
@@ -869,9 +915,7 @@ impl Waveform {
         // Use shared wave_source
         let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
         let mut signal = if let Some(wave_source) = &mut *wave_source_guard {
-            py.allow_threads(|| {
-                wave_source.load_signals(&[signal_ref], &hierarchy, true)
-            })
+            py.allow_threads(|| wave_source.load_signals(&[signal_ref], &hierarchy, true))
         } else {
             return Err(PyRuntimeError::new_err("Wave source not available"));
         };
@@ -900,12 +944,11 @@ impl Waveform {
                 .ok_or(PyRuntimeError::new_err("Path could not be parsed!")),
         );
         let hierarchy = self.get_hierarchy_internal()?;
-        let maybe_var =
-            hierarchy
-                .lookup_var(path, names?)
-                .ok_or(PyRuntimeError::new_err(format!(
-                    "No var at path {abs_hierarchy_path}"
-                )))?;
+        let maybe_var = hierarchy
+            .lookup_var(path, names?)
+            .ok_or(PyRuntimeError::new_err(format!(
+                "No var at path {abs_hierarchy_path}"
+            )))?;
         let var = &hierarchy[maybe_var];
         self.get_signal(&Var(var.clone()), py)
     }
@@ -922,11 +965,13 @@ impl Waveform {
 
         // Get wave_source and time_table from shared state
         let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let wave_source = wave_source_guard.as_mut()
+        let wave_source = wave_source_guard
+            .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
 
         let shared_tt = self.shared_state.time_table.lock().unwrap();
-        let time_table = shared_tt.as_ref()
+        let time_table = shared_tt
+            .as_ref()
             .map(|tt| TimeTable(tt.clone()))
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
@@ -934,9 +979,8 @@ impl Waveform {
 
         // Release GIL while loading signals (heavy I/O operation)
         let hierarchy = self.get_hierarchy_internal()?;
-        let signals = py.allow_threads(|| {
-            wave_source.load_signals(&signal_refs, &hierarchy, multithreaded)
-        });
+        let signals =
+            py.allow_threads(|| wave_source.load_signals(&signal_refs, &hierarchy, multithreaded));
 
         // Build a map from SignalRef to Signal for quick lookup
         // This ensures we return signals in the same order as requested
@@ -982,13 +1026,18 @@ impl Waveform {
     }
 
     /// Load and cache signals by their 0-based handles
-    fn preload_signals_by_handles(&mut self, handles: Vec<SignalHandle>, py: Python) -> PyResult<usize> {
+    fn preload_signals_by_handles(
+        &mut self,
+        handles: Vec<SignalHandle>,
+        py: Python,
+    ) -> PyResult<usize> {
         // Ensure body is loaded
         self.load_body()?;
 
         // Get wave_source from shared state
         let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let wave_source = wave_source_guard.as_mut()
+        let wave_source = wave_source_guard
+            .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
 
         // Collect wellen signal refs and their corresponding 0-based handles
@@ -1015,14 +1064,13 @@ impl Waveform {
         drop(signal_cache); // Release lock before loading
 
         if signal_refs_to_load.is_empty() {
-            return Ok(0);  // Nothing to load
+            return Ok(0); // Nothing to load
         }
 
         // Load signals in batch
         let hierarchy = self.get_hierarchy_internal()?;
-        let loaded_signals = py.allow_threads(|| {
-            wave_source.load_signals(&signal_refs_to_load, &hierarchy, false)
-        });
+        let loaded_signals =
+            py.allow_threads(|| wave_source.load_signals(&signal_refs_to_load, &hierarchy, false));
 
         // Cache the loaded signals with their 0-based handles
         let mut loaded_count = 0;
@@ -1039,18 +1087,29 @@ impl Waveform {
 
     /// Check if a signal is cached by its 0-based handle
     fn is_signal_cached(&self, signal_ref: SignalHandle) -> bool {
-        self.shared_state.signal_cache.lock().unwrap().contains_key(&signal_ref)
+        self.shared_state
+            .signal_cache
+            .lock()
+            .unwrap()
+            .contains_key(&signal_ref)
     }
 
     /// Clear the signal cache (for testing)
     fn clear_signal_cache(&mut self) {
         self.shared_state.signal_cache.lock().unwrap().clear();
-        self.shared_state.python_signal_cache.lock().unwrap().clear();
+        self.shared_state
+            .python_signal_cache
+            .lock()
+            .unwrap()
+            .clear();
     }
 
-
     /// Get a signal by its signal reference (0-based), using cache
-    fn get_signal_by_ref<'py>(&mut self, signal_ref: SignalHandle, py: Python<'py>) -> PyResult<Bound<'py, Signal>> {
+    fn get_signal_by_ref<'py>(
+        &mut self,
+        signal_ref: SignalHandle,
+        py: Python<'py>,
+    ) -> PyResult<Bound<'py, Signal>> {
         // Check Python signal cache first for object identity
         let python_cache = self.shared_state.python_signal_cache.lock().unwrap();
         if let Some(cached_py_signal) = python_cache.get(&signal_ref) {
@@ -1067,7 +1126,8 @@ impl Waveform {
 
             // Get time table
             let shared_tt = self.shared_state.time_table.lock().unwrap();
-            let time_table = shared_tt.as_ref()
+            let time_table = shared_tt
+                .as_ref()
                 .map(|tt| TimeTable(tt.clone()))
                 .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
@@ -1081,7 +1141,10 @@ impl Waveform {
             )?;
 
             // Cache the Python object for future calls
-            self.shared_state.python_signal_cache.lock().unwrap()
+            self.shared_state
+                .python_signal_cache
+                .lock()
+                .unwrap()
                 .insert(signal_ref, py_signal.clone().unbind());
             return Ok(py_signal);
         }
@@ -1094,31 +1157,36 @@ impl Waveform {
         let wellen_ref = wellen::SignalRef::from_index(signal_ref)
             .ok_or_else(|| PyRuntimeError::new_err(format!("Invalid signal ref {}", signal_ref)))?;
         let hierarchy = self.get_hierarchy_internal()?;
-        let _var_ref = hierarchy.get_var_by_signal_ref(wellen_ref)
-            .ok_or_else(|| PyRuntimeError::new_err(format!("No variable found for signal ref {}", signal_ref)))?;
+        let _var_ref = hierarchy.get_var_by_signal_ref(wellen_ref).ok_or_else(|| {
+            PyRuntimeError::new_err(format!("No variable found for signal ref {}", signal_ref))
+        })?;
 
         // Load the signal
         let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let wave_source = wave_source_guard.as_mut()
+        let wave_source = wave_source_guard
+            .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
 
         // Get time table
         let shared_tt = self.shared_state.time_table.lock().unwrap();
-        let time_table = shared_tt.as_ref()
+        let time_table = shared_tt
+            .as_ref()
             .map(|tt| TimeTable(tt.clone()))
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
         // Release GIL while loading signal (heavy I/O operation)
         let hierarchy = self.get_hierarchy_internal()?;
-        let mut signals = py.allow_threads(|| {
-            wave_source.load_signals(&[wellen_ref], &hierarchy, true)
-        });
+        let mut signals =
+            py.allow_threads(|| wave_source.load_signals(&[wellen_ref], &hierarchy, true));
 
         let (_sr, sig) = signals.swap_remove(0);
         let signal_arc = Arc::new(sig);
 
         // Cache the loaded signal
-        self.shared_state.signal_cache.lock().unwrap()
+        self.shared_state
+            .signal_cache
+            .lock()
+            .unwrap()
             .insert(signal_ref, signal_arc.clone());
 
         // Create and cache the Python signal object
@@ -1131,7 +1199,10 @@ impl Waveform {
         )?;
 
         // Cache the Python object for future calls
-        self.shared_state.python_signal_cache.lock().unwrap()
+        self.shared_state
+            .python_signal_cache
+            .lock()
+            .unwrap()
             .insert(signal_ref, py_signal.clone().unbind());
 
         Ok(py_signal)
@@ -1141,7 +1212,10 @@ impl Waveform {
 impl Waveform {
     /// Internal helper to get hierarchy - returns error if not loaded
     fn get_hierarchy_internal(&self) -> PyResult<Arc<wellen::Hierarchy>> {
-        self.shared_state.hierarchy.lock().unwrap()
+        self.shared_state
+            .hierarchy
+            .lock()
+            .unwrap()
             .clone()
             .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not loaded yet"))
     }
@@ -1229,12 +1303,18 @@ impl Signal {
                 // Exact match - start from the next change
                 // Find the corresponding offset in time_indices
                 let time_table_idx = idx as TimeTableIdx;
-                time_indices.iter().position(|&t| t > time_table_idx).unwrap_or(time_indices.len())
-            },
+                time_indices
+                    .iter()
+                    .position(|&t| t > time_table_idx)
+                    .unwrap_or(time_indices.len())
+            }
             Err(idx) => {
                 // Not exact match - idx is the insertion point
                 let time_table_idx = idx as TimeTableIdx;
-                time_indices.iter().position(|&t| t >= time_table_idx).unwrap_or(time_indices.len())
+                time_indices
+                    .iter()
+                    .position(|&t| t >= time_table_idx)
+                    .unwrap_or(time_indices.len())
             }
         };
 
@@ -1252,10 +1332,14 @@ impl Signal {
     ///
     /// Returns:
     ///     QueryResult containing value and transition information
-    pub fn query_signal<'a>(&self, query_time: wellen::Time, py: Python<'a>) -> PyResult<Bound<'a, QueryResult>> {
+    pub fn query_signal<'a>(
+        &self,
+        query_time: wellen::Time,
+        py: Python<'a>,
+    ) -> PyResult<Bound<'a, QueryResult>> {
         // Binary search to find the time index
         let time_idx = match self.all_times.0.as_ref().binary_search(&query_time) {
-            Ok(idx) => idx as TimeTableIdx,          // Exact match
+            Ok(idx) => idx as TimeTableIdx, // Exact match
             Err(idx) => {
                 if idx == 0 {
                     // Query time is before first timestamp
@@ -1275,7 +1359,9 @@ impl Signal {
             let actual_time = self.all_times.0.get(offset_time_idx as usize).cloned();
 
             // Get the signal value (last value in the time step)
-            let signal_value = self.signal.get_value_at(data_offset, data_offset.elements - 1);
+            let signal_value = self
+                .signal
+                .get_value_at(data_offset, data_offset.elements - 1);
             let value = convert_signal_value_to_py(signal_value, py)?;
 
             (Some(value), actual_time)
