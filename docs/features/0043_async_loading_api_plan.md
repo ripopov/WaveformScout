@@ -24,8 +24,10 @@ The feature request identifies critical performance requirements for waveform lo
 #### Waveform Class Changes
 1. `Waveform::new()` - Conditional loading (header/body can be disabled)
 2. `body_loaded()`, `header_loaded()` - State inspection methods
-3. `load_header_async()`, `load_body_async()` - Async loading methods
-4. `load_signals_async(handles: Vec<SignalHandle>)` - Batch signal loading
+3. `set_async_callback(callback: Optional<PyObject>)` - Register single callback for all async events
+4. `load_header_async()` - Async header loading (uses registered callback)
+5. `load_body_async()` - Async body loading (uses registered callback)
+6. `load_signals_async(handles: Vec<SignalHandle>)` - Batch signal loading (uses registered callback)
 
 #### Event System
 Events to be generated:
@@ -35,6 +37,14 @@ Events to be generated:
 - `BodyLoaded` - Body loading completed
 - `SignalStartLoad(Vec<SignalHandle>)` - Signal loading initiated
 - `SignalLoaded(Vec<SignalHandle>)` - Signals loaded successfully
+
+#### API Design Rationale
+**Single Callback Registration Model:**
+- One callback handles all events (simpler than per-request callbacks)
+- Avoids ambiguity when batching requests on worker thread
+- Python side can implement event dispatching logic
+- Callback can be changed or removed at any time
+- Worker thread always uses the currently registered callback
 
 #### Performance Optimizations
 - Batch signal loading (more efficient than one-by-one)
@@ -101,15 +111,18 @@ Current implementation already uses:
 2. Modify `Waveform` struct:
    - Add loading state flags (header_loaded, body_loaded)
    - Add request sender channel
+   - Add registered callback: `Option<PyObject>`
    - Convert caches to thread-safe types (Arc<Mutex<>>)
 
 3. New async methods:
-   - `load_header_async(callback: Option<PyObject>)`
-   - `load_body_async(callback: Option<PyObject>)`
-   - `load_signals_async(handles: Vec<SignalHandle>, callback: Option<PyObject>)`
+   - `set_async_callback(callback: Option<PyObject>)` - Register/unregister callback
+   - `load_header_async()` - Queue header load request
+   - `load_body_async()` - Queue body load request
+   - `load_signals_async(handles: Vec<SignalHandle>)` - Queue signal load request
 
 4. Event callback system:
-   - Define Event enum
+   - Define Event enum (as specified in requirements)
+   - Single registered callback receives all events
    - Callback wrapper that acquires GIL only for notification
    - Queue request types (LoadHeader, LoadBody, LoadSignals)
 
@@ -122,10 +135,21 @@ Worker Thread Loop:
 3. For LoadSignals: merge all handle lists
 4. Execute load operation (no GIL held)
 5. Update internal state (hierarchy, wave_source, caches)
-6. Acquire GIL briefly
-7. Call Python callback with event
-8. Release GIL
-9. Continue loop
+6. Check if callback is registered
+7. If callback exists:
+   a. Acquire GIL briefly
+   b. Call registered Python callback with event
+   c. Release GIL
+8. Continue loop
+```
+
+**Callback Registration:**
+```
+set_async_callback(callback):
+1. Store callback in Arc<Mutex<Option<PyObject>>>
+2. Worker thread reads this before each event emission
+3. If None, events are silently dropped
+4. If Some(callback), event is delivered
 ```
 
 **Thread Safety Requirements:**
@@ -138,12 +162,15 @@ Worker Thread Loop:
 
 **Test Coverage:**
 1. Basic async loading flow (header → body → signals)
-2. Callback execution verification
-3. Cache behavior (skip cached signals)
-4. Queue coalescing (multiple signal requests)
-5. Error handling (missing files, corrupt data)
-6. State consistency (header_loaded, body_loaded)
-7. Thread safety (concurrent requests)
+2. Callback registration and unregistration
+3. Callback execution verification for all event types
+4. Changing callbacks mid-operation
+5. Cache behavior (skip cached signals)
+6. Queue coalescing (multiple signal requests)
+7. Error handling (missing files, corrupt data)
+8. State consistency (header_loaded, body_loaded)
+9. Thread safety (concurrent requests)
+10. Operation without callback (no crash, silent operation)
 
 ### Performance Considerations
 
