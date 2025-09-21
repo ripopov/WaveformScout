@@ -198,12 +198,6 @@ class WaveformDB:
         # Use the new Rust method to get var by signal ref
         return self.hierarchy.get_var_by_signal_ref(handle)  # type: ignore[attr-defined, no-any-return]
 
-    def get_all_vars_for_handle(self, handle: SignalHandle) -> List[pyrox.Var]:
-        """Get all variables (including aliases) for a handle."""
-        if not self.hierarchy:
-            return []
-        # Use the new Rust method to get all vars for signal ref
-        return self.hierarchy.get_all_vars_by_signal_ref(handle)  # type: ignore[attr-defined, no-any-return]
 
     def get_time_table(self) -> Optional[pyrox.TimeTable]:
         """Get the time table from the waveform. Returns pyrox TimeTable object."""

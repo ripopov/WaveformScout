@@ -59,15 +59,18 @@ def test_alias_detection(vcd_with_aliases):
     
     # Verify they share the same handle (key finding!)
     assert handle1 == handle2, f"Aliases should share same handle, got {handle1} and {handle2}"
-    
-    # Verify both variables are in the same handle's list
-    vars_for_handle = db.get_all_vars_for_handle(handle1)
-    
-    # Check that both variable names are present
-    var_names = [v.full_name(hierarchy) for v in vars_for_handle]
-    assert "TOP.core_clk" in var_names, "TOP.core_clk should be in handle's variable list"
-    assert "TOP.tb_top.core_clk" in var_names, "TOP.tb_top.core_clk should be in handle's variable list"
-    assert len(vars_for_handle) >= 2, f"Handle should have at least 2 aliased variables, got {len(vars_for_handle)}"
+
+    # Verify both variable names are present in the vars lists we found
+    # Note: Both vars_with_handle1 and vars_with_handle2 should contain both aliases
+    # since they share the same handle
+    var_names1 = [v.full_name(hierarchy) for v in vars_with_handle1]
+    var_names2 = [v.full_name(hierarchy) for v in vars_with_handle2]
+
+    # Both lists should be identical since they're from the same handle
+    assert set(var_names1) == set(var_names2), "Var lists for same handle should be identical"
+    assert "TOP.core_clk" in var_names1, "TOP.core_clk should be in handle's variable list"
+    assert "TOP.tb_top.core_clk" in var_names1, "TOP.tb_top.core_clk should be in handle's variable list"
+    assert len(vars_with_handle1) >= 2, f"Handle should have at least 2 aliased variables, got {len(vars_with_handle1)}"
 
 
 def test_add_both_aliases_to_waveform(vcd_with_aliases, qtbot):

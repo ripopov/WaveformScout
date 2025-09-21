@@ -120,47 +120,6 @@ impl Hierarchy {
         }
     }
 
-    /// Get all variables (aliases) for a signal (0-based index)
-    fn get_all_vars_by_signal_ref(&self, signal_ref: usize) -> Vec<Var> {
-        // Empirically, when Python passes signal_ref X, we need to look for wellen ref X
-        // So even though SignalRef::from_index expects 1-based, and signal_ref is 0-based,
-        // we just pass signal_ref directly. This works because the actual signal identifiers
-        // in the file start from 1, not 0, so there's an inherent off-by-one
-        if let Some(wellen_ref) = SignalRef::from_index(signal_ref) {
-            // Collect all vars that have the same signal_ref
-            let mut result = Vec::new();
-
-            // Helper function to recursively collect variables
-            fn collect_matching_vars(
-                scope_ref: wellen::ScopeRef,
-                hier: &wellen::Hierarchy,
-                target_ref: wellen::SignalRef,
-                result: &mut Vec<Var>
-            ) {
-                // Check variables in this scope
-                for var_ref in hier[scope_ref].vars(hier) {
-                    let var = &hier[var_ref];
-                    if var.signal_ref() == target_ref {
-                        result.push(Var(var.clone()));
-                    }
-                }
-                // Recurse into child scopes
-                for child_ref in hier[scope_ref].scopes(hier) {
-                    collect_matching_vars(child_ref, hier, target_ref, result);
-                }
-            }
-
-            // Start from all top-level scopes
-            for scope_ref in self.0.scopes() {
-                collect_matching_vars(scope_ref, &self.0, wellen_ref, &mut result);
-            }
-
-            result
-        } else {
-            Vec::new()
-        }
-    }
-
     /// Get the date metadata from the waveform file
     fn date(&self) -> String {
         self.0.date().to_string()
@@ -499,7 +458,6 @@ struct Waveform {
 
     // Signal caches - using 0-based signal refs as keys
     signal_cache: FxHashMap<usize, Arc<wellen::Signal>>,
-    signal_to_vars: FxHashMap<usize, Vec<Var>>,
     // Cache unique signals to avoid repeated expensive calls
     unique_signals_cache: Option<Vec<Option<wellen::Var>>>,
     // Cache Python Signal objects for identity consistency
@@ -540,7 +498,6 @@ impl Waveform {
             time_table,
             body_continuation,
             signal_cache: FxHashMap::default(),
-            signal_to_vars: FxHashMap::default(),
             unique_signals_cache: None,
             python_signal_cache: FxHashMap::default(),
         })
@@ -731,11 +688,6 @@ impl Waveform {
                     let wellen_ref = var.signal_ref();
                     signal_refs_to_load.push(wellen_ref);
                     handle_map.insert(wellen_ref, handle);
-
-                    // Also update signal_to_vars map
-                    if !self.signal_to_vars.contains_key(&handle) {
-                        self.signal_to_vars.insert(handle, vec![Var(var.clone())]);
-                    }
                 }
             }
         }
@@ -770,7 +722,6 @@ impl Waveform {
     /// Clear the signal cache (for testing)
     fn clear_signal_cache(&mut self) {
         self.signal_cache.clear();
-        self.signal_to_vars.clear();
         self.unique_signals_cache = None;
         self.python_signal_cache.clear();
     }
@@ -782,55 +733,6 @@ impl Waveform {
         // This method is provided for API compatibility and future optimization.
         drop(signals);
         Ok(())
-    }
-
-    /// Build the mapping from signal refs to variables
-    fn build_signal_to_vars_map(&mut self) {
-        self.signal_to_vars.clear();
-
-        // Use get_unique_signals_vars to get the mapping
-        // The index in this vector IS the 0-based signal handle used by Python
-        let unique_vars = self.hierarchy.0.get_unique_signals_vars();
-
-        for (zero_based_idx, var_opt) in unique_vars.iter().enumerate() {
-            if let Some(var) = var_opt {
-                // Also collect all aliases for this signal
-                let signal_ref = var.signal_ref();
-
-                // Collect all vars with this signal_ref
-                let mut vars_with_same_ref = Vec::new();
-
-                // Helper function to recursively collect variables
-                fn collect_vars_with_ref(
-                    scope_ref: wellen::ScopeRef,
-                    hier: &wellen::Hierarchy,
-                    target_ref: wellen::SignalRef,
-                    result: &mut Vec<Var>
-                ) {
-                    // Check variables in this scope
-                    for var_ref in hier[scope_ref].vars(hier) {
-                        let var = &hier[var_ref];
-                        if var.signal_ref() == target_ref {
-                            result.push(Var(var.clone()));
-                        }
-                    }
-
-                    // Recurse into child scopes
-                    for child_ref in hier[scope_ref].scopes(hier) {
-                        collect_vars_with_ref(child_ref, hier, target_ref, result);
-                    }
-                }
-
-                // Collect all vars with this signal ref
-                for scope_ref in self.hierarchy.0.scopes() {
-                    collect_vars_with_ref(scope_ref, &self.hierarchy.0, signal_ref, &mut vars_with_same_ref);
-                }
-
-                if !vars_with_same_ref.is_empty() {
-                    self.signal_to_vars.insert(zero_based_idx, vars_with_same_ref);
-                }
-            }
-        }
     }
 
     /// Get a signal by its signal reference (0-based), using cache
@@ -862,28 +764,20 @@ impl Waveform {
         // Ensure body is loaded
         self.load_body()?;
 
-        // Check if we have the mapping for this signal ref, if not build it lazily
-        if !self.signal_to_vars.contains_key(&signal_ref) {
-            // Get or build the unique signals cache
-            if self.unique_signals_cache.is_none() {
-                self.unique_signals_cache = Some(self.hierarchy.0.get_unique_signals_vars());
-            }
-
-            // Get the var from the cached unique signals list
-            if let Some(unique_vars) = &self.unique_signals_cache {
-                if signal_ref < unique_vars.len() {
-                    if let Some(var) = &unique_vars[signal_ref] {
-                        // For now, just add the single var to the map
-                        // In the future, we could find all aliases if needed
-                        self.signal_to_vars.insert(signal_ref, vec![Var(var.clone())]);
-                    }
-                }
-            }
+        // Get or build the unique signals cache
+        if self.unique_signals_cache.is_none() {
+            self.unique_signals_cache = Some(self.hierarchy.0.get_unique_signals_vars());
         }
 
-        // Get the first var for this signal from mapping
-        let var = self.signal_to_vars.get(&signal_ref)
-            .and_then(|vars| vars.first())
+        // Get the var from the cached unique signals list
+        let var = self.unique_signals_cache.as_ref()
+            .and_then(|unique_vars| {
+                if signal_ref < unique_vars.len() {
+                    unique_vars[signal_ref].as_ref().map(|v| Var(v.clone()))
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| PyRuntimeError::new_err(format!("No variable found for signal ref {}", signal_ref)))?;
 
         // Load the signal

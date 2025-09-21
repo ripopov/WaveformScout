@@ -21,7 +21,6 @@ def test_waveformdb_conforms_to_protocol():
     assert hasattr(db, 'find_handle_by_name')
     assert hasattr(db, 'get_handle_for_var')
     assert hasattr(db, 'get_var')
-    assert hasattr(db, 'get_all_vars_for_handle')
     assert hasattr(db, 'iter_handles_and_vars')
     assert hasattr(db, 'get_var_bitwidth')
     assert hasattr(db, 'get_time_table')
@@ -165,7 +164,6 @@ def test_protocol_methods_with_empty_db():
     assert db.find_handle_by_path("any.path") is None
     assert db.find_handle_by_name("any_name") is None
     assert db.get_var(0) is None
-    assert db.get_all_vars_for_handle(0) == []
     assert list(db.iter_handles_and_vars()) == []
     assert db.get_var_bitwidth(0) == 32  # Default
     assert db.get_time_table() is None

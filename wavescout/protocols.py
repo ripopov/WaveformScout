@@ -68,17 +68,6 @@ class WaveformDBProtocol(Protocol):
         """
         ...
     
-    def get_all_vars_for_handle(self, handle: SignalHandle) -> list[pyrox.Var]:
-        """Get all variables (including aliases) for a handle.
-
-        Args:
-            handle: Signal handle
-
-        Returns:
-            List of pyrox Var objects (may be empty)
-        """
-        ...
-    
     def iter_handles_and_vars(self) -> ABCIterable[tuple[SignalHandle, list[pyrox.Var]]]:
         """Iterate over all handles and their associated variables.
         
