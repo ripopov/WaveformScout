@@ -81,25 +81,23 @@ class TestAsyncLoading:
         collector = AsyncEventCollector()
         wf.set_async_callback(collector)
 
-        # Load header asynchronously
+        # Submit both header and body loading requests without waiting
         wf.load_header_async(multi_threaded=True, remove_scopes_with_empty_name=False)
-        assert collector.wait_for_header(timeout=10)
+        wf.load_body_async()
 
-        # Check header events
+        # Now wait for both operations to complete
+        assert collector.wait_for_header(timeout=10), "Header loading timed out"
+        assert collector.wait_for_body(timeout=10), "Body loading timed out"
+
+        # Check that we got all expected events
         event_types = [e["type"] for e in collector.events]
         assert "HeaderStartLoad" in event_types
         assert "HeaderLoaded" in event_types
-        assert wf.header_loaded()
-
-        # Clear events and load body
-        collector.clear()
-        wf.load_body_async()
-        assert collector.wait_for_body(timeout=10)
-
-        # Check body events
-        event_types = [e["type"] for e in collector.events]
         assert "BodyStartLoad" in event_types
         assert "BodyLoaded" in event_types
+
+        # Verify final state
+        assert wf.header_loaded()
         assert wf.body_loaded()
         assert wf.time_table is not None
 
@@ -167,27 +165,26 @@ class TestAsyncLoading:
         # Get some signal handles to test signal loading
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
-        if len(all_vars) > 0:
-            # Get a few signal handles
-            handles = [v.signal_ref() for v in all_vars[:5]]
+        # Get a few signal handles
+        handles = [v.signal_ref() for v in all_vars[:5]]
 
-            # Clear events
-            collector.clear()
+        # Clear events
+        collector.clear()
 
-            # Load signals async
-            wf.load_signals_async(handles)
-            assert collector.wait_for_signals(timeout=10)
+        # Load signals async
+        wf.load_signals_async(handles)
+        assert collector.wait_for_signals(timeout=10)
 
-            # Check signal events
-            event_types = [e["type"] for e in collector.events]
-            assert "SignalStartLoad" in event_types
-            assert "SignalLoaded" in event_types
+        # Check signal events
+        event_types = [e["type"] for e in collector.events]
+        assert "SignalStartLoad" in event_types
+        assert "SignalLoaded" in event_types
 
-            # Check handles in events
-            for event in collector.events:
-                if event["type"] in ["SignalStartLoad", "SignalLoaded"]:
-                    assert "handles" in event
-                    assert isinstance(event["handles"], list)
+        # Check handles in events
+        for event in collector.events:
+            if event["type"] in ["SignalStartLoad", "SignalLoaded"]:
+                assert "handles" in event
+                assert isinstance(event["handles"], list)
 
     def test_changing_callbacks_mid_operation(self):
         """Test changing callbacks during async operations"""
@@ -204,12 +201,15 @@ class TestAsyncLoading:
         wf.load_body_async()
 
         # Quickly change callback
-        time.sleep(0.01)  # Small delay to ensure operation started
+        time.sleep(0.001)  # Minimal delay to ensure operation started
         wf.set_async_callback(collector2)
 
-        # Wait for completion
+        # Wait for completion - check both collectors efficiently
         # Either collector might get the events depending on timing
-        time.sleep(2)
+        for _ in range(50):  # Check for up to 0.5 seconds
+            if collector1.body_loaded.is_set() or collector2.body_loaded.is_set():
+                break
+            time.sleep(0.01)
 
         # At least one collector should have events
         assert len(collector1.events) > 0 or len(collector2.events) > 0
@@ -225,32 +225,31 @@ class TestAsyncLoading:
         # Get some signal handles
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
-        if len(all_vars) > 0:
-            handles = [v.signal_ref() for v in all_vars[:3]]
+        handles = [v.signal_ref() for v in all_vars[:3]]
 
-            # Load signals first time
-            wf.load_signals_async(handles)
-            assert collector.wait_for_signals(timeout=10)
+        # Load signals first time
+        wf.load_signals_async(handles)
+        assert collector.wait_for_signals(timeout=10)
 
-            # Check loaded handles
-            first_load_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
-            assert len(first_load_events) > 0
-            first_loaded_handles = first_load_events[0].get("handles", [])
+        # Check loaded handles
+        first_load_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
+        assert len(first_load_events) > 0
+        first_loaded_handles = first_load_events[0].get("handles", [])
 
-            # Clear and load same signals again
-            collector.clear()
-            wf.load_signals_async(handles)
+        # Clear and load same signals again
+        collector.clear()
+        wf.load_signals_async(handles)
 
-            # Wait a bit to see if any events are generated
-            time.sleep(0.5)
+        # Wait briefly for any events (cached signals should be quick)
+        time.sleep(0.05)
 
-            # Should either have no SignalLoaded event, or empty handles list
-            # (since signals are already cached)
-            loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
-            if loaded_events:
-                # If there's an event, handles should be empty or smaller
-                second_loaded_handles = loaded_events[0].get("handles", [])
-                assert len(second_loaded_handles) < len(first_loaded_handles)
+        # Should either have no SignalLoaded event, or empty handles list
+        # (since signals are already cached)
+        loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
+        if loaded_events:
+            # If there's an event, handles should be empty or smaller
+            second_loaded_handles = loaded_events[0].get("handles", [])
+            assert len(second_loaded_handles) < len(first_loaded_handles)
 
     def test_queue_coalescing(self):
         """Test that multiple signal requests are coalesced"""
@@ -263,24 +262,23 @@ class TestAsyncLoading:
         # Get signal handles
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
-        if len(all_vars) >= 10:
-            # Send multiple signal load requests rapidly
-            handles1 = [v.signal_ref() for v in all_vars[0:3]]
-            handles2 = [v.signal_ref() for v in all_vars[3:6]]
-            handles3 = [v.signal_ref() for v in all_vars[6:9]]
+        # Send multiple signal load requests rapidly
+        handles1 = [v.signal_ref() for v in all_vars[0:3]]
+        handles2 = [v.signal_ref() for v in all_vars[3:6]]
+        handles3 = [v.signal_ref() for v in all_vars[6:9]]
 
-            # Send requests without waiting
-            wf.load_signals_async(handles1)
-            wf.load_signals_async(handles2)
-            wf.load_signals_async(handles3)
+        # Send requests without waiting
+        wf.load_signals_async(handles1)
+        wf.load_signals_async(handles2)
+        wf.load_signals_async(handles3)
 
-            # Wait for signals
-            time.sleep(2)
+        # Wait for signals to complete
+        assert collector.wait_for_signals(timeout=5)
 
-            # Check events - we should see start/loaded events
-            event_types = [e["type"] for e in collector.events]
-            assert "SignalStartLoad" in event_types
-            assert "SignalLoaded" in event_types
+        # Check events - we should see start/loaded events
+        event_types = [e["type"] for e in collector.events]
+        assert "SignalStartLoad" in event_types
+        assert "SignalLoaded" in event_types
 
     def test_state_consistency(self):
         """Test that header_loaded and body_loaded states are consistent"""
@@ -311,8 +309,8 @@ class TestAsyncLoading:
         # No callback set - operations should work silently
         wf.load_body_async()
 
-        # Wait a bit for operation to complete
-        time.sleep(1)
+        # Brief wait for operation to potentially complete
+        time.sleep(0.1)
 
         # Should be able to check state
         # Note: async operation may or may not complete without verification
@@ -337,23 +335,22 @@ class TestAsyncLoading:
         # Get many signal handles
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
-        if len(all_vars) >= 20:
-            # Create multiple handle lists
-            handle_groups = [
-                [v.signal_ref() for v in all_vars[i:i+5]]
-                for i in range(0, 20, 5)
-            ]
+        # Create multiple handle lists
+        handle_groups = [
+            [v.signal_ref() for v in all_vars[i:i+5]]
+            for i in range(0, 20, 5)
+        ]
 
-            # Send all requests concurrently
-            for handles in handle_groups:
-                wf.load_signals_async(handles)
+        # Send all requests concurrently
+        for handles in handle_groups:
+            wf.load_signals_async(handles)
 
-            # Wait for completion
-            time.sleep(3)
+        # Wait for signals to complete
+        assert collector.wait_for_signals(timeout=5)
 
-            # Should have received events without crashes
-            assert len(collector.events) > 0
+        # Should have received events without crashes
+        assert len(collector.events) > 0
 
-            # Check for any error events
-            error_events = [e for e in collector.events if e["type"] == "Error"]
-            assert len(error_events) == 0
+        # Check for any error events
+        error_events = [e for e in collector.events if e["type"] == "Error"]
+        assert len(error_events) == 0
