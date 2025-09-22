@@ -69,7 +69,7 @@ impl<T> PyErrExt<T> for wellen::Result<T> {
 }
 
 #[pymodule]
-fn pyrox(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
+fn pyrox(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Var>()?;
     m.add_class::<VarIndex>()?;
     m.add_class::<VarIter>()?;
@@ -82,6 +82,10 @@ fn pyrox(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<QueryResult>()?;
     m.add_class::<TimeTable>()?;
     m.add_class::<design_tree_model::PyDesignTreeModel>()?;
+
+    // Export SignalHandle as a type alias (using the int type object)
+    m.add("SignalHandle", py.get_type::<pyo3::types::PyInt>())?;
+
     Ok(())
 }
 
