@@ -166,7 +166,7 @@ class TestAsyncLoading:
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
         # Get a few signal handles
-        handles = [v.signal_ref() for v in all_vars[:5]]
+        handles = [v.signal_handle() for v in all_vars[:5]]
 
         # Clear events
         collector.clear()
@@ -225,7 +225,7 @@ class TestAsyncLoading:
         # Get some signal handles
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
-        handles = [v.signal_ref() for v in all_vars[:3]]
+        handles = [v.signal_handle() for v in all_vars[:3]]
 
         # Load signals first time
         wf.load_signals_async(handles)
@@ -263,9 +263,9 @@ class TestAsyncLoading:
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
         # Send multiple signal load requests rapidly
-        handles1 = [v.signal_ref() for v in all_vars[0:3]]
-        handles2 = [v.signal_ref() for v in all_vars[3:6]]
-        handles3 = [v.signal_ref() for v in all_vars[6:9]]
+        handles1 = [v.signal_handle() for v in all_vars[0:3]]
+        handles2 = [v.signal_handle() for v in all_vars[3:6]]
+        handles3 = [v.signal_handle() for v in all_vars[6:9]]
 
         # Send requests without waiting
         wf.load_signals_async(handles1)
@@ -337,7 +337,7 @@ class TestAsyncLoading:
         all_vars = list(hier.all_vars())
         # Create multiple handle lists
         handle_groups = [
-            [v.signal_ref() for v in all_vars[i:i+5]]
+            [v.signal_handle() for v in all_vars[i:i+5]]
             for i in range(0, 20, 5)
         ]
 
@@ -354,3 +354,53 @@ class TestAsyncLoading:
         # Check for any error events
         error_events = [e for e in collector.events if e["type"] == "Error"]
         assert len(error_events) == 0
+
+    # def test_sync_load(self):
+    #     test_file = "test_inputs/analog_signals.vcd"
+    #     wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
+    #     hier = wf.hierarchy
+    #     all_vars = list(hier.all_vars())
+    #     print(all_vars[0].name(hier))
+    #     var = all_vars[0]
+    #     # Measure signal loading time
+    #     start_time = time.time()
+    #     signal = wf.get_signal(var)
+    #     end_time = time.time()
+    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+    #
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #     start_time = time.time()
+    #     signal = wf.get_signal(var)
+    #     end_time = time.time()
+    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+    #
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #     start_time = time.time()
+    #     signal = wf.get_signal(var)
+    #     end_time = time.time()
+    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+    #
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #     start_time = time.time()
+    #     signal = wf.get_signal(var)
+    #     end_time = time.time()
+    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+    #
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #     start_time = time.time()
+    #     signal = wf.get_signal(var)
+    #     end_time = time.time()
+    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
+    #
+    #     print(f"num changes = {len(signal.all_changes())}  ")
+    #     print(f"Signal load time: {load_time_ms:.2f} ms")
+    #

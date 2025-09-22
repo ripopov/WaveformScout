@@ -158,9 +158,9 @@ impl Hierarchy {
     }
 
     /// Get the first variable that references this signal (0-based index)
-    fn get_var_by_signal_ref(&self, signal_ref: SignalHandle) -> Option<Var> {
-        // Convert 0-based index to wellen SignalRef (which is 1-based internally)
-        let wellen_ref = wellen::SignalRef::from_index(signal_ref)?;
+    fn get_var_by_signal_ref(&self, handle: SignalHandle) -> Option<Var> {
+        // Convert 0-based handle to wellen SignalRef (which is 1-based internally)
+        let wellen_ref = wellen::SignalRef::from_index(handle)?;
         self.0
             .get_var_by_signal_ref(wellen_ref)
             .map(|var_ref| Var(self.0[var_ref].clone()))
@@ -355,9 +355,9 @@ impl Var {
     }
 
     /// Get the signal reference as an integer for internal use.
-    /// Two vars with the same `signal_ref()` are aliases.
+    /// Two vars with the same `signal_handle()` are aliases.
     /// Returns a 0-based `SignalHandle` for Python code.
-    pub fn signal_ref(&self) -> SignalHandle {
+    pub fn signal_handle(&self) -> SignalHandle {
         self.0.signal_ref().index()
     }
 }
@@ -368,7 +368,7 @@ impl Var {
 // 3. We cannot reliably compare Var structs by their internal fields
 //
 // Instead, use:
-// - signal_ref() to check if two Vars reference the same signal (var1.signal_ref() == var2.signal_ref())
+// - signal_handle() to check if two Vars reference the same signal (var1.signal_handle() == var2.signal_handle())
 // - full_name() to get a unique identifier for a Var
 
 #[pyclass]
@@ -1090,12 +1090,12 @@ impl Waveform {
     }
 
     /// Check if a signal is cached by its 0-based handle
-    fn is_signal_cached(&self, signal_ref: SignalHandle) -> bool {
+    fn is_signal_cached(&self, handle: SignalHandle) -> bool {
         self.shared_state
             .signal_cache
             .lock()
             .unwrap()
-            .contains_key(&signal_ref)
+            .contains_key(&handle)
     }
 
     /// Clear the signal cache (for testing)
@@ -1108,15 +1108,15 @@ impl Waveform {
             .clear();
     }
 
-    /// Get a signal by its signal reference (0-based), using cache
+    /// Get a signal by its handle (0-based), using cache
     fn get_signal_by_ref<'py>(
         &mut self,
-        signal_ref: SignalHandle,
+        handle: SignalHandle,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, Signal>> {
         // Check Python signal cache first for object identity
         let python_cache = self.shared_state.python_signal_cache.lock().unwrap();
-        if let Some(cached_py_signal) = python_cache.get(&signal_ref) {
+        if let Some(cached_py_signal) = python_cache.get(&handle) {
             // Return cached Python Signal object
             return Ok(cached_py_signal.bind(py).clone());
         }
@@ -1124,7 +1124,7 @@ impl Waveform {
 
         // Check Rust signal cache
         let signal_cache = self.shared_state.signal_cache.lock().unwrap();
-        if let Some(cached_signal) = signal_cache.get(&signal_ref) {
+        if let Some(cached_signal) = signal_cache.get(&handle) {
             let cached_signal = cached_signal.clone();
             drop(signal_cache);
 
@@ -1149,7 +1149,7 @@ impl Waveform {
                 .python_signal_cache
                 .lock()
                 .unwrap()
-                .insert(signal_ref, py_signal.clone().unbind());
+                .insert(handle, py_signal.clone().unbind());
             return Ok(py_signal);
         }
         drop(signal_cache);
@@ -1158,11 +1158,11 @@ impl Waveform {
         self.load_body()?;
 
         // Convert 0-based handle to wellen SignalRef and get the var
-        let wellen_ref = wellen::SignalRef::from_index(signal_ref)
-            .ok_or_else(|| PyRuntimeError::new_err(format!("Invalid signal ref {}", signal_ref)))?;
+        let wellen_ref = wellen::SignalRef::from_index(handle)
+            .ok_or_else(|| PyRuntimeError::new_err(format!("Invalid handle {}", handle)))?;
         let hierarchy = self.get_hierarchy_internal()?;
         let _var_ref = hierarchy.get_var_by_signal_ref(wellen_ref).ok_or_else(|| {
-            PyRuntimeError::new_err(format!("No variable found for signal ref {}", signal_ref))
+            PyRuntimeError::new_err(format!("No variable found for handle {}", handle))
         })?;
 
         // Load the signal
@@ -1191,7 +1191,7 @@ impl Waveform {
             .signal_cache
             .lock()
             .unwrap()
-            .insert(signal_ref, signal_arc.clone());
+            .insert(handle, signal_arc.clone());
 
         // Create and cache the Python signal object
         let py_signal = Bound::new(
@@ -1207,7 +1207,7 @@ impl Waveform {
             .python_signal_cache
             .lock()
             .unwrap()
-            .insert(signal_ref, py_signal.clone().unbind());
+            .insert(handle, py_signal.clone().unbind());
 
         Ok(py_signal)
     }

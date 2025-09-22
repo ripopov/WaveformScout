@@ -73,7 +73,7 @@ class WaveformDB:
         def collect_vars_recursive(scope: Scope) -> None:
             # Add direct variables
             for var in scope.vars(hierarchy):
-                signal_ref = var.signal_ref()
+                signal_ref = var.signal_handle()
                 if signal_ref not in refs:
                     refs.append(signal_ref)
             # Recurse into child scopes
@@ -357,7 +357,7 @@ class WaveformDB:
         # Get unique signal refs from all vars
         refs = set()
         for var in self.hierarchy.all_vars():
-            refs.add(var.signal_ref())
+            refs.add(var.signal_handle())
         return list(refs)
 
     def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalHandle]:
@@ -369,8 +369,8 @@ class WaveformDB:
         Returns:
             Handle ID if found, None otherwise
         """
-        # SignalHandle is just the signal_ref() value
-        return var.signal_ref()
+        # SignalHandle is just the signal_handle() value
+        return var.signal_handle()
 
     def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
         """Find handle by variable name.
@@ -386,7 +386,7 @@ class WaveformDB:
         # Use the new Rust method to find var by full name
         var = self.hierarchy.find_var_by_full_name(name)  # type: ignore[attr-defined]
         if var:
-            return var.signal_ref()  # type: ignore[no-any-return]
+            return var.signal_handle()  # type: ignore[no-any-return]
         return None
 
     def get_var_to_handle_mapping(self) -> Dict[pyrox.Var, int]:
@@ -399,7 +399,7 @@ class WaveformDB:
             return {}
         var_to_handle = {}
         for var in self.hierarchy.all_vars():
-            var_to_handle[var] = var.signal_ref()
+            var_to_handle[var] = var.signal_handle()
         return var_to_handle
 
     def get_next_available_handle(self) -> int:
@@ -409,7 +409,7 @@ class WaveformDB:
         # Count unique signal refs
         refs = set()
         for var in self.hierarchy.all_vars():
-            refs.add(var.signal_ref())
+            refs.add(var.signal_handle())
         return len(refs)
 
     def clear_signal_cache(self) -> None:
@@ -446,7 +446,7 @@ class WaveformDB:
         # Group vars by signal ref
         handle_to_vars: Dict[int, List[pyrox.Var]] = {}
         for var in self.hierarchy.all_vars():
-            ref = var.signal_ref()
+            ref = var.signal_handle()
             if ref not in handle_to_vars:
                 handle_to_vars[ref] = []
             handle_to_vars[ref].append(var)
