@@ -5,7 +5,7 @@ This model filters out variables and shows only scopes (modules) in the hierarch
 """
 
 from __future__ import annotations
-from typing import Optional, Union, overload, List, Dict, TYPE_CHECKING
+from typing import Optional, Union, overload, List, Dict, TYPE_CHECKING, Any
 import time
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, Qt, Signal, QObject
 from PySide6.QtGui import QIcon
@@ -13,11 +13,36 @@ from PySide6.QtGui import QIcon
 if TYPE_CHECKING:
     from pyrox import ScopeIter
 import pyrox
+from pyrox import SignalHandle
 from .protocols import WaveformDBProtocol
 from .vars_view import VariableData
-from .design_tree_model import DesignTreeNode
 from .icon_cache import get_icon_cache
 from .timing_utils import tprint
+
+
+class DesignTreeNode:
+    """Tree node for representing the design hierarchy.
+
+    This class is used by ScopeTreeModel and tests that need to create nodes directly.
+    """
+
+    def __init__(self, name: str, is_scope: bool = False, var_type: str = "",
+                 bit_range: str = "", parent: Optional['DesignTreeNode'] = None):
+        """Initialize a tree node representing either a scope (module) or signal."""
+        self.name = name
+        self.is_scope = is_scope
+        self.var_type = var_type
+        self.bit_range = bit_range
+        self.parent = parent
+        self.children: list['DesignTreeNode'] = []
+        self.var_handle: Optional[SignalHandle] = None
+        self.var: Optional[Any] = None
+        self.scope: Optional[Any] = None
+
+    def add_child(self, child: 'DesignTreeNode') -> None:
+        """Add a child node to this node and set this node as its parent."""
+        child.parent = self
+        self.children.append(child)
 
 
 class ScopeTreeModel(QAbstractItemModel):

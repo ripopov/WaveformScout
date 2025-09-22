@@ -57,8 +57,8 @@ class WaveScoutTestHelper:
             return (
                 window.wave_widget.session is not None
                 and window.wave_widget.session.waveform_db is not None
-                and window.design_tree_view.design_tree_model is not None
-                and window.design_tree_view.design_tree_model.rowCount() > 0
+                and window.design_tree_view.scope_tree_model is not None
+                and window.design_tree_view.scope_tree_model.rowCount() > 0
             )
         qtbot.waitUntil(_loaded, timeout=timeout)
     
@@ -111,7 +111,7 @@ class WaveScoutTestHelper:
         Returns:
             True if signal was successfully added, False otherwise
         """
-        model = window.design_tree_view.design_tree_model
+        model = window.design_tree_view.scope_tree_model
         node = model.data(idx, Qt.ItemDataRole.UserRole)
         if node and not node.is_scope:
             signal_node = window.design_tree_view._create_signal_node(node)
@@ -742,7 +742,7 @@ def test_split_mode_inner_scope_selection(qtbot):
         return (
             window.wave_widget.session is not None
             and window.wave_widget.session.waveform_db is not None
-            and window.design_tree_view.design_tree_model is not None
+            and window.design_tree_view.scope_tree_model is not None
         )
     qtbot.waitUntil(_loaded, timeout=5000)
     

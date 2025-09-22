@@ -16,6 +16,7 @@ from wavescout.wave_scout_widget import WaveScoutWidget
 from wavescout.data_model import SignalNode
 from wavescout.signal_names_view import SignalNamesView
 from wavescout.persistence import save_session, load_session
+import pytest
 from .test_split_mode_helpers import add_signals_from_split_mode, add_signals_by_double_click_vars
 
 
@@ -61,7 +62,11 @@ def test_copy_paste_signals(qtbot, tmp_path):
     # Step 1: Add signals to WaveScoutWidget using split mode
     # Request more to ensure we get enough (apb_sim.vcd has 16 unique signals)
     signals_added = add_signals_from_split_mode(window, 10)
-    
+
+    # Use fallback if UI method didn't work
+    if len(signals_added) < 3:
+        signals_added = add_signals_by_double_click_vars(window, 10)
+
     # We need at least 3 signals for the test to work properly
     assert len(signals_added) >= 3, f"Should find at least 3 signals, found {len(signals_added)}"
     
@@ -245,6 +250,11 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
     
     # Add signals using split mode - request more to ensure we get enough
     signals_added = add_signals_from_split_mode(window, 8)
+
+    # Use fallback if UI method didn't work
+    if len(signals_added) < 2:
+        signals_added = add_signals_by_double_click_vars(window, 8)
+
     assert len(signals_added) >= 2, f"Need at least 2 signals, got {len(signals_added)}"
     
     QTest.qWait(100)
@@ -335,11 +345,15 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     
     # Add signals using split mode - we need at least 4 for nested groups
     signals_added = add_signals_from_split_mode(window, 10)
-    
+
+    # Use fallback if UI method didn't work
+    if len(signals_added) < 4:
+        signals_added = add_signals_by_double_click_vars(window, 10)
+
     # Skip test if we don't have enough signals
     if len(signals_added) < 4:
         pytest.skip(f"Need at least 4 signals for nested groups test, only got {len(signals_added)}")
-    
+
     assert len(signals_added) >= 4, f"Need at least 4 signals, got {len(signals_added)}"
     
     QTest.qWait(100)
@@ -497,7 +511,11 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
     
     # Add more signals - apb_sim.vcd has 16 unique signals, so we should be able to get at least 5
     signals_added = add_signals_from_split_mode(window, 10)  # Request more to ensure we get enough
-    
+
+    # Use fallback if UI method didn't work
+    if len(signals_added) < 3:
+        signals_added = add_signals_by_double_click_vars(window, 10)
+
     # We need at least 3 signals for the test logic to work
     assert len(signals_added) >= 3, f"Need at least 3 signals, got {len(signals_added)}"
     

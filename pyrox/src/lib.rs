@@ -1,5 +1,5 @@
 mod convert;
-mod design_tree_model;
+// mod design_tree_model;  // Removed - DesignTreeModel no longer used
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -81,7 +81,7 @@ fn pyrox(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TimescaleUnit>()?;
     m.add_class::<QueryResult>()?;
     m.add_class::<TimeTable>()?;
-    m.add_class::<design_tree_model::PyDesignTreeModel>()?;
+    // m.add_class::<design_tree_model::PyDesignTreeModel>()?;  // Removed - DesignTreeModel no longer used
 
     // Export SignalHandle as a type alias (using the int type object)
     m.add("SignalHandle", py.get_type::<pyo3::types::PyInt>())?;

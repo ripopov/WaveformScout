@@ -20,12 +20,11 @@ from PySide6.QtCore import Qt, Signal, QModelIndex, QSortFilterProxyModel, QEven
 from PySide6.QtGui import QKeyEvent
 import pyrox
 
-from .design_tree_model import DesignTreeModel, DesignTreeNode
 from pyrox import SignalHandle
 
 from .data_model import SignalNode, RenderType, DisplayFormat
 from .settings_manager import SettingsManager
-from .scope_tree_model import ScopeTreeModel
+from .scope_tree_model import ScopeTreeModel, DesignTreeNode
 from .vars_view import VarsView
 
 from .protocols import WaveformDBProtocol
@@ -46,7 +45,6 @@ class DesignTreeView(QWidget):
         super().__init__(parent)
         
         self.waveform_db: Optional['WaveformDBProtocol'] = None
-        self.design_tree_model: Optional[DesignTreeModel] = None  # Keep for compatibility
         self.scope_tree_model: Optional[ScopeTreeModel] = None
         self.vars_view: Optional[VarsView] = None
         
@@ -106,7 +104,6 @@ class DesignTreeView(QWidget):
         self.waveform_db = waveform_db
 
         if waveform_db is None:
-            self.design_tree_model = None
             self.scope_tree_model = None
             self.scope_tree.setModel(None)
             if self.vars_view:
@@ -116,8 +113,7 @@ class DesignTreeView(QWidget):
 
         # Create and set the models
         model_start = time.time()
-        self.design_tree_model = DesignTreeModel(waveform_db)  # Keep for compatibility
-        tprint(f"  Created DesignTreeModel (took {time.time() - model_start:.3f}s)")
+        tprint(f"  Created ScopeTreeModel (took {time.time() - model_start:.3f}s)")
 
         # Create scope tree model
         scope_model_start = time.time()
@@ -325,7 +321,7 @@ class DesignTreeView(QWidget):
         
         return True
     
-    def _find_scope_by_path(self, path_parts: List[str], model: Union[DesignTreeModel, ScopeTreeModel], parent: QModelIndex) -> QModelIndex:
+    def _find_scope_by_path(self, path_parts: List[str], model: ScopeTreeModel, parent: QModelIndex) -> QModelIndex:
         """Recursively find a scope node by its path components.
         
         Args:

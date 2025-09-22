@@ -69,8 +69,8 @@ class FSTTestHelper:
         while (time.time() - start_time) * 1000 < timeout_ms:
             if (window.wave_widget.session is not None and
                 window.wave_widget.session.waveform_db is not None and
-                window.design_tree_view.design_tree_model is not None and
-                window.design_tree_view.design_tree_model.rowCount() > 0):
+                window.design_tree_view.scope_tree_model is not None and
+                window.design_tree_view.scope_tree_model.rowCount() > 0):
                 return
             QTest.qWait(100)
             app.processEvents()
