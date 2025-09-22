@@ -460,12 +460,7 @@ def load_session(path: pathlib.Path) -> WaveformSession:
         collect_handles(session.root_nodes)
         
         if handles_to_preload:
-            waveform_db.preload_signals(handles_to_preload, multithreaded=False)
-            # # Load all signals now while in the same thread as WaveformDB creation
-            # # This ensures signals are cached before being accessed from other threads
-            # # Use get_signal instead of preload_signals to avoid load_signals_multithreaded
-            # for handle in handles_to_preload:
-            #     waveform_db.get_signal(handle)
+            waveform_db.preload_signals(handles_to_preload)
 
         # Update viewport total_duration from the waveform's time table
         time_table = waveform_db.get_time_table()

@@ -215,7 +215,7 @@ class TestAsyncLoading:
         assert len(collector1.events) > 0 or len(collector2.events) > 0
 
     def test_cache_behavior_skip_cached_signals(self):
-        """Test that cached signals are skipped on subsequent loads"""
+        """Test that signals can be loaded multiple times (no Rust cache)"""
         test_file = "test_inputs/swerv1.vcd"
         wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
 
@@ -240,16 +240,15 @@ class TestAsyncLoading:
         collector.clear()
         wf.load_signals_async(handles)
 
-        # Wait briefly for any events (cached signals should be quick)
-        time.sleep(0.05)
+        # Wait for signals to be loaded again (no cache in Rust)
+        assert collector.wait_for_signals(timeout=10)
 
-        # Should either have no SignalLoaded event, or empty handles list
-        # (since signals are already cached)
+        # Signals should be loaded fresh since there's no Rust cache
         loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
-        if loaded_events:
-            # If there's an event, handles should be empty or smaller
-            second_loaded_handles = loaded_events[0].get("handles", [])
-            assert len(second_loaded_handles) < len(first_loaded_handles)
+        assert len(loaded_events) > 0
+        second_loaded_handles = loaded_events[0].get("handles", [])
+        # Should load the same signals again since there's no cache
+        assert len(second_loaded_handles) == len(first_loaded_handles)
 
     def test_queue_coalescing(self):
         """Test that multiple signal requests are coalesced"""

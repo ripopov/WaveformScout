@@ -1377,8 +1377,7 @@ class WaveScoutMainWindow(FramelessWindow):
         
         loader = LoaderRunnable(
             waveform_db.preload_signals,
-            handles,
-            multithreaded=True
+            handles
         )
         loader.signals.finished.connect(self._on_signals_loaded)
         loader.signals.error.connect(self._on_signal_load_error)

@@ -23,6 +23,7 @@ class WaveformDB:
         self.hierarchy: Optional[pyrox.Hierarchy] = None
         self.uri: Optional[str] = None
         self._timescale: Optional[Timescale] = None  # Store parsed timescale
+        self._signal_cache: Dict[SignalHandle, pyrox.Signal] = {}  # Python-side cache
 
     @property
     def file_path(self) -> Optional[str]:
@@ -37,6 +38,8 @@ class WaveformDB:
 
         start_time = time.time()
         self.uri = uri
+        # Clear the signal cache when opening a new file
+        self._signal_cache.clear()
 
         # Get file size for reporting
         file_size = os.path.getsize(uri)
@@ -208,14 +211,22 @@ class WaveformDB:
     def get_signal(self, handle: SignalHandle) -> Optional[pyrox.Signal]:
         """Get the signal object for the given handle. Returns pyrox Signal object.
 
-        This method uses the Rust-side cache for efficient signal loading.
+        This method uses Python-side caching for efficient signal loading.
         """
         if self.waveform is None:
             return None
 
+        # Check Python-side cache first
+        if handle in self._signal_cache:
+            return self._signal_cache[handle]
+
         try:
-            # Use the new Rust method that handles caching internally
-            return self.waveform.get_signal_by_handle(handle)
+            # Load signal from Rust (always fresh)
+            signal = self.waveform.get_signal_by_handle(handle)
+            if signal:
+                # Cache in Python
+                self._signal_cache[handle] = signal
+            return signal
         except Exception:
             # Signal not found or other error
             return None
@@ -243,18 +254,18 @@ class WaveformDB:
         Returns:
             True if all signals are cached, False otherwise
         """
-        # Rust-side caching is automatic, no way to check from Python
-        return False
+        # Check Python-side cache
+        return all(handle in self._signal_cache for handle in handles)
 
-    def preload_signals(self, handles: List[SignalHandle], multithreaded: bool = False) -> None:
+    def preload_signals(self, handles: List[SignalHandle]) -> None:
         """Preload multiple signals using efficient batch loading.
 
         Loading a group of signals is more efficient than loading each signal individually,
         because we only need to scan the file once and collect all changes for listed signals.
+        Always uses multithreaded loading for best performance.
 
         Args:
             handles: List of signal handles to preload
-            multithreaded: Whether to use multiple threads for loading (default: False)
         """
         import time
 
@@ -273,80 +284,54 @@ class WaveformDB:
                 unique_handles.append(h)
                 seen.add(h)
 
-        # Use the new preload_signals_by_handles method if available
-        if hasattr(self.waveform, 'preload_signals_by_handles'):
-            # Use the new optimized method
-            try:
-                load_start = time.perf_counter()
-                loaded_count = self.waveform.preload_signals_by_handles(unique_handles)
-                load_time = time.perf_counter() - load_start
+        # Filter out already cached signals
+        handles_to_load = [h for h in unique_handles if h not in self._signal_cache]
+        if not handles_to_load:
+            elapsed = time.perf_counter() - start_time
+            print(f"preload_signals: All {len(unique_handles)} signals already cached (took {elapsed:.3f}s)")
+            return
 
-                total_time = time.perf_counter() - start_time
+        # Convert handles to Var objects
+        vars_to_load : List[pyrox.Var] = []
+        for handle in handles_to_load:
+            var = self.get_var(handle)
+            if var:
+                vars_to_load.append(var)
 
-                print(f"preload_signals: Loaded {loaded_count} signals")
-                print(f"  - Pyrox loading: {load_time:.3f}s")
-                print(f"  - Total time: {total_time:.3f}s")
+        if not vars_to_load:
+            elapsed = time.perf_counter() - start_time
+            print(f"preload_signals: No valid signals to load (took {elapsed:.3f}s)")
+            return
 
-            except Exception as e:
-                elapsed = time.perf_counter() - start_time
-                print(f"preload_signals: Failed after {elapsed:.3f}s - {str(e)}")
-                raise RuntimeError(f"Failed to load signals: {str(e)}")
-        else:
-            # Fallback to old method
-            # Filter out already cached signals
-            # Always try to load all handles - Rust will use its cache internally
-            handles_to_load = unique_handles
+        # Batch load signals using pyrox API (always multithreaded)
+        try:
+            load_start = time.perf_counter()
+            loaded_signals = self.waveform.load_signals_multithreaded(vars_to_load)
+            load_time = time.perf_counter() - load_start
 
-            if not handles_to_load:
-                # All signals already cached
-                elapsed = time.perf_counter() - start_time
-                print(f"preload_signals: {len(unique_handles)} signals already cached (took {elapsed:.3f}s)")
-                return
+            # Cache loaded signals in Python
+            cache_start = time.perf_counter()
+            cached_count = 0
+            for i, signal in enumerate(loaded_signals):
+                if signal is not None:
+                    handle = handles_to_load[i]
+                    self._signal_cache[handle] = signal
+                    cached_count += 1
+            cache_time = time.perf_counter() - cache_start
 
-            # Convert handles to Var objects
-            vars_to_load : List[pyrox.Var] = []
-            for handle in handles_to_load:
-                var = self.get_var(handle)
-                if var:
-                    vars_to_load.append(var)
+            total_time = time.perf_counter() - start_time
+            already_cached = len(unique_handles) - len(handles_to_load)
 
-            if not vars_to_load:
-                elapsed = time.perf_counter() - start_time
-                print(f"preload_signals: No valid signals to load (took {elapsed:.3f}s)")
-                return
+            print(f"preload_signals: Loaded {cached_count} new signals, {already_cached} already cached")
+            print(f"  - Pyrox loading: {load_time:.3f}s")
+            print(f"  - Cache storage: {cache_time:.3f}s")
+            print(f"  - Total time: {total_time:.3f}s")
 
-            # Batch load signals using pyrox API
-            try:
-                load_start = time.perf_counter()
-                if multithreaded:
-                    loaded_signals = self.waveform.load_signals_multithreaded(vars_to_load)
-                else:
-                    loaded_signals = self.waveform.load_signals(vars_to_load)
-                load_time = time.perf_counter() - load_start
-
-                # Signals are now cached in Rust, just count successful loads
-                cache_start = time.perf_counter()
-                cached_count = 0
-                for signal in loaded_signals:
-                    if signal is not None:
-                        cached_count += 1
-                cache_time = time.perf_counter() - cache_start
-
-                total_time = time.perf_counter() - start_time
-                already_cached = len(unique_handles) - len(handles_to_load)
-
-                print(f"preload_signals: Loaded {cached_count} new signals, {already_cached} already cached")
-                print(f"  - Pyrox loading: {load_time:.3f}s")
-                print(f"  - Cache storage: {cache_time:.3f}s")
-                print(f"  - Total time: {total_time:.3f}s")
-                if multithreaded:
-                    print(f"  - Mode: multithreaded")
-
-            except Exception as e:
-                elapsed = time.perf_counter() - start_time
-                print(f"preload_signals: Failed after {elapsed:.3f}s - {str(e)}")
-                # Re-raise the exception to be handled by the caller
-                raise RuntimeError(f"Failed to load signals: {str(e)}")
+        except Exception as e:
+            elapsed = time.perf_counter() - start_time
+            print(f"preload_signals: Failed after {elapsed:.3f}s - {str(e)}")
+            # Re-raise the exception to be handled by the caller
+            raise RuntimeError(f"Failed to load signals: {str(e)}")
 
     # Public APIs for accessing protected members
 
@@ -415,10 +400,9 @@ class WaveformDB:
     def clear_signal_cache(self) -> None:
         """Clear the signal cache. Primarily for testing.
 
-        Note: Caching is now handled in Rust.
+        Note: Caching is now handled in Python.
         """
-        if self.waveform and hasattr(self.waveform, 'clear_signal_cache'):
-            self.waveform.clear_signal_cache()
+        self._signal_cache.clear()
 
     def is_signal_cached(self, handle: SignalHandle) -> bool:
         """Check if signal is cached for the given handle.
@@ -431,9 +415,7 @@ class WaveformDB:
         Returns:
             True if signal is cached, False otherwise
         """
-        if self.waveform and hasattr(self.waveform, 'is_signal_cached'):
-            return bool(self.waveform.is_signal_cached(handle))
-        return False
+        return handle in self._signal_cache
 
     def iter_handles_and_vars(self) -> List[Tuple[int, List[pyrox.Var]]]:
         """Iterate over all handles and their associated variables.

@@ -51,8 +51,6 @@ struct SharedState {
     wave_source: Mutex<Option<wellen::SignalSource>>,
     time_table: Mutex<Option<Arc<wellen::TimeTable>>>,
     body_continuation: Mutex<Option<Box<ReadBodyContinuation<std::io::BufReader<std::fs::File>>>>>,
-    signal_cache: Mutex<FxHashMap<SignalHandle, Arc<wellen::Signal>>>,
-    python_signal_cache: Mutex<FxHashMap<SignalHandle, Py<Signal>>>,
     callback: Mutex<Option<PyObject>>,
     header_loaded: AtomicBool,
     body_loaded: AtomicBool,
@@ -545,10 +543,6 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                                         Some(Arc::new(body.time_table));
                                     shared_state.body_loaded.store(true, Ordering::Relaxed);
 
-                                    // Clear signal cache
-                                    shared_state.signal_cache.lock().unwrap().clear();
-                                    shared_state.python_signal_cache.lock().unwrap().clear();
-
                                     // Emit loaded event
                                     emit_event(&shared_state, AsyncEvent::BodyLoaded);
                                 }
@@ -583,31 +577,19 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
 
                         // Load signals one by one
                         for handle in handles.iter() {
-                            // Check if already cached
-                            let is_cached = shared_state
-                                .signal_cache
-                                .lock()
-                                .unwrap()
-                                .contains_key(handle);
+                            // Always load signals fresh - no caching in Rust
+                            // Load signal - need to access wave_source for each signal
+                            let signal_ref = SignalRef::from_index(*handle).unwrap();
 
-                            if !is_cached {
-                                // Load signal - need to access wave_source for each signal
-                                let signal_ref = SignalRef::from_index(*handle).unwrap();
-
-                                // We need to load signals within the lock scope
-                                if let Some(source) = &mut *shared_state.wave_source.lock().unwrap()
-                                {
-                                    if let Some(hier) = &hierarchy {
-                                        let signals =
-                                            source.load_signals(&[signal_ref], hier, true);
-                                        if let Some((_ref, sig)) = signals.into_iter().next() {
-                                            shared_state
-                                                .signal_cache
-                                                .lock()
-                                                .unwrap()
-                                                .insert(*handle, Arc::new(sig));
-                                            loaded_handles.push(*handle);
-                                        }
+                            // We need to load signals within the lock scope
+                            if let Some(source) = &mut *shared_state.wave_source.lock().unwrap()
+                            {
+                                if let Some(hier) = &hierarchy {
+                                    let signals =
+                                        source.load_signals(&[signal_ref], hier, true);
+                                    if let Some((_ref, _sig)) = signals.into_iter().next() {
+                                        // No caching in Rust anymore
+                                        loaded_handles.push(*handle);
                                     }
                                 }
                             }
@@ -723,8 +705,6 @@ impl Waveform {
                     wave_source: Mutex::new(Some(body.source)),
                     time_table: Mutex::new(Some(Arc::new(body.time_table))),
                     body_continuation: Mutex::new(None),
-                    signal_cache: Mutex::new(FxHashMap::default()),
-                    python_signal_cache: Mutex::new(FxHashMap::default()),
                     callback: Mutex::new(None),
                     header_loaded: AtomicBool::new(true),
                     body_loaded: AtomicBool::new(true),
@@ -737,8 +717,6 @@ impl Waveform {
                     wave_source: Mutex::new(None),
                     time_table: Mutex::new(None),
                     body_continuation: Mutex::new(Some(Box::new(header_result.body))),
-                    signal_cache: Mutex::new(FxHashMap::default()),
-                    python_signal_cache: Mutex::new(FxHashMap::default()),
                     callback: Mutex::new(None),
                     header_loaded: AtomicBool::new(true),
                     body_loaded: AtomicBool::new(false),
@@ -752,8 +730,6 @@ impl Waveform {
                 wave_source: Mutex::new(None),
                 time_table: Mutex::new(None),
                 body_continuation: Mutex::new(None),
-                signal_cache: Mutex::new(FxHashMap::default()),
-                python_signal_cache: Mutex::new(FxHashMap::default()),
                 callback: Mutex::new(None),
                 header_loaded: AtomicBool::new(false),
                 body_loaded: AtomicBool::new(false),
@@ -805,14 +781,6 @@ impl Waveform {
         *self.shared_state.wave_source.lock().unwrap() = Some(body.source);
         *self.shared_state.time_table.lock().unwrap() = Some(Arc::new(body.time_table));
         self.shared_state.body_loaded.store(true, Ordering::Relaxed);
-
-        // Clear signal cache when body is loaded
-        self.shared_state.signal_cache.lock().unwrap().clear();
-        self.shared_state
-            .python_signal_cache
-            .lock()
-            .unwrap()
-            .clear();
 
         Ok(())
     }
@@ -927,12 +895,11 @@ impl Waveform {
         self.get_signal_by_handle(handle, py)
     }
 
-    /// Helper function to load signals and preserve input order
-    fn load_signals_impl<'py>(
+    /// Load multiple signals at once using multiple threads
+    fn load_signals_multithreaded<'py>(
         &mut self,
         vars: Vec<PyRef<'py, Var>>,
         py: Python<'py>,
-        multithreaded: bool,
     ) -> PyResult<Vec<Bound<'py, Signal>>> {
         // Ensure body is loaded
         self.load_body()?;
@@ -952,9 +919,10 @@ impl Waveform {
         let signal_refs: Vec<SignalRef> = vars.iter().map(|var| var.0.signal_ref()).collect(); // These are Wellen SignalRefs
 
         // Release GIL while loading signals (heavy I/O operation)
+        // Always use multithreaded loading
         let hierarchy = self.get_hierarchy_internal()?;
         let signals =
-            py.allow_threads(|| wave_source.load_signals(&signal_refs, &hierarchy, multithreaded));
+            py.allow_threads(|| wave_source.load_signals(&signal_refs, &hierarchy, true));
 
         // Build a map from SignalRef to Signal for quick lookup
         // This ensures we return signals in the same order as requested
@@ -981,148 +949,15 @@ impl Waveform {
         Ok(result)
     }
 
-    /// Load multiple signals at once
-    fn load_signals<'py>(
-        &mut self,
-        vars: Vec<PyRef<'py, Var>>,
-        py: Python<'py>,
-    ) -> PyResult<Vec<Bound<'py, Signal>>> {
-        self.load_signals_impl(vars, py, false)
-    }
 
-    /// Load multiple signals at once using multiple threads
-    fn load_signals_multithreaded<'py>(
-        &mut self,
-        vars: Vec<PyRef<'py, Var>>,
-        py: Python<'py>,
-    ) -> PyResult<Vec<Bound<'py, Signal>>> {
-        self.load_signals_impl(vars, py, true)
-    }
 
-    /// Load and cache signals by their 0-based handles
-    fn preload_signals_by_handles(
-        &mut self,
-        handles: Vec<SignalHandle>,
-        py: Python,
-    ) -> PyResult<usize> {
-        // Ensure body is loaded
-        self.load_body()?;
 
-        // Get wave_source from shared state
-        let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let wave_source = wave_source_guard
-            .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
-
-        // Collect wellen signal refs and their corresponding 0-based handles
-        let mut signal_refs_to_load = Vec::new();
-        let mut handle_map = std::collections::HashMap::new();
-
-        let signal_cache = self.shared_state.signal_cache.lock().unwrap();
-        for handle in handles {
-            // Skip if already cached
-            if signal_cache.contains_key(&handle) {
-                continue;
-            }
-
-            // Convert 0-based handle to wellen SignalRef and check if var exists
-            if let Some(wellen_ref) = wellen::SignalRef::from_index(handle) {
-                if let Ok(hierarchy) = self.get_hierarchy_internal() {
-                    if let Some(_var_ref) = hierarchy.get_var_by_signal_ref(wellen_ref) {
-                        signal_refs_to_load.push(wellen_ref);
-                        handle_map.insert(wellen_ref, handle);
-                    }
-                }
-            }
-        }
-        drop(signal_cache); // Release lock before loading
-
-        if signal_refs_to_load.is_empty() {
-            return Ok(0); // Nothing to load
-        }
-
-        // Load signals in batch
-        let hierarchy = self.get_hierarchy_internal()?;
-        let loaded_signals =
-            py.allow_threads(|| wave_source.load_signals(&signal_refs_to_load, &hierarchy, false));
-
-        // Cache the loaded signals with their 0-based handles
-        let mut loaded_count = 0;
-        let mut signal_cache = self.shared_state.signal_cache.lock().unwrap();
-        for (wellen_ref, signal) in loaded_signals {
-            if let Some(&handle) = handle_map.get(&wellen_ref) {
-                signal_cache.insert(handle, Arc::new(signal));
-                loaded_count += 1;
-            }
-        }
-
-        Ok(loaded_count)
-    }
-
-    /// Check if a signal is cached by its 0-based handle
-    fn is_signal_cached(&self, handle: SignalHandle) -> bool {
-        self.shared_state
-            .signal_cache
-            .lock()
-            .unwrap()
-            .contains_key(&handle)
-    }
-
-    /// Clear the signal cache (for testing)
-    fn clear_signal_cache(&mut self) {
-        self.shared_state.signal_cache.lock().unwrap().clear();
-        self.shared_state
-            .python_signal_cache
-            .lock()
-            .unwrap()
-            .clear();
-    }
-
-    /// Get a signal by its handle (0-based), using cache
+    /// Get a signal by its handle (0-based), always loads fresh
     fn get_signal_by_handle<'py>(
         &mut self,
         handle: SignalHandle,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, Signal>> {
-        // Check Python signal cache first for object identity
-        let python_cache = self.shared_state.python_signal_cache.lock().unwrap();
-        if let Some(cached_py_signal) = python_cache.get(&handle) {
-            // Return cached Python Signal object
-            return Ok(cached_py_signal.bind(py).clone());
-        }
-        drop(python_cache);
-
-        // Check Rust signal cache
-        let signal_cache = self.shared_state.signal_cache.lock().unwrap();
-        if let Some(cached_signal) = signal_cache.get(&handle) {
-            let cached_signal = cached_signal.clone();
-            drop(signal_cache);
-
-            // Get time table
-            let shared_tt = self.shared_state.time_table.lock().unwrap();
-            let time_table = shared_tt
-                .as_ref()
-                .map(|tt| TimeTable(tt.clone()))
-                .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
-
-            // Create new Python Signal object and cache it
-            let py_signal = Bound::new(
-                py,
-                Signal {
-                    signal: cached_signal,
-                    all_times: time_table,
-                },
-            )?;
-
-            // Cache the Python object for future calls
-            self.shared_state
-                .python_signal_cache
-                .lock()
-                .unwrap()
-                .insert(handle, py_signal.clone().unbind());
-            return Ok(py_signal);
-        }
-        drop(signal_cache);
 
         // Ensure body is loaded
         self.load_body()?;
@@ -1156,14 +991,7 @@ impl Waveform {
         let (_sr, sig) = signals.swap_remove(0);
         let signal_arc = Arc::new(sig);
 
-        // Cache the loaded signal
-        self.shared_state
-            .signal_cache
-            .lock()
-            .unwrap()
-            .insert(handle, signal_arc.clone());
-
-        // Create and cache the Python signal object
+        // Create the Python signal object (no caching)
         let py_signal = Bound::new(
             py,
             Signal {
@@ -1171,13 +999,6 @@ impl Waveform {
                 all_times: time_table,
             },
         )?;
-
-        // Cache the Python object for future calls
-        self.shared_state
-            .python_signal_cache
-            .lock()
-            .unwrap()
-            .insert(handle, py_signal.clone().unbind());
 
         Ok(py_signal)
     }
