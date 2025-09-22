@@ -215,7 +215,7 @@ class WaveformDB:
 
         try:
             # Use the new Rust method that handles caching internally
-            return self.waveform.get_signal_by_ref(handle)
+            return self.waveform.get_signal_by_handle(handle)
         except Exception:
             # Signal not found or other error
             return None

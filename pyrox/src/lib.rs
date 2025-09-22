@@ -901,38 +901,6 @@ impl Waveform {
         let shared_tt = self.shared_state.time_table.lock().unwrap();
         shared_tt.as_ref().map(|tt| TimeTable(tt.clone()))
     }
-    fn get_signal<'py>(&mut self, var: &Var, py: Python<'py>) -> PyResult<Bound<'py, Signal>> {
-        // Ensure body is loaded
-        self.load_body()?;
-
-        // Get time table from shared state
-        let shared_tt = self.shared_state.time_table.lock().unwrap();
-        let time_table = shared_tt
-            .as_ref()
-            .map(|tt| TimeTable(tt.clone()))
-            .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
-
-        // Release GIL while loading signal (heavy I/O operation)
-        let signal_ref = var.0.signal_ref(); // This is the actual Wellen SignalRef (1-based)
-        let hierarchy = self.get_hierarchy_internal()?;
-
-        // Use shared wave_source
-        let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let mut signal = if let Some(wave_source) = &mut *wave_source_guard {
-            py.allow_threads(|| wave_source.load_signals(&[signal_ref], &hierarchy, true))
-        } else {
-            return Err(PyRuntimeError::new_err("Wave source not available"));
-        };
-
-        let (_sr, sig) = signal.swap_remove(0);
-        Bound::new(
-            py,
-            Signal {
-                signal: Arc::new(sig),
-                all_times: time_table,
-            },
-        )
-    }
 
     /// Assumes a dotted signal
     fn get_signal_from_path<'py>(
@@ -954,7 +922,9 @@ impl Waveform {
                 "No var at path {abs_hierarchy_path}"
             )))?;
         let var = &hierarchy[maybe_var];
-        self.get_signal(&Var(var.clone()), py)
+        // Use the signal handle from the var to get the signal
+        let handle = Var(var.clone()).signal_handle();
+        self.get_signal_by_handle(handle, py)
     }
 
     /// Helper function to load signals and preserve input order
@@ -1109,7 +1079,7 @@ impl Waveform {
     }
 
     /// Get a signal by its handle (0-based), using cache
-    fn get_signal_by_ref<'py>(
+    fn get_signal_by_handle<'py>(
         &mut self,
         handle: SignalHandle,
         py: Python<'py>,
