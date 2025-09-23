@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, TypeAlias, Any
 from PySide6.QtCore import QStandardPaths, QObject, Signal
 
-from wavescout.data_model import SignalNode
+from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal
 
 SnippetDict: TypeAlias = dict[str, "Snippet"]
 
@@ -131,7 +131,7 @@ class SnippetManager(QObject):
             
             # Set all handles to -1 before saving (snippets are waveform-agnostic)
             for node in self._walk_nodes(nodes_copy):
-                if not node.is_group:
+                if isinstance(node, SignalNodeSignal):
                     node.handle = -1
             
             # Create a new snippet with the copied nodes for saving
@@ -219,8 +219,9 @@ class SnippetManager(QObject):
         def collect_paths(node: SignalNode) -> None:
             if not node.is_group:
                 all_paths.append(node.name)
-            for child in node.children:
-                collect_paths(child)
+            elif isinstance(node, SignalNodeGroup):
+                for child in node.children:
+                    collect_paths(child)
         
         collect_paths(group_node)
         
@@ -248,8 +249,9 @@ class SnippetManager(QObject):
         
         def walk(node: SignalNode) -> None:
             result.append(node)
-            for child in node.children:
-                walk(child)
+            if isinstance(node, SignalNodeGroup):
+                for child in node.children:
+                    walk(child)
         
         for node in nodes:
             walk(node)

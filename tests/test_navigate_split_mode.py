@@ -7,7 +7,7 @@ from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, DisplayFormat
+from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
 from tests.test_utils import get_test_input_path, TestFiles
 
 
@@ -50,15 +50,12 @@ class TestNavigateSplitMode:
         
         # Add a test signal to the session
         signal_path = "apb_testbench.dut.paddr"
-        signal_node = SignalNode(
+        signal_node = SignalNodeSignal(
             name=signal_path,
             handle=0,
             format=DisplayFormat(),
             nickname='',
-            children=[],
             parent=None,
-            is_group=False,
-            is_expanded=True,
             height_scaling=1,
             is_multi_bit=False
         )
@@ -136,15 +133,12 @@ class TestNavigateSplitMode:
         
         # Add a test signal
         signal_path = "apb_testbench.pready"
-        signal_node = SignalNode(
+        signal_node = SignalNodeSignal(
             name=signal_path,
             handle=1,
             format=DisplayFormat(),
             nickname='',
-            children=[],
             parent=None,
-            is_group=False,
-            is_expanded=True,
             height_scaling=1,
             is_multi_bit=False
         )

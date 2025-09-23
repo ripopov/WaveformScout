@@ -5,7 +5,7 @@ from PySide6.QtCore import QModelIndex, Qt, QItemSelectionModel
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode
+from wavescout.data_model import SignalNode, SignalNodeSignal
 
 
 def add_signals_from_split_mode(window: WaveScoutMainWindow, count: int = 5) -> List[SignalNode]:
@@ -149,10 +149,9 @@ def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3
                     handle = waveform_db.get_handle_for_var(var)
                     if handle is not None:
                         # Create signal node
-                        signal_node = SignalNode(
+                        signal_node = SignalNodeSignal(
                             name=var.name(waveform_db.hierarchy),
-                            handle=handle,
-                            is_group=False
+                            handle=handle
                         )
 
                         # Check if already added

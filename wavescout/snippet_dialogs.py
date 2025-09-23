@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from wavescout.data_model import SignalNode
+from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal
 from wavescout.snippet_manager import Snippet, SnippetManager
 from wavescout.waveform_db import WaveformDB
 
@@ -18,7 +18,7 @@ from wavescout.waveform_db import WaveformDB
 class SaveSnippetDialog(QDialog):
     """Dialog for saving a signal group as a snippet."""
     
-    def __init__(self, group_node: SignalNode, parent_scope: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, group_node: SignalNodeGroup, parent_scope: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.group_node = group_node
         self.parent_scope = parent_scope
@@ -75,10 +75,13 @@ class SaveSnippetDialog(QDialog):
     
     def _count_nodes(self, node: SignalNode) -> int:
         """Count total nodes in tree."""
-        count = 0 if node.is_group else 1
-        for child in node.children:
-            count += self._count_nodes(child)
-        return count
+        if isinstance(node, SignalNodeGroup):
+            count = 0  # Groups don't count
+            for child in node.children:
+                count += self._count_nodes(child)
+            return count
+        else:
+            return 1  # Signals count
     
     def _validate_name(self, text: str) -> None:
         """Validate snippet name."""
@@ -141,19 +144,23 @@ class InstantiateSnippetDialog(QDialog):
         """
         def validate_node(node: SignalNode) -> SignalNode:
             new_node = node.deep_copy()
-            
-            if not node.is_group:
-                # Resolve handle from waveform database
+
+            if isinstance(node, SignalNodeSignal):
+                assert isinstance(new_node, SignalNodeSignal)  # Help type checker
                 handle = waveform_db.find_handle_by_path(node.name)
                 if handle is None:
                     raise ValueError(f"Signal '{node.name}' not found in waveform")
                 new_node.handle = handle
-            
-            # Recursively validate children
-            new_node.children = [validate_node(child) for child in node.children]
-            for child in new_node.children:
-                child.parent = new_node
-            
+                return new_node
+
+            if isinstance(node, SignalNodeGroup):
+                assert isinstance(new_node, SignalNodeGroup)  # Help type checker
+                validated_children = [validate_node(child) for child in node.children]
+                new_node.children = validated_children
+                for child in validated_children:
+                    child.parent = new_node
+                return new_node
+
             return new_node
         
         return [validate_node(node) for node in nodes]
@@ -312,17 +319,18 @@ class InstantiateSnippetDialog(QDialog):
         """Build full paths by concatenating parent scope with relative names."""
         new_node = node.deep_copy()
         
-        if not node.is_group:
-            # Names in snippets are relative, concatenate with parent scope
+        if isinstance(node, SignalNodeSignal):
             if parent_scope:
                 new_node.name = f"{parent_scope}.{node.name}"
-            # else keep as-is (no parent scope)
-        
-        # Recursively process children
-        new_node.children = [InstantiateSnippetDialog.build_full_paths(child, parent_scope) for child in node.children]
-        for child in new_node.children:
-            child.parent = new_node
-        
+            return new_node
+
+        if isinstance(node, SignalNodeGroup):
+            assert isinstance(new_node, SignalNodeGroup)  # Help type checker
+            new_children = [InstantiateSnippetDialog.build_full_paths(child, parent_scope) for child in node.children]
+            new_node.children = new_children
+            for child in new_children:
+                child.parent = new_node
+
         return new_node
     
     def _remap_and_validate(self, new_parent_scope: str) -> list[SignalNode]:
@@ -343,10 +351,11 @@ class InstantiateSnippetDialog(QDialog):
         signals: list[SignalNode] = []
         
         def collect_signals(node: SignalNode) -> None:
-            if not node.is_group:
+            if isinstance(node, SignalNodeSignal):
                 signals.append(node)
-            for child in node.children:
-                collect_signals(child)
+            elif isinstance(node, SignalNodeGroup):
+                for child in node.children:
+                    collect_signals(child)
         
         for node in nodes:
             collect_signals(node)

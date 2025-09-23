@@ -22,7 +22,7 @@ import pyrox
 
 from pyrox import SignalHandle
 
-from .data_model import SignalNode, RenderType, DisplayFormat
+from .data_model import SignalNode, SignalNodeSignal, RenderType, DisplayFormat
 from .settings_manager import SettingsManager
 from .scope_tree_model import ScopeTreeModel, DesignTreeNode
 from .vars_view import VarsView
@@ -188,7 +188,7 @@ class DesignTreeView(QWidget):
         format = DisplayFormat(render_type=render_type)
 
         # Create the signal node
-        signal_node = SignalNode(
+        signal_node = SignalNodeSignal(
             name=full_path,
             handle=handle,
             format=format,
@@ -509,7 +509,7 @@ class DesignTreeView(QWidget):
         format = DisplayFormat(render_type=render_type)
 
         # Create the signal node
-        signal_node = SignalNode(
+        signal_node = SignalNodeSignal(
             name=full_path,
             handle=handle,
             format=format,

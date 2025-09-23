@@ -14,7 +14,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, DisplayFormat
+from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
 from wavescout.signal_analysis_window import SignalAnalysisWindow
 from wavescout.waveform_db import WaveformDB
 from wavescout.analysis_engine import (
@@ -81,7 +81,7 @@ def test_analysis_with_analog_signals():
     # Create SignalNode objects for testing
     test_signals = []
     for handle, name in all_signals[:5]:  # Test with first 5 signals
-        signal = SignalNode(
+        signal = SignalNodeSignal(
             name=name,
             handle=handle,
             format=DisplayFormat()
@@ -89,7 +89,7 @@ def test_analysis_with_analog_signals():
         test_signals.append(signal)
     
     # Create sampling signal node
-    sampling_signal = SignalNode(
+    sampling_signal = SignalNodeSignal(
         name=clk_cnt_name,
         handle=clk_cnt_handle,
         format=DisplayFormat()
@@ -175,7 +175,7 @@ def test_analysis_window_integration():
             for handle in waveform_db.get_all_handles()[:10]:  # First 10 signals
                 var = waveform_db.var_from_handle(handle)
                 if var:
-                    signal = SignalNode(
+                    signal = SignalNodeSignal(
                         name=var.full_name(waveform_db.hierarchy),
                         handle=handle,
                         format=DisplayFormat()

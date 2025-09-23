@@ -36,7 +36,7 @@ from PySide6.QtTest import QTest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, Marker
+from wavescout.data_model import SignalNode, SignalNodeSignal, Marker
 from tests.conftest import TestFiles, get_test_input_path
 
 class TestPaths:
@@ -251,10 +251,9 @@ def test_marker_integration():
                     for var in scope.vars(waveform_db.hierarchy):
                         handle = waveform_db.get_handle_for_var(var)
                         if handle is not None:
-                            signal_node = SignalNode(
+                            signal_node = SignalNodeSignal(
                                 name=var.name(waveform_db.hierarchy),
-                                handle=handle,
-                                is_group=False
+                                handle=handle
                             )
                             session.root_nodes.append(signal_node)
                             window.wave_widget.model.layoutChanged.emit()

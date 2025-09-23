@@ -5,7 +5,7 @@ from typing import overload, List, Optional, Union, Tuple, Any, Sequence, TYPE_C
 import json
 import time
 from .timing_utils import tprint
-from .data_model import WaveformSession, SignalNode, RenderType
+from .data_model import WaveformSession, SignalNode, SignalNodeGroup, SignalNodeSignal, RenderType
 from .signal_sampling import parse_signal_value
 from .application.events import StructureChangedEvent, FormatChangedEvent
 from .settings_manager import SettingsManager
@@ -69,7 +69,7 @@ class WaveformItemModel(QAbstractItemModel):
             return len(self._session.root_nodes)
         
         node = parent.internalPointer()
-        if node and isinstance(node, SignalNode):
+        if isinstance(node, SignalNodeGroup):
             return len(node.children)
         return 0
 
@@ -84,7 +84,7 @@ class WaveformItemModel(QAbstractItemModel):
                 return self.createIndex(row, col, self._session.root_nodes[row])
         else:
             parent_node = parent.internalPointer()
-            if parent_node and 0 <= row < len(parent_node.children):
+            if isinstance(parent_node, SignalNodeGroup) and 0 <= row < len(parent_node.children):
                 return self.createIndex(row, col, parent_node.children[row])
         
         return QModelIndex()
@@ -145,7 +145,9 @@ class WaveformItemModel(QAbstractItemModel):
             elif col == 3:
                 return ""  # Waveform painted by canvas
         elif role == Qt.ItemDataRole.ForegroundRole:
-            return node.format.color
+            if isinstance(node, SignalNodeSignal):
+                return node.format.color
+            return None
         elif role == Qt.ItemDataRole.UserRole:
             return node  # For delegates to access full node data
         
@@ -175,7 +177,7 @@ class WaveformItemModel(QAbstractItemModel):
             return len(self._session.root_nodes) > 0
         
         node = parent.internalPointer()
-        return node and len(node.children) > 0
+        return isinstance(node, SignalNodeGroup) and len(node.children) > 0
 
     def _format_signal_name(self, node: SignalNode) -> str:
         # Nickname takes precedence, else use hierarchical display mode
@@ -193,34 +195,46 @@ class WaveformItemModel(QAbstractItemModel):
     
     def _value_at_cursor(self, node: SignalNode) -> str:
         # Query WaveformDB for signal value at cursor time and format it according to node.format.data_format
-        if node.is_group or not self._session.waveform_db or node.handle is None:
+        if isinstance(node, SignalNodeGroup) or not self._session.waveform_db:
+            return ""
+
+        # Now we know it's a SignalNodeSignal
+        assert isinstance(node, SignalNodeSignal)  # Help type checker
+        signal_node = node
+        if signal_node.handle is None:
             return ""
 
         db = self._session.waveform_db
         try:
             # Use cached Signal object from node
-            signal_obj = node.signal
+            signal_obj = signal_node.signal
             if not signal_obj:
                 return ""
             query = signal_obj.query_signal(max(0, self._session.cursor_time))
             raw_value = query.value
-            
+
             # Determine bit width similar to rendering logic
-            bit_width = db.get_var_bitwidth(node.handle)
+            bit_width = db.get_var_bitwidth(signal_node.handle)
             
             # Use the same parser as waveform_canvas to get formatted string
-            value_str, _, _ = parse_signal_value(raw_value, node.format.data_format, bit_width)
+            value_str, _, _ = parse_signal_value(raw_value, signal_node.format.data_format, bit_width)
             return value_str or ""
         except Exception:
             return ""
     
     def _format_at_cursor(self, node: SignalNode) -> str:
         # Return the data format for the signal
-        if node.is_group or node.handle is None:
+        if isinstance(node, SignalNodeGroup):
             return ""
-        
+
+        # Now we know it's a SignalNodeSignal
+        assert isinstance(node, SignalNodeSignal)  # Help type checker
+        signal_node = node
+        if signal_node.handle is None:
+            return ""
+
         # Return the format as a string
-        return node.format.data_format.value
+        return signal_node.format.data_format.value
     
     def _on_structure_changed(self, event: StructureChangedEvent) -> None:
         """Handle structure change events from controller."""
@@ -306,9 +320,10 @@ class WaveformItemModel(QAbstractItemModel):
             for node in nodes:
                 if node.instance_id == node_id:
                     return node
-                found = search(node.children)
-                if found:
-                    return found
+                if isinstance(node, SignalNodeGroup):
+                    found = search(node.children)
+                    if found:
+                        return found
             return None
         return search(self._session.root_nodes)
     
@@ -336,6 +351,8 @@ class WaveformItemModel(QAbstractItemModel):
             else:
                 # Child level
                 parent_node = path[i-1]
+                if not isinstance(parent_node, SignalNodeGroup):
+                    return QModelIndex()
                 try:
                     row = parent_node.children.index(node)
                     index = self.index(row, 0, index)
@@ -403,7 +420,7 @@ class WaveformItemModel(QAbstractItemModel):
             # Dropped directly on an item
             target_node = parent.internalPointer()
             
-            if target_node.is_group:
+            if isinstance(target_node, SignalNodeGroup):
                 # Dropped on a group - insert at the beginning of the group
                 parent_node = target_node
                 target_list = target_node.children
@@ -412,7 +429,7 @@ class WaveformItemModel(QAbstractItemModel):
                 # Dropped on a non-group item - insert after it in the same parent
                 parent_node = target_node.parent
                 
-                if parent_node:
+                if isinstance(parent_node, SignalNodeGroup):
                     target_list = parent_node.children
                     # Find the position of the target item and insert after it
                     try:
@@ -421,6 +438,7 @@ class WaveformItemModel(QAbstractItemModel):
                     except ValueError:
                         insert_row = len(target_list)
                 else:
+                    parent_node = None
                     # Target is a root node
                     target_list = self._session.root_nodes
                     try:
@@ -431,7 +449,11 @@ class WaveformItemModel(QAbstractItemModel):
         elif parent.isValid():
             # Dropped between items in a group
             parent_node = parent.internalPointer()
-            target_list = parent_node.children
+            if isinstance(parent_node, SignalNodeGroup):
+                target_list = parent_node.children
+            else:
+                parent_node = None
+                target_list = self._session.root_nodes
             insert_row = row if row != -1 else len(target_list)
         else:
             # Dropped at root level
@@ -481,7 +503,7 @@ class WaveformItemModel(QAbstractItemModel):
             for node in current_list:
                 if node.name == name:
                     current_node = node
-                    current_list = node.children
+                    current_list = node.children if isinstance(node, SignalNodeGroup) else []
                     found = True
                     break
             if not found:
@@ -523,8 +545,11 @@ class WaveformItemModel(QAbstractItemModel):
         else:
             # Non-root node
             try:
-                row = node.parent.children.index(node)
-                parent_index = self._find_index_for_node(node.parent)
+                parent = node.parent
+                if not isinstance(parent, SignalNodeGroup):
+                    return QModelIndex()
+                row = parent.children.index(node)
+                parent_index = self._find_index_for_node(parent)
                 return self.index(row, 0, parent_index)
             except ValueError:
                 return QModelIndex()

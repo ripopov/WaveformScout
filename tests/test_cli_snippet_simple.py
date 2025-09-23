@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch, MagicMock
 # Test the individual components
 from wavescout.snippet_manager import Snippet, SnippetManager
 from wavescout.snippet_dialogs import InstantiateSnippetDialog
-from wavescout.data_model import SignalNode
+from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal
 
 
 def test_validate_and_resolve_nodes_simple():
@@ -27,8 +27,8 @@ def test_validate_and_resolve_nodes_simple():
     
     # Test successful validation
     nodes = [
-        SignalNode(name="test.signal1", handle=-1, is_group=False),
-        SignalNode(name="test.signal2", handle=-1, is_group=False)
+        SignalNodeSignal(name="test.signal1", handle=-1),
+        SignalNodeSignal(name="test.signal2", handle=-1)
     ]
     
     validated = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, mock_db)
@@ -37,11 +37,10 @@ def test_validate_and_resolve_nodes_simple():
     assert validated[1].handle == 2
     
     # Test validation with group
-    group_node = SignalNode(
+    group_node = SignalNodeGroup(
         name="mygroup",
-        is_group=True,
         children=[
-            SignalNode(name="test.group.signal3", handle=-1, is_group=False)
+            SignalNodeSignal(name="test.group.signal3", handle=-1)
         ]
     )
     
@@ -52,7 +51,7 @@ def test_validate_and_resolve_nodes_simple():
     assert validated[0].children[0].handle == 3
     
     # Test validation failure
-    bad_nodes = [SignalNode(name="bad.signal", handle=-1, is_group=False)]
+    bad_nodes = [SignalNodeSignal(name="bad.signal", handle=-1)]
     with pytest.raises(ValueError) as exc:
         InstantiateSnippetDialog.validate_and_resolve_nodes(bad_nodes, mock_db)
     assert "Signal 'bad.signal' not found" in str(exc.value)
@@ -88,29 +87,31 @@ def test_remap_node_names():
                 new_node.name = new_name
                 # Don't resolve handle here - leave that to validation
             
-            # Recursively remap children
-            new_node.children = [self._remap_node_names(child, old_parent, new_parent) for child in node.children]
-            for child in new_node.children:
-                child.parent = new_node
+            if node.is_group:
+                assert isinstance(new_node, SignalNodeGroup)
+                new_children = [self._remap_node_names(child, old_parent, new_parent) for child in node.children]
+                new_node.children = new_children
+                for child in new_node.children:
+                    child.parent = new_node
             
             return new_node
     
     dialog = MockDialog()
     
     # Test remapping
-    node = SignalNode(name="old.scope.signal1", handle=-1, is_group=False)
+    node = SignalNodeSignal(name="old.scope.signal1", handle=-1)
     remapped = dialog._remap_node_names(node, "old.scope", "new.scope")
     
     assert remapped.name == "new.scope.signal1"
     assert remapped.handle == -1  # Handle not resolved during remapping
     
     # Test remapping with no old parent
-    node2 = SignalNode(name="signal2", handle=-1, is_group=False)
+    node2 = SignalNodeSignal(name="signal2", handle=-1)
     remapped2 = dialog._remap_node_names(node2, "", "new.scope")
     assert remapped2.name == "new.scope.signal2"
     
     # Test remapping with no new parent
-    node3 = SignalNode(name="old.scope.signal3", handle=-1, is_group=False)
+    node3 = SignalNodeSignal(name="old.scope.signal3", handle=-1)
     remapped3 = dialog._remap_node_names(node3, "old.scope", "")
     assert remapped3.name == "signal3"
 

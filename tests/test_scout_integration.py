@@ -1210,10 +1210,9 @@ def test_group_rename_functionality(qtbot):
     assert "paddr" in found_nodes
     
     # Create a group node
-    from wavescout.data_model import SignalNode
-    group_node = SignalNode(
+    from wavescout.data_model import SignalNodeGroup
+    group_node = SignalNodeGroup(
         name="Test Group",
-        is_group=True,
         children=[found_nodes["prdata"], found_nodes["paddr"]]
     )
     

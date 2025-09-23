@@ -66,7 +66,7 @@ class SignalAnalysisWorker(QThread):
             if self.sampling_mode == "signal" and self.sampling_signal:
                 sampling_times = generate_sampling_times_signal(
                     self.waveform_db,
-                    self.sampling_signal,
+                    self.sampling_signal,  # type: ignore[arg-type]
                     self.start_time,
                     self.end_time
                 )
@@ -93,7 +93,7 @@ class SignalAnalysisWorker(QThread):
                 # Compute statistics
                 stats = compute_signal_statistics(
                     self.waveform_db,
-                    signal,
+                    signal,  # type: ignore[arg-type]
                     sampling_times,
                     self.start_time,
                     self.end_time
@@ -280,7 +280,7 @@ class SignalAnalysisWindow(QDialog):
                 if node.is_group:
                     # Recursively add signals from groups
                     group_prefix = f"{prefix}{node.name}/" if prefix else f"{node.name}/"
-                    add_signals(node.children, group_prefix)
+                    add_signals(node.children, group_prefix)  # type: ignore[attr-defined]
                 else:
                     # Add signal to combo box
                     display_name = f"{prefix}{node.name}"

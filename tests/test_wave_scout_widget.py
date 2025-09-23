@@ -4,7 +4,15 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QModelIndex
 from PySide6.QtTest import QTest
-from wavescout import WaveScoutWidget, WaveformItemModel, SignalNode, DisplayFormat, GroupRenderMode
+from wavescout import (
+    WaveScoutWidget,
+    WaveformItemModel,
+    SignalNode,
+    SignalNodeGroup,
+    SignalNodeSignal,
+    DisplayFormat,
+    GroupRenderMode,
+)
 from .test_utils import get_test_input_path, TestFiles
 
 
@@ -322,18 +330,18 @@ def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
     
     # Create two groups with children
     # Group 1: G1 with IF, WB signals
-    g1 = SignalNode(name="G1", is_group=True, is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
-    if_signal = SignalNode(name="IF", handle=0)
-    wb_signal1 = SignalNode(name="WB", handle=1)
+    g1 = SignalNodeGroup(name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
+    if_signal = SignalNodeSignal(name="IF", handle=0)
+    wb_signal1 = SignalNodeSignal(name="WB", handle=1)
     if_signal.parent = g1
     wb_signal1.parent = g1
     g1.children = [if_signal, wb_signal1]
     
     # Group 2: G2 with EX, MEM, WB signals
-    g2 = SignalNode(name="G2", is_group=True, is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
-    ex_signal = SignalNode(name="EX", handle=2)
-    mem_signal = SignalNode(name="MEM", handle=3)
-    wb_signal2 = SignalNode(name="WB", handle=4)
+    g2 = SignalNodeGroup(name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
+    ex_signal = SignalNodeSignal(name="EX", handle=2)
+    mem_signal = SignalNodeSignal(name="MEM", handle=3)
+    wb_signal2 = SignalNodeSignal(name="WB", handle=4)
     ex_signal.parent = g2
     mem_signal.parent = g2
     wb_signal2.parent = g2

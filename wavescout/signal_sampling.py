@@ -10,7 +10,7 @@ from typing import List, Tuple, Optional, Any
 from .protocols import WaveformDBProtocol
 import math
 
-from .data_model import SignalNode, Time, DataFormat
+from .data_model import SignalNode, SignalNodeSignal, Time, DataFormat
 from .config import RENDERING
 import struct
 
@@ -141,7 +141,7 @@ def parse_signal_value(value: Any, data_format: DataFormat = DataFormat.UNSIGNED
 
 
 def generate_signal_draw_commands(
-    signal: SignalNode,
+    signal: SignalNodeSignal,
     start_time: Time,
     end_time: Time,
     canvas_width: int,

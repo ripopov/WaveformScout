@@ -29,7 +29,7 @@ from pyrox import SignalHandle
 if TYPE_CHECKING:
     from pyrox import Signal
 
-from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat
+from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalNodeSignal, SignalRangeCache, DataFormat
 from .signal_sampling import SignalDrawingData, ValueKind
 from . import config
 RENDERING = config.RENDERING
@@ -936,7 +936,7 @@ def draw_event_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sign
 
 
 
-def draw_overlapped_group(painter: QPainter, group_id: SignalNodeID, children: list[SignalNode],
+def draw_overlapped_group(painter: QPainter, group_id: SignalNodeID, children: list[SignalNodeSignal],
                           y: int, row_height: int, params: RenderParams) -> None:
     """Draw multiple child signals overlapped in a single row.
     

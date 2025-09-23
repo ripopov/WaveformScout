@@ -8,7 +8,19 @@ from .waveform_item_model import WaveformItemModel
 from dataclasses import dataclass, field
 from pyrox import SignalHandle
 
-from .data_model import SignalNode, SignalNodeID, Time, TimeUnit, TimeRulerConfig, RenderType, Marker, GroupRenderMode
+from .data_model import (
+    SignalNode,
+    SignalNodeGroup,
+    SignalNodeSignal,
+    SignalNodeID,
+    Time,
+    TimeUnit,
+    TimeRulerConfig,
+    RenderType,
+    Marker,
+    GroupRenderMode,
+    DisplayFormat,
+)
 from .signal_sampling import (
     SignalDrawingData,
     generate_signal_draw_commands
@@ -337,13 +349,16 @@ class WaveformCanvas(QWidget):
                     if getattr(node, 'is_group', False) and node.is_expanded and node.group_render_mode != GroupRenderMode.SEPARATE_ROWS:
                         # For non-default render modes, add a special rendering row after the group
                         # Only if expanded and has child signals
-                        child_signals: List[SignalNode] = [c for c in node.children if not c.is_group and c.handle is not None]
+                        child_signals: List[SignalNode] = [
+                            c for c in node.children
+                            if isinstance(c, SignalNodeSignal) and c.handle is not None
+                        ]
                         if child_signals:
                             # Compute combined height scaling as sum of children
                             combined_scaling = sum(max(1, c.height_scaling) for c in child_signals)
                             # Create a virtual node to represent the combined rendering
                             # Store reference to parent group and children for rendering
-                            virtual_node = SignalNode(name=f"{node.name}_virtual", handle=None, is_group=False)
+                            virtual_node = SignalNodeSignal(name=f"{node.name}_virtual", handle=None)
                             virtual_node.height_scaling = combined_scaling
                             # Store parent group reference and children in the virtual node
                             # Using special attributes to identify this as a group render node
@@ -636,41 +651,45 @@ class WaveformCanvas(QWidget):
         # Iterate through visible nodes and draw tooltips
         for row_idx, node in enumerate(self._visible_nodes):
             # Skip groups - they don't have values
-            if node.is_group:
+            if isinstance(node, SignalNodeGroup):
                 continue
-                
+
+            # Now we know it's a SignalNodeSignal
+            assert isinstance(node, SignalNodeSignal)
+            signal_node = node
+
             # Calculate row Y position using scaled heights
             # Sum up all previous row heights to get the Y position
             row_y = self._header_height
             for i in range(row_idx):
                 row_y += self._row_heights.get(i, self._row_height)
             row_y -= scroll_value
-            
+
             # Get the scaled height for this row
             row_height = self._row_heights.get(row_idx, self._row_height)
-            
+
             # Skip if row is outside visible area
             if row_y + row_height < 0 or row_y > self.height():
                 continue
-                
+
             # Get value at cursor
-            if not self._model._session.waveform_db or node.handle is None:
+            if not self._model._session.waveform_db or signal_node.handle is None:
                 continue
                 
             try:
                 db = self._model._session.waveform_db
                 # Get raw value via query_signal
-                signal_obj = db.get_signal(node.handle)
+                signal_obj = db.get_signal(signal_node.handle)
                 if not signal_obj:
                     continue
                 query = signal_obj.query_signal(max(0, self._cursor_time))
                 raw_value = query.value
-                
+
                 # Determine bit width
-                bit_width = db.get_var_bitwidth(node.handle)
-                
+                bit_width = db.get_var_bitwidth(signal_node.handle)
+
                 # Format value using same logic as Values panel
-                value_str, _, _ = parse_signal_value(raw_value, node.format.data_format, bit_width)
+                value_str, _, _ = parse_signal_value(raw_value, signal_node.format.data_format, bit_width)
                 if not value_str:
                     continue
                     
@@ -739,9 +758,11 @@ class WaveformCanvas(QWidget):
         # Include node handles, height scaling, data format, and COLOR to detect changes
         if 'visible_nodes' in params:
             key_params.append(
-                tuple((node.handle, node.name, node.height_scaling, 
-                       node.format.data_format if not node.is_group else None,
-                       node.format.color if not node.is_group else None)  # Include color for theme changes
+                tuple((node.handle if isinstance(node, SignalNodeSignal) else None,
+                       node.name,
+                       node.height_scaling,
+                       node.format.data_format if isinstance(node, SignalNodeSignal) else None,
+                       node.format.color if isinstance(node, SignalNodeSignal) else None)  # Include color for theme changes
                       for node in params['visible_nodes'])
             )
         # Include row heights to detect layout changes
@@ -767,14 +788,14 @@ class WaveformCanvas(QWidget):
         for i, node in enumerate(self._visible_nodes):
             node_info: NodeInfo = NodeInfo(
                 name=node.name,
-                handle=node.handle,
-                is_group=node.is_group,
-                format=node.format,
-                render_type=node.format.render_type,
+                handle=node.handle if isinstance(node, SignalNodeSignal) else None,
+                is_group=isinstance(node, SignalNodeGroup),
+                format=node.format if isinstance(node, SignalNodeSignal) else DisplayFormat(),
+                render_type=node.format.render_type if isinstance(node, SignalNodeSignal) else RenderType.BOOL,
                 height_scaling=node.height_scaling,
                 instance_id=node.instance_id,
                 is_selected=node.instance_id in selected_ids,
-                signal=node.signal
+                signal=node.signal if isinstance(node, SignalNodeSignal) else None
             )
             visible_nodes_info.append(node_info)
         
@@ -843,7 +864,7 @@ class WaveformCanvas(QWidget):
                 # Check if this row is in the render area
                 if not (row_bottom < render_top or y > render_bottom):
                     # Row is in render area, include it if it's a signal
-                    if not node.is_group and node.handle is not None:
+                    if isinstance(node, SignalNodeSignal) and node.handle is not None:
                         signals_to_render.append(node)
                     # If this is a virtual group render node, include its children
                     if hasattr(node, '_group_render_children'):
@@ -1133,7 +1154,7 @@ class WaveformCanvas(QWidget):
 
 
     
-    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDBProtocol) -> CachedWaveDrawData:
+    def _generate_all_draw_commands(self, signal_nodes: List[SignalNodeSignal], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDBProtocol) -> CachedWaveDrawData:
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"

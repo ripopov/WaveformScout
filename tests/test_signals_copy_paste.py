@@ -1,5 +1,6 @@
 """Test copy-paste functionality for signals in SignalNamesView."""
 
+import os
 import pytest
 import tempfile
 from pathlib import Path
@@ -13,11 +14,14 @@ from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
 from wavescout.wave_scout_widget import WaveScoutWidget
-from wavescout.data_model import SignalNode
+from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
 from wavescout.signal_names_view import SignalNamesView
 from wavescout.persistence import save_session, load_session
-import pytest
 from .test_split_mode_helpers import add_signals_from_split_mode, add_signals_by_double_click_vars
+
+# Get the absolute path to the test inputs directory
+TEST_DIR = Path(__file__).parent
+TEST_INPUTS_DIR = TEST_DIR.parent / 'test_inputs'
 
 
 @pytest.fixture(autouse=True)
@@ -42,9 +46,10 @@ def clear_clipboard():
 
 def test_copy_paste_signals(qtbot, tmp_path):
     """Test copying and pasting signals in SignalNamesView."""
-    
+
     # Create main window and load waveform
-    window = WaveScoutMainWindow(wave_file='test_inputs/apb_sim.vcd')
+    test_file = str(TEST_INPUTS_DIR / 'apb_sim.vcd')
+    window = WaveScoutMainWindow(wave_file=test_file)
     qtbot.addWidget(window)
     
     # Wait for file to load - may need more time for async loading
@@ -199,14 +204,14 @@ def test_copy_paste_signals(qtbot, tmp_path):
     # Count occurrences of each name (should have duplicates from pasting)
     from collections import Counter
     name_counts = Counter(node_names)
-    
+
     # The 3 copied signals should appear 3 times each (original + 2 pastes)
     # The other signals should appear once each
     three_count_names = sum(1 for count in name_counts.values() if count == 3)
     one_count_names = sum(1 for count in name_counts.values() if count == 1)
-    
+
     # We should have 3 signals that appear 3 times (the ones we copied)
-    assert three_count_names == 3, f"Should have 3 signals appearing 3 times, got {three_count_names}"
+    assert three_count_names == 3, f"Should have 3 signals appearing 3 times, got {three_count_names}. Name counts: {dict(name_counts)}"
     # The rest should appear once
     assert one_count_names == num_signals - 3, f"Should have {num_signals - 3} signals appearing once, got {one_count_names}"
     
@@ -234,7 +239,8 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
     """Test copying and pasting groups with children."""
     
     # Create main window
-    window = WaveScoutMainWindow(wave_file='test_inputs/apb_sim.vcd')
+    test_file = str(TEST_INPUTS_DIR / 'apb_sim.vcd')
+    window = WaveScoutMainWindow(wave_file=test_file)
     qtbot.addWidget(window)
     
     # Wait for file to load - may need more time for async loading
@@ -306,9 +312,11 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
     all_ids = set()
     
     def collect_ids(node):
+        from wavescout import SignalNodeGroup
         all_ids.add(node.instance_id)
-        for child in node.children:
-            collect_ids(child)
+        if isinstance(node, SignalNodeGroup):
+            for child in node.children:
+                collect_ids(child)
     
     for node in session.root_nodes:
         collect_ids(node)
@@ -329,7 +337,8 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     """
     
     # Create main window
-    window = WaveScoutMainWindow(wave_file='test_inputs/apb_sim.vcd')
+    test_file = str(TEST_INPUTS_DIR / 'apb_sim.vcd')
+    window = WaveScoutMainWindow(wave_file=test_file)
     qtbot.addWidget(window)
     
     # Wait for file to load
@@ -441,9 +450,11 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     all_ids = set()
     
     def collect_ids(node):
+        from wavescout import SignalNodeGroup
         all_ids.add(node.instance_id)
-        for child in node.children:
-            collect_ids(child)
+        if isinstance(node, SignalNodeGroup):
+            for child in node.children:
+                collect_ids(child)
     
     for node in session.root_nodes:
         collect_ids(node)
@@ -476,9 +487,11 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     
     # Verify parent references are correct
     def verify_parent_refs(node, expected_parent=None):
+        from wavescout import SignalNodeGroup
         assert node.parent == expected_parent, f"Node {node.name} parent reference incorrect"
-        for child in node.children:
-            verify_parent_refs(child, node)
+        if isinstance(node, SignalNodeGroup):
+            for child in node.children:
+                verify_parent_refs(child, node)
     
     for root_node in session.root_nodes:
         verify_parent_refs(root_node, None)
@@ -495,7 +508,8 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
     """Test copying and pasting a mixed selection of signals and groups."""
     
     # Create main window
-    window = WaveScoutMainWindow(wave_file='test_inputs/apb_sim.vcd')
+    test_file = str(TEST_INPUTS_DIR / 'apb_sim.vcd')
+    window = WaveScoutMainWindow(wave_file=test_file)
     qtbot.addWidget(window)
     
     # Wait for file to load
@@ -597,31 +611,31 @@ def test_copy_paste_recursion_regression(qtbot):
     - Equality comparisons that would trigger infinite recursion
     """
     
-    from wavescout.data_model import SignalNode, DisplayFormat, RenderType
+    from wavescout.data_model import SignalNodeGroup, SignalNodeSignal, DisplayFormat, RenderType
     from wavescout.persistence import _serialize_node, _deserialize_node
     import json
     
     # Create a deeply nested structure
-    root = SignalNode(name="ROOT", is_group=True)
+    root = SignalNodeGroup(name="ROOT")
     
     # Level 1
-    level1 = SignalNode(name="L1", is_group=True)
+    level1 = SignalNodeGroup(name="L1")
     level1.parent = root
     root.children.append(level1)
     
     # Level 2
-    level2 = SignalNode(name="L2", is_group=True)
+    level2 = SignalNodeGroup(name="L2")
     level2.parent = level1
     level1.children.append(level2)
     
     # Level 3
-    level3 = SignalNode(name="L3", is_group=True)
+    level3 = SignalNodeGroup(name="L3")
     level3.parent = level2
     level2.children.append(level3)
     
     # Add signals at each level
     for i, parent in enumerate([root, level1, level2, level3]):
-        signal = SignalNode(
+        signal = SignalNodeSignal(
             name=f"{parent.name}_signal",
             handle=i,
             format=DisplayFormat(render_type=RenderType.BOOL)

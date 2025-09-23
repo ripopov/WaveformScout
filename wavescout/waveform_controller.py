@@ -13,8 +13,18 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Iterable, Set
 
 from .data_model import (
-    WaveformSession, Viewport, SignalNode, Marker, Time, SignalNodeID,
-    DataFormat, GroupRenderMode, DisplayFormat, RenderType
+    WaveformSession,
+    Viewport,
+    SignalNode,
+    SignalNodeGroup,
+    SignalNodeSignal,
+    Marker,
+    Time,
+    SignalNodeID,
+    DataFormat,
+    GroupRenderMode,
+    DisplayFormat,
+    RenderType,
 )
 from .clock_utils import calculate_clock_period, is_valid_clock_signal
 from . import config
@@ -417,8 +427,9 @@ class WaveformController:
             return
         def walk(node: SignalNode) -> Iterable[SignalNode]:
             yield node
-            for ch in node.children:
-                yield from walk(ch)
+            if isinstance(node, SignalNodeGroup):
+                for ch in node.children:
+                    yield from walk(ch)
         for root in list(self.session.root_nodes):
             yield from walk(root)
 
@@ -575,9 +586,8 @@ class WaveformController:
             return -1
         
         # Create new group
-        group = SignalNode(
+        group = SignalNodeGroup(
             name=group_name,
-            is_group=True,
             group_render_mode=mode,
             children=[]
         )
@@ -640,7 +650,7 @@ class WaveformController:
         target_parent = None
         if target_parent_id is not None:
             target_parent = self._find_node_by_id(target_parent_id)
-            if not target_parent or not target_parent.is_group:
+            if not target_parent or not isinstance(target_parent, SignalNodeGroup):
                 return  # Invalid target
         
         # Remove nodes from current positions
@@ -653,6 +663,7 @@ class WaveformController:
         # Insert at new position
         if target_parent:
             # Insert into group
+            assert isinstance(target_parent, SignalNodeGroup)  # We checked this above
             for i, node in enumerate(nodes_to_move):
                 node.parent = target_parent
                 target_parent.children.insert(insert_row + i, node)
@@ -744,7 +755,7 @@ class WaveformController:
         try:
             # Ensure all nodes have valid handles and unique instance IDs
             for node in snippet_nodes:
-                if not node.is_group and node.handle == -1:
+                if isinstance(node, SignalNodeSignal) and node.handle == -1:
                     print(f"Warning: Signal {node.name} has invalid handle")
                     return False
             
@@ -763,13 +774,13 @@ class WaveformController:
             return
         
         ids_list = list(group_ids)
-        groups_to_ungroup = []
-        
+        groups_to_ungroup: List[SignalNodeGroup] = []
+
         for node_id in ids_list:
             node = self._find_node_by_id(node_id)
-            if node and node.is_group:
+            if node and isinstance(node, SignalNodeGroup):
                 groups_to_ungroup.append(node)
-        
+
         for group in groups_to_ungroup:
             parent = group.parent
             children = list(group.children)
@@ -803,9 +814,13 @@ class WaveformController:
         node = self._find_node_by_id(node_id)
         if not node:
             return
-        
+
+        # Groups don't have format
+        if not isinstance(node, SignalNodeSignal):
+            return
+
         changes: FormatChanges = {}
-        
+
         # Handle each possible format property
         if 'data_format' in kwargs:
             value = kwargs['data_format']
@@ -881,9 +896,9 @@ class WaveformController:
     def set_node_expanded(self, node_id: SignalNodeID, expanded: bool) -> None:
         """Set whether a group node is expanded."""
         node = self._find_node_by_id(node_id)
-        if not node or not node.is_group:
+        if not node or not isinstance(node, SignalNodeGroup):
             return
-        
+
         if node.is_expanded != expanded:
             node.is_expanded = expanded
             self._emit("session_changed")
@@ -901,12 +916,12 @@ class WaveformController:
         from .color_utils import generate_rainbow_colors
 
         node = self._find_node_by_id(node_id)
-        if not node or not node.is_group:
+        if not node or not isinstance(node, SignalNodeGroup):
             return
 
         # Validate flat group for OVERLAPPED
         if mode == GroupRenderMode.OVERLAPPED:
-            if any(child.is_group for child in node.children):
+            if any(isinstance(child, SignalNodeGroup) for child in node.children):
                 # Disallow overlapped on nested groups; keep or reset to SEPARATE_ROWS
                 mode = GroupRenderMode.SEPARATE_ROWS
 
@@ -918,7 +933,7 @@ class WaveformController:
         # Apply side effects when enabling OVERLAPPED
         if mode == GroupRenderMode.OVERLAPPED:
             # Collect direct child signals
-            child_signals = [c for c in node.children if not c.is_group and c.handle is not None]
+            child_signals = [c for c in node.children if isinstance(c, SignalNodeSignal) and c.handle is not None]
             # Assign rainbow colors deterministically
             colors = generate_rainbow_colors(len(child_signals)) if child_signals else []
             for idx, child in enumerate(child_signals):
@@ -947,22 +962,26 @@ class WaveformController:
     
     def set_clock_signal(self, node: Optional[SignalNode]) -> None:
         """Set a signal as the clock for grid display.
-        
+
         Calculates the clock period based on signal type and updates
         the session's clock_signal field.
         """
         if not self.session:
             return
-        
+
         if node is None:
             self.clear_clock_signal()
             return
-        
+
+        # Groups can't be clock signals
+        if not isinstance(node, SignalNodeSignal):
+            return
+
         # Get the waveform database
         db = self.session.waveform_db
         if not db or node.handle is None:
             return
-        
+
         # Get the variable and signal
         var = db.var_from_handle(node.handle)
         if not var or not is_valid_clock_signal(var):

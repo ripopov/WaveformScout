@@ -1,7 +1,7 @@
 import pytest
 from wavescout import WaveScoutWidget, WaveformSession
 from wavescout.waveform_loader import create_signal_node_from_var, create_sample_session
-from wavescout.data_model import SignalNode, GroupRenderMode, RenderType, AnalogScalingMode
+from wavescout.data_model import SignalNode, SignalNodeGroup, GroupRenderMode, RenderType, AnalogScalingMode
 from .test_utils import get_test_input_path
 
 
@@ -44,7 +44,7 @@ def test_overlapped_group_periodic_signals(qtbot):
         children.append(node)
 
     # Create group and attach children
-    group = SignalNode(name="PeriodicGroup", is_group=True, is_expanded=True)
+    group = SignalNodeGroup(name="PeriodicGroup", is_expanded=True)
     for ch in children:
         ch.parent = group
         group.children.append(ch)
@@ -123,7 +123,7 @@ def test_overlapped_mode_triggers_immediate_rerender(qtbot):
         handle, var = found[nm]
         node = create_signal_node_from_var(var, hier, handle)
         children.append(node)
-    group = SignalNode(name="G", is_group=True, is_expanded=True)
+    group = SignalNodeGroup(name="G", is_expanded=True)
     for ch in children:
         ch.parent = group
         group.children.append(ch)

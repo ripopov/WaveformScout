@@ -10,7 +10,7 @@ from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, DisplayFormat, RenderType, DataFormat
+from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat, RenderType, DataFormat
 from .test_utils import get_test_input_path, TestFiles
 
 
@@ -78,7 +78,7 @@ class TestReloadFeature:
         
         Returns list of signal names that were added.
         """
-        from wavescout.data_model import SignalNode, DisplayFormat
+        from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
         
         # Get the waveform database
         if not window.wave_widget.session or not window.wave_widget.session.waveform_db:
@@ -110,15 +110,12 @@ class TestReloadFeature:
                 handle = waveform_db.find_handle_by_path(signal_name)
                 if handle is not None:
                     # Create a SignalNode
-                    signal_node = SignalNode(
+                    signal_node = SignalNodeSignal(
                         name=signal_name,
                         handle=handle,
                         format=DisplayFormat(),
                         nickname='',
-                        children=[],
                         parent=None,
-                        is_group=False,
-                        is_expanded=True,
                         height_scaling=1,
                         is_multi_bit=False
                     )
@@ -136,37 +133,41 @@ class TestReloadFeature:
     
     def _get_signal_properties(self, node: SignalNode) -> Dict[str, Any]:
         """Extract all relevant properties from a SignalNode for comparison."""
+        from wavescout import SignalNodeSignal, SignalNodeGroup
+
         props = {
             'name': node.name,
-            'handle': node.handle,
             'nickname': node.nickname,
-            'is_group': node.is_group,
-            'is_expanded': node.is_expanded,
+            'is_group': isinstance(node, SignalNodeGroup),
             'height_scaling': node.height_scaling,
-            'is_multi_bit': node.is_multi_bit,
             'instance_id': node.instance_id,
         }
-        
-        # Add format properties
-        if node.format:
-            props['format'] = {
-                'data_format': node.format.data_format,
-                'render_type': node.format.render_type,
-                'color': node.format.color,
-                'analog_scaling_mode': node.format.analog_scaling_mode,
-            }
-            # Add analog properties if they exist
-            if hasattr(node.format, 'analog_min'):
-                props['format']['analog_min'] = node.format.analog_min
-            if hasattr(node.format, 'analog_max'):
-                props['format']['analog_max'] = node.format.analog_max
-        else:
-            props['format'] = None
-        
-        # Add group render mode if present
-        if node.group_render_mode:
+
+        # Add signal-specific properties
+        if isinstance(node, SignalNodeSignal):
+            props['handle'] = node.handle
+            props['is_multi_bit'] = node.is_multi_bit
+            # Add format properties
+            if node.format:
+                props['format'] = {
+                    'data_format': node.format.data_format,
+                    'render_type': node.format.render_type,
+                    'color': node.format.color,
+                    'analog_scaling_mode': node.format.analog_scaling_mode,
+                }
+                # Add analog properties if they exist
+                if hasattr(node.format, 'analog_min'):
+                    props['format']['analog_min'] = node.format.analog_min
+                if hasattr(node.format, 'analog_max'):
+                    props['format']['analog_max'] = node.format.analog_max
+            else:
+                props['format'] = None
+
+        # Add group-specific properties
+        if isinstance(node, SignalNodeGroup):
+            props['is_expanded'] = node.is_expanded
             props['group_render_mode'] = node.group_render_mode
-        
+
         return props
     
     def _compare_signal_nodes(self, nodes_before: List[SignalNode], nodes_after: List[SignalNode]) -> bool:

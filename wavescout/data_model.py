@@ -35,8 +35,9 @@ Displayed signals can be grouped into a tree structure. So WaveformSession is a 
 
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING
+from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING, Any
 from enum import Enum
 
 from pyrox import SignalHandle
@@ -82,100 +83,122 @@ class DisplayFormat:
     color: Optional[str] = None  # None means use theme default, otherwise user-configured
     analog_scaling_mode: AnalogScalingMode = AnalogScalingMode.SCALE_TO_ALL_DATA
 
-@dataclass
-class SignalNode:
-    """A node in the signal/group tree. Can be a signal or a group."""
-    name: str                          # Full hierarchical name (e.g., "top.tb.axi_bfm.clk")
-    handle: Optional[SignalHandle] = None        # identifier understood by WaveformDB (None for groups)
-    signal: Optional["Signal"] = field(default=None, repr=False, compare=False)  # Cached Signal object (runtime only, not persisted)
-    format: DisplayFormat = field(default_factory=DisplayFormat)
-    nickname: str = ""                  # User-defined display name
-    children: List["SignalNode"] = field(default_factory=list)
-    parent: Optional["SignalNode"] = field(default=None, repr=False)
-    is_group: bool = False
-    group_render_mode: Optional[GroupRenderMode] = None  # Only for groups
-    is_expanded: bool = True            # Whether group is expanded (only relevant for groups)
-    height_scaling: int = 1             # Relative row height (1, 2, 3, 4, 8)
-    is_multi_bit: bool = False         # Whether signal has multiple bits (for render type selection)
+@dataclass(eq=False)
+class SignalNode(ABC):
+    """Base node in the signal/group tree with shared attributes."""
+
+    name: str
+    nickname: str = ""
+    parent: Optional["SignalNodeGroup"] = field(default=None, repr=False)
+    height_scaling: int = 1
 
     # Class-level counter for generating unique instance IDs
     _id_counter: ClassVar[int] = 0
 
     # Unique identifier for this SignalNode instance
     instance_id: SignalNodeID = field(default_factory=lambda: SignalNode._generate_id())
-    
+
     def __eq__(self, other: object) -> bool:
-        """Custom equality comparison that avoids circular reference through parent field.
-        
-        We compare all fields except 'parent' to prevent infinite recursion when
-        comparing nodes in a tree structure. The parent field is excluded because:
-        1. It creates circular references (parent->children->parent)
-        2. Two nodes are equal if their content is the same, regardless of position in tree
-        3. The instance_id already provides unique identification
-        """
-        if not isinstance(other, SignalNode):
+        """Custom equality comparison that avoids circular references through parent."""
+        if type(self) is not type(other):
             return False
-        
-        # Compare all fields except parent to avoid circular reference
-        return (
-            self.name == other.name and
-            self.handle == other.handle and
-            self.format == other.format and
-            self.nickname == other.nickname and
-            self.children == other.children and  # This is safe because children don't compare parents
-            # parent field explicitly excluded
-            self.is_group == other.is_group and
-            self.group_render_mode == other.group_render_mode and
-            self.is_expanded == other.is_expanded and
-            self.height_scaling == other.height_scaling and
-            self.is_multi_bit == other.is_multi_bit and
-            self.instance_id == other.instance_id
-        )
+
+        assert isinstance(other, SignalNode)
+        return self._comparison_state() == other._comparison_state()
+
+    @abstractmethod
+    def _comparison_state(self) -> Tuple[Any, ...]:
+        """Return the tuple of fields used for equality comparison."""
 
     @classmethod
     def _generate_id(cls) -> SignalNodeID:
-        """Generate a unique instance ID."""
-        cls._id_counter += 1
-        return cls._id_counter
-    
+        """Generate a unique instance ID shared across all node variants."""
+        SignalNode._id_counter += 1
+        return SignalNode._id_counter
+
+    @abstractmethod
     def deep_copy(self) -> "SignalNode":
-        """Create a deep copy of this node with new instance IDs.
-        
-        Recursively copies children for groups, generates new instance_ids,
-        and clears parent references (to be set by insertion logic).
-        """
-        # Create a new DisplayFormat copy
+        """Create a deep copy of this node with a fresh instance ID."""
+
+    @property
+    def is_group(self) -> bool:
+        """Convenience discriminator compatible with legacy callers."""
+        return isinstance(self, SignalNodeGroup)
+
+
+@dataclass(eq=False)
+class SignalNodeSignal(SignalNode):
+    """A signal node containing waveform data handle and formatting."""
+
+    handle: Optional[SignalHandle] = None
+    signal: Optional["Signal"] = field(default=None, repr=False, compare=False)
+    format: DisplayFormat = field(default_factory=DisplayFormat)
+    is_multi_bit: bool = False
+
+    def _comparison_state(self) -> Tuple[Any, ...]:
+        return (
+            self.name,
+            self.nickname,
+            self.height_scaling,
+            self.instance_id,
+            self.handle,
+            self.format,
+            self.is_multi_bit,
+        )
+
+    def deep_copy(self) -> "SignalNodeSignal":
         format_copy = DisplayFormat(
             render_type=self.format.render_type,
             data_format=self.format.data_format,
             color=self.format.color,
-            analog_scaling_mode=self.format.analog_scaling_mode
+            analog_scaling_mode=self.format.analog_scaling_mode,
         )
-        
-        # Create the new node with a new instance ID
-        new_node = SignalNode(
+
+        return SignalNodeSignal(
             name=self.name,
+            nickname=self.nickname,
+            height_scaling=self.height_scaling,
             handle=self.handle,
             format=format_copy,
+            is_multi_bit=self.is_multi_bit,
+        )
+
+
+@dataclass(eq=False)
+class SignalNodeGroup(SignalNode):
+    """A group node that can contain child signal or group nodes."""
+
+    group_render_mode: Optional[GroupRenderMode] = None
+    children: List["SignalNode"] = field(default_factory=list)
+    is_expanded: bool = True
+
+    def _comparison_state(self) -> Tuple[Any, ...]:
+        return (
+            self.name,
+            self.nickname,
+            self.height_scaling,
+            self.instance_id,
+            self.group_render_mode,
+            self.is_expanded,
+            tuple(self.children),
+        )
+
+    def deep_copy(self) -> "SignalNodeGroup":
+        new_group = SignalNodeGroup(
+            name=self.name,
             nickname=self.nickname,
-            children=[],  # Will be filled below
-            parent=None,  # Parent will be set by insertion logic
-            is_group=self.is_group,
+            height_scaling=self.height_scaling,
             group_render_mode=self.group_render_mode,
             is_expanded=self.is_expanded,
-            height_scaling=self.height_scaling,
-            is_multi_bit=self.is_multi_bit,
-            instance_id=self._generate_id()  # Generate new ID
         )
-        
-        # Recursively copy children for groups
+
         if self.children:
             for child in self.children:
                 child_copy = child.deep_copy()
-                child_copy.parent = new_node
-                new_node.children.append(child_copy)
-        
-        return new_node
+                child_copy.parent = new_group
+                new_group.children.append(child_copy)
+
+        return new_group
 
 class TimeUnit(Enum):
     ZEPTOSECONDS = "zs"  # 10^-21 seconds

@@ -6,7 +6,7 @@ from PySide6.QtGui import QAction, QActionGroup, QKeyEvent, QColor, QKeySequence
 from typing import List, Optional, Callable, Union, TYPE_CHECKING, Dict, Any
 from PySide6.QtCore import QPersistentModelIndex
 import json
-from .data_model import SignalNode, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
+from .data_model import SignalNode, SignalNodeSignal, SignalNodeGroup, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
 from .config import RENDERING, UI
 from .clock_utils import is_valid_clock_signal
 from .persistence import _serialize_node, _deserialize_node
@@ -108,15 +108,15 @@ class SignalNamesView(BaseColumnView):
             self.setDropIndicatorShown(True)
             self.setDragEnabled(True)
 
-    def _get_selected_signal_nodes(self) -> List[SignalNode]:
+    def _get_selected_signal_nodes(self) -> List[SignalNodeSignal]:
         """Return a list of selected SignalNode items (excluding groups)."""
-        nodes: List[SignalNode] = []
+        nodes: List[SignalNodeSignal] = []
         sel_model = self.selectionModel()
         if not sel_model:
             return nodes
         for idx in sel_model.selectedRows(0):
             n = self.model().data(idx, Qt.ItemDataRole.UserRole)
-            if isinstance(n, SignalNode) and not n.is_group:
+            if isinstance(n, SignalNodeSignal):
                 nodes.append(n)
         return nodes
 
@@ -165,12 +165,12 @@ class SignalNamesView(BaseColumnView):
             menu.addSeparator()
         
         # For groups, show rename and save as snippet actions
-        if node.is_group:
+        if isinstance(node, SignalNodeGroup):
             # Render Mode submenu for groups
             render_mode_menu = menu.addMenu("Render Mode")
 
             # Determine if group contains subgroups (disable overlapped for nested groups)
-            has_subgroups = any(getattr(child, 'is_group', False) for child in node.children)
+            has_subgroups = any(isinstance(child, SignalNodeGroup) for child in node.children)
 
             # Action group for exclusivity
             render_mode_group = QActionGroup(self)
@@ -211,8 +211,10 @@ class SignalNamesView(BaseColumnView):
             # Show the menu at the cursor position
             menu.exec(self.viewport().mapToGlobal(position))
             return
-        
+
         # For signals, show all options
+        # At this point we know node is a signal (groups returned above)
+        assert isinstance(node, SignalNodeSignal)
         # Add data format submenu
         format_menu = menu.addMenu("Data Format")
         
@@ -304,11 +306,11 @@ class SignalNamesView(BaseColumnView):
         menu.addSeparator()
         
         # Add navigate to scope action (only for signals, not groups)
-        if not node.is_group:
+        if isinstance(node, SignalNodeSignal):
             navigate_action = QAction("Navigate to scope", self)
             navigate_action.triggered.connect(self._navigate_to_scope)
             menu.addAction(navigate_action)
-            
+
             # Add clock signal options if this is a valid clock signal
             if self._controller.session and self._controller.session.waveform_db:
                 db = self._controller.session.waveform_db
@@ -417,7 +419,7 @@ class SignalNamesView(BaseColumnView):
         """
         # Check if we're transitioning into Analog from a different mode
         # We must check BEFORE calling set_node_format since it updates the node
-        old_render_type = node.format.render_type
+        old_render_type = node.format.render_type  # type: ignore[attr-defined]
         entering_analog = (render_type == RenderType.ANALOG and old_render_type != RenderType.ANALOG)
         
         # Use controller to set render type and analog scaling mode
@@ -500,7 +502,7 @@ class SignalNamesView(BaseColumnView):
         # Create and show the analysis window
         window = SignalAnalysisWindow(
             controller=self._controller,
-            selected_signals=selected_signals,
+            selected_signals=selected_signals,  # type: ignore[arg-type]
             parent=self
         )
         window.exec()
@@ -558,14 +560,14 @@ class SignalNamesView(BaseColumnView):
     
     def _save_as_snippet(self, group_node: SignalNode) -> None:
         """Save a group as a reusable snippet."""
-        if not group_node.is_group:
+        if not isinstance(group_node, SignalNodeGroup):
             QMessageBox.warning(self, "Invalid Selection", "Only groups can be saved as snippets.")
             return
-        
+
         # Find common parent scope
         snippet_manager = SnippetManager()
         parent_scope = snippet_manager.find_common_parent(group_node)
-        
+
         # Show save dialog
         dialog = SaveSnippetDialog(group_node, parent_scope, self)
         if dialog.exec() == SaveSnippetDialog.DialogCode.Accepted:
@@ -706,7 +708,7 @@ class SignalNamesView(BaseColumnView):
             lines.append('  ' * indent + name)
             
             # Add children for groups
-            if node.is_group and node.children:
+            if isinstance(node, SignalNodeGroup) and node.children:
                 for child in node.children:
                     add_node(child, indent + 1)
         
@@ -719,32 +721,32 @@ class SignalNamesView(BaseColumnView):
         """Validate nodes against current WaveformDB, filtering out invalid handles."""
         if not self._controller.session or not self._controller.session.waveform_db:
             # If no waveform loaded, keep groups but remove signals
-            validated = []
+            validated: List[SignalNode] = []
             for node in nodes:
-                if node.is_group:
+                if isinstance(node, SignalNodeGroup):
                     # Keep group but validate its children
                     node.children = self._validate_nodes(node.children)
                     validated.append(node)
             return validated
-        
+
         db = self._controller.session.waveform_db
-        validated = []
+        validated2: List[SignalNode] = []
         
         for node in nodes:
-            if node.is_group:
+            if isinstance(node, SignalNodeGroup):
                 # Always keep groups, but validate their children
                 node.children = self._validate_nodes(node.children)
-                validated.append(node)
-            elif node.handle is not None:
+                validated2.append(node)
+            elif isinstance(node, SignalNodeSignal) and node.handle is not None:
                 # Check if handle exists in current DB
                 try:
                     # Try to get the variable to validate the handle
                     var = db.var_from_handle(node.handle)
                     if var:
-                        validated.append(node)
+                        validated2.append(node)
                 except Exception:
                     # Skip nodes with invalid handles
                     pass
             # Note: Nodes without handles are skipped
-        
-        return validated
+
+        return validated2

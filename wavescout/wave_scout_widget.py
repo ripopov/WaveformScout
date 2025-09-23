@@ -10,7 +10,7 @@ import time
 from .timing_utils import tprint
 from .waveform_item_model import WaveformItemModel
 from .waveform_canvas import WaveformCanvas
-from .data_model import WaveformSession, SignalNode, GroupRenderMode
+from .data_model import WaveformSession, SignalNode, SignalNodeGroup, GroupRenderMode
 from .waveform_controller import WaveformController
 from .signal_names_view import SignalNamesView, BaseColumnView
 from .config import RENDERING, UI
@@ -371,8 +371,9 @@ class WaveScoutWidget(QWidget):
         nodes = []
         def walk(node: SignalNode) -> None:
             nodes.append(node)
-            for child in node.children:
-                walk(child)
+            if isinstance(node, SignalNodeGroup):
+                for child in node.children:
+                    walk(child)
         
         for root in self.session.root_nodes:
             walk(root)
@@ -391,7 +392,7 @@ class WaveScoutWidget(QWidget):
             node = self.model.data(index, Qt.ItemDataRole.UserRole)
             
             if isinstance(node, SignalNode) and node.is_group:
-                if node.is_expanded:
+                if node.is_expanded:  # type: ignore[attr-defined]
                     self._names_view.expand(index)
                     self._values_view.expand(index)
                 else:

@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QStandardPaths
 from wavescout.snippet_manager import Snippet
-from wavescout.data_model import SignalNode
+from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ def test_validate_and_resolve_nodes():
     """Test the extracted validation logic."""
     from wavescout.snippet_dialogs import InstantiateSnippetDialog
     from wavescout.waveform_db import WaveformDB
-    from wavescout.data_model import SignalNode
+    from wavescout.data_model import SignalNodeGroup
     
     # Create mock waveform database
     class MockWaveformDB:
@@ -160,8 +160,8 @@ def test_validate_and_resolve_nodes():
     
     # Create test nodes
     nodes = [
-        SignalNode(name="apb_testbench.pclk", handle=-1, is_group=False),
-        SignalNode(name="apb_testbench.paddr", handle=-1, is_group=False)
+        SignalNodeSignal(name="apb_testbench.pclk", handle=-1),
+        SignalNodeSignal(name="apb_testbench.paddr", handle=-1)
     ]
     
     # Test successful validation
@@ -172,7 +172,7 @@ def test_validate_and_resolve_nodes():
     
     # Test validation failure for non-existent signal
     bad_nodes = [
-        SignalNode(name="non_existent.signal", handle=-1, is_group=False)
+        SignalNodeSignal(name="non_existent.signal", handle=-1)
     ]
     
     with pytest.raises(ValueError) as exc_info:
@@ -212,7 +212,6 @@ def test_cli_argument_parsing(sample_vcd_file, snippets_dir, sample_snippet_data
 def test_snippet_node_hierarchy():
     """Test that hierarchical snippet nodes are handled correctly."""
     from wavescout.snippet_dialogs import InstantiateSnippetDialog
-    from wavescout.data_model import SignalNode
     
     # Create mock waveform database
     class MockWaveformDB:
@@ -224,12 +223,11 @@ def test_snippet_node_hierarchy():
     db = MockWaveformDB()
     
     # Create hierarchical nodes
-    group_node = SignalNode(
+    group_node = SignalNodeGroup(
         name="group1",
-        is_group=True,
         children=[
-            SignalNode(name="apb_testbench.group1.sig1", handle=-1, is_group=False),
-            SignalNode(name="apb_testbench.group1.sig2", handle=-1, is_group=False)
+            SignalNodeSignal(name="apb_testbench.group1.sig1", handle=-1),
+            SignalNodeSignal(name="apb_testbench.group1.sig2", handle=-1)
         ]
     )
     
@@ -263,7 +261,7 @@ def test_exit_codes_simulation():
 
 def test_snippet_instantiation_order():
     """Test that snippets are instantiated in the order specified."""
-    from wavescout.data_model import SignalNode
+    from wavescout.data_model import SignalNodeGroup
     
     # Create a list to track instantiation order
     instantiation_order = []
@@ -279,7 +277,7 @@ def test_snippet_instantiation_order():
     # Create snippet nodes
     snippets = ["snippet_a", "snippet_b", "snippet_c"]
     for name in snippets:
-        group = SignalNode(name=name, is_group=True)
+        group = SignalNodeGroup(name=name)
         controller = MockController()
         controller.instantiate_snippet([group])
     

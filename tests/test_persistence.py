@@ -5,8 +5,16 @@ import tempfile
 import pathlib
 from wavescout import save_session, load_session, create_sample_session
 from wavescout.data_model import (
-    WaveformSession, SignalNode, DisplayFormat, DataFormat,
-    Viewport, Marker, AnalysisMode, GroupRenderMode
+    WaveformSession,
+    SignalNode,
+    SignalNodeGroup,
+    SignalNodeSignal,
+    DisplayFormat,
+    DataFormat,
+    Viewport,
+    Marker,
+    AnalysisMode,
+    GroupRenderMode,
 )
 from .test_utils import get_test_input_path, TestFiles
 
@@ -16,7 +24,7 @@ def create_test_session():
     session = WaveformSession()
     
     # Add simple signal
-    node1 = SignalNode(
+    node1 = SignalNodeSignal(
         name="clk",
         handle=1,
         format=DisplayFormat(
@@ -26,14 +34,13 @@ def create_test_session():
     )
     
     # Add group with children
-    group = SignalNode(
+    group = SignalNodeGroup(
         name="CPU",
-        is_group=True,
         group_render_mode=GroupRenderMode.OVERLAPPED,
         is_expanded=False
     )
     
-    child1 = SignalNode(
+    child1 = SignalNodeSignal(
         name="pc[31:0]",
         handle=2,
         format=DisplayFormat(
@@ -44,7 +51,7 @@ def create_test_session():
         nickname="Program Counter"
     )
     
-    child2 = SignalNode(
+    child2 = SignalNodeSignal(
         name="instruction[31:0]",
         handle=3,
         format=DisplayFormat(
@@ -216,8 +223,8 @@ def test_sampling_signal_persistence():
     session = WaveformSession()
     
     # Add signals
-    signal1 = SignalNode(name='data', handle=1, instance_id=100)
-    signal2 = SignalNode(name='clock', handle=2, instance_id=200)
+    signal1 = SignalNodeSignal(name='data', handle=1, instance_id=100)
+    signal2 = SignalNodeSignal(name='clock', handle=2, instance_id=200)
     session.root_nodes = [signal1, signal2]
     
     # Set sampling signal
@@ -247,8 +254,8 @@ def test_sampling_signal_in_nested_group():
     session = WaveformSession()
     
     # Create group with children
-    group = SignalNode(name='GROUP', is_group=True, instance_id=1000)
-    child = SignalNode(name='child_signal', handle=10, parent=group, instance_id=1001)
+    group = SignalNodeGroup(name='GROUP', instance_id=1000)
+    child = SignalNodeSignal(name='child_signal', handle=10, parent=group, instance_id=1001)
     group.children = [child]
     
     session.root_nodes = [group]

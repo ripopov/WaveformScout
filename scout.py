@@ -24,7 +24,7 @@ from wavescout import WaveScoutWidget, create_sample_session, save_session, load
 from wavescout.design_tree_view import DesignTreeView
 from wavescout.config import RENDERING
 from wavescout.theme import theme_manager, ThemeName, apply_saved_theme
-from wavescout.data_model import WaveformSession, SignalNode
+from wavescout.data_model import WaveformSession, SignalNode, SignalNodeGroup
 from wavescout.settings_manager import SettingsManager
 from wavescout.timing_utils import set_startup_time, tprint
 import qdarkstyle
@@ -1645,9 +1645,10 @@ class WaveScoutMainWindow(FramelessWindow):
             if hasattr(node, 'format') and node.format.color in default_colors:
                 node.format.color = new_default
             
-            # Process children
-            for child in node.children:
-                update_node_colors(child)
+            # Process children for group nodes
+            if isinstance(node, SignalNodeGroup):
+                for child in node.children:
+                    update_node_colors(child)
         
         # Update all root nodes
         for node in self.wave_widget.session.root_nodes:
@@ -1727,7 +1728,7 @@ class WaveScoutMainWindow(FramelessWindow):
     def _on_snippet_instantiate(self, snippet):
         """Handle snippet instantiation request from browser."""
         from wavescout.snippet_dialogs import InstantiateSnippetDialog
-        from wavescout.data_model import SignalNode
+        from wavescout.data_model import SignalNodeGroup
         
         # Get current waveform database
         waveform_db = None
@@ -1747,9 +1748,8 @@ class WaveScoutMainWindow(FramelessWindow):
                     after_id = self.wave_widget.session.selected_nodes[-1].instance_id
                 
                 # Wrap the snippet nodes in a group with custom name
-                group_node = SignalNode(
+                group_node = SignalNodeGroup(
                     name=group_name,  # Use custom group name from dialog
-                    is_group=True,
                     children=remapped_nodes,
                     is_expanded=True
                 )
@@ -1780,7 +1780,7 @@ class WaveScoutMainWindow(FramelessWindow):
         import sys
         from wavescout.snippet_dialogs import InstantiateSnippetDialog
         from wavescout.snippet_manager import SnippetManager
-        from wavescout.data_model import SignalNode
+        from wavescout.data_model import SignalNodeGroup
         
         manager = SnippetManager()
         waveform_db = self.wave_widget.session.waveform_db
@@ -1809,9 +1809,8 @@ class WaveScoutMainWindow(FramelessWindow):
                 sys.exit(1)
             
             # Create group to wrap snippet (reuse logic from _on_snippet_instantiate)
-            group_node = SignalNode(
+            group_node = SignalNodeGroup(
                 name=snippet.name,
-                is_group=True,
                 children=validated_nodes,
                 is_expanded=True
             )

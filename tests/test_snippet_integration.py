@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 import pytest
 from PySide6.QtWidgets import QApplication
-from wavescout.data_model import SignalNode, DisplayFormat, DataFormat, RenderType, WaveformSession
+from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal, DisplayFormat, DataFormat, RenderType, WaveformSession
 from wavescout.snippet_manager import Snippet, SnippetManager
 from wavescout.persistence import serialize_snippet_nodes, deserialize_snippet_nodes
 from wavescout.waveform_db import WaveformDB
@@ -95,7 +95,7 @@ class TestSnippetSaveLoad:
         # Create signal nodes
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNode(
+            node = SignalNodeSignal(
                 name=signal_name,
                 handle=handle,
                 format=DisplayFormat(data_format=DataFormat.HEX),
@@ -105,7 +105,7 @@ class TestSnippetSaveLoad:
         
         # Find common parent
         parent_scope = snippet_manager.find_common_parent(
-            SignalNode(name="group", is_group=True, children=signal_nodes)
+            SignalNodeGroup(name="group", children=signal_nodes)
         )
         
         # Create and save snippet
@@ -210,11 +210,11 @@ class TestSnippetInstantiation:
         # Create snippet
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNode(name=signal_name, handle=handle)
+            node = SignalNodeSignal(name=signal_name, handle=handle)
             signal_nodes.append(node)
         
         parent_scope = snippet_manager.find_common_parent(
-            SignalNode(name="group", is_group=True, children=signal_nodes)
+            SignalNodeGroup(name="group", children=signal_nodes)
         )
         
         snippet = Snippet(
@@ -312,7 +312,7 @@ class TestSnippetRoundTrip:
         # Step 2: Create signal nodes with formatting
         signal_nodes = []
         for i, (signal_name, handle) in enumerate(test_signals):
-            node = SignalNode(
+            node = SignalNodeSignal(
                 name=signal_name,
                 handle=handle,
                 format=DisplayFormat(
@@ -326,9 +326,8 @@ class TestSnippetRoundTrip:
             signal_nodes.append(node)
         
         # Step 3: Create group and find parent scope
-        group = SignalNode(
+        group = SignalNodeGroup(
             name="Test Group",
-            is_group=True,
             children=signal_nodes
         )
         parent_scope = snippet_manager.find_common_parent(group)
@@ -394,12 +393,12 @@ class TestSnippetRoundTrip:
         # Create signal nodes
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNode(name=signal_name, handle=handle)
+            node = SignalNodeSignal(name=signal_name, handle=handle)
             signal_nodes.append(node)
         
         # Create snippet
         parent_scope = snippet_manager.find_common_parent(
-            SignalNode(name="group", is_group=True, children=signal_nodes)
+            SignalNodeGroup(name="group", children=signal_nodes)
         )
         
         snippet = Snippet(
@@ -434,9 +433,8 @@ class TestSnippetRoundTrip:
         assert remapped is not None
         
         # Wrap in group with custom name as would happen in the UI
-        group_node = SignalNode(
+        group_node = SignalNodeGroup(
             name=custom_name,  # Use custom name
-            is_group=True,
             children=remapped,
             is_expanded=True
         )
@@ -464,7 +462,7 @@ class TestSnippetRoundTrip:
         
         # Create complex nested structure with various properties
         # First subgroup - expanded, with analog signal
-        analog_signal = SignalNode(
+        analog_signal = SignalNodeSignal(
             name=test_signals[0][0],
             handle=test_signals[0][1],
             nickname="Analog Wave",
@@ -476,7 +474,7 @@ class TestSnippetRoundTrip:
             is_multi_bit=True
         )
         
-        digital_signal = SignalNode(
+        digital_signal = SignalNodeSignal(
             name=test_signals[1][0],
             handle=test_signals[1][1],
             nickname="Clock",
@@ -488,15 +486,14 @@ class TestSnippetRoundTrip:
             is_multi_bit=False
         )
         
-        subgroup1 = SignalNode(
+        subgroup1 = SignalNodeGroup(
             name="Analog Signals",
-            is_group=True,
             is_expanded=True,  # Expanded
             children=[analog_signal, digital_signal]
         )
         
         # Second subgroup - collapsed, with bus signals
-        bus_signal1 = SignalNode(
+        bus_signal1 = SignalNodeSignal(
             name=test_signals[2][0],
             handle=test_signals[2][1],
             nickname="Data Bus",
@@ -508,7 +505,7 @@ class TestSnippetRoundTrip:
             is_multi_bit=True
         )
         
-        bus_signal2 = SignalNode(
+        bus_signal2 = SignalNodeSignal(
             name=test_signals[3][0],
             handle=test_signals[3][1],
             nickname="Address Bus",
@@ -520,15 +517,14 @@ class TestSnippetRoundTrip:
             is_multi_bit=True
         )
         
-        subgroup2 = SignalNode(
+        subgroup2 = SignalNodeGroup(
             name="Bus Signals",
-            is_group=True,
             is_expanded=False,  # Collapsed
             children=[bus_signal1, bus_signal2]
         )
         
         # Third subgroup - nested groups
-        nested_signal1 = SignalNode(
+        nested_signal1 = SignalNodeSignal(
             name=test_signals[4][0],
             handle=test_signals[4][1],
             nickname="Control",
@@ -539,7 +535,7 @@ class TestSnippetRoundTrip:
             height_scaling=0.8
         )
         
-        nested_signal2 = SignalNode(
+        nested_signal2 = SignalNodeSignal(
             name=test_signals[5][0],
             handle=test_signals[5][1],
             nickname="Status",
@@ -550,24 +546,21 @@ class TestSnippetRoundTrip:
             height_scaling=1.0
         )
         
-        inner_group = SignalNode(
+        inner_group = SignalNodeGroup(
             name="Control Signals",
-            is_group=True,
             is_expanded=True,
             children=[nested_signal1, nested_signal2]
         )
         
-        subgroup3 = SignalNode(
+        subgroup3 = SignalNodeGroup(
             name="Nested Group",
-            is_group=True,
             is_expanded=False,
             children=[inner_group]
         )
         
         # Main group containing all subgroups
-        main_group = SignalNode(
+        main_group = SignalNodeGroup(
             name="Complex Test Group",
-            is_group=True,
             is_expanded=True,
             children=[subgroup1, subgroup2, subgroup3]
         )
@@ -658,9 +651,8 @@ class TestSnippetRoundTrip:
         assert len(remapped1) == 1
         
         # Wrap in group with custom name
-        group1 = SignalNode(
+        group1 = SignalNodeGroup(
             name="First Instance",
-            is_group=True,
             children=remapped1,
             is_expanded=True
         )
@@ -688,9 +680,8 @@ class TestSnippetRoundTrip:
         assert len(remapped2) == 1
         
         # Wrap in group with different custom name
-        group2 = SignalNode(
+        group2 = SignalNodeGroup(
             name="Second Instance",
-            is_group=True,
             children=remapped2,
             is_expanded=True
         )
@@ -730,27 +721,24 @@ class TestSnippetRoundTrip:
             pytest.skip("Not enough test signals found")
         
         # Create nested structure
-        subgroup1 = SignalNode(
+        subgroup1 = SignalNodeGroup(
             name="Subgroup 1",
-            is_group=True,
             children=[
-                SignalNode(name=test_signals[0][0], handle=test_signals[0][1]),
-                SignalNode(name=test_signals[1][0], handle=test_signals[1][1])
+                SignalNodeSignal(name=test_signals[0][0], handle=test_signals[0][1]),
+                SignalNodeSignal(name=test_signals[1][0], handle=test_signals[1][1])
             ]
         )
         
-        subgroup2 = SignalNode(
+        subgroup2 = SignalNodeGroup(
             name="Subgroup 2",
-            is_group=True,
             children=[
-                SignalNode(name=test_signals[2][0], handle=test_signals[2][1]),
-                SignalNode(name=test_signals[3][0], handle=test_signals[3][1])
+                SignalNodeSignal(name=test_signals[2][0], handle=test_signals[2][1]),
+                SignalNodeSignal(name=test_signals[3][0], handle=test_signals[3][1])
             ]
         )
         
-        main_group = SignalNode(
+        main_group = SignalNodeGroup(
             name="Main Group",
-            is_group=True,
             children=[subgroup1, subgroup2]
         )
         
@@ -790,14 +778,13 @@ class TestSnippetBugRegressions:
         signals to disappear from the canvas.
         """
         # Create signal nodes with specific handles (simulating loaded signals)
-        signal1 = SignalNode(name="TOP.module.sig1", handle=42)
-        signal2 = SignalNode(name="TOP.module.sig2", handle=84)
-        signal3 = SignalNode(name="TOP.module.sig3", handle=126)
+        signal1 = SignalNodeSignal(name="TOP.module.sig1", handle=42)
+        signal2 = SignalNodeSignal(name="TOP.module.sig2", handle=84)
+        signal3 = SignalNodeSignal(name="TOP.module.sig3", handle=126)
         
         # Create a group as would be in a session
-        group = SignalNode(
+        group = SignalNodeGroup(
             name="Session Group",
-            is_group=True,
             children=[signal1, signal2, signal3]
         )
         
@@ -915,26 +902,25 @@ class TestSnippetBugRegressions:
         from wavescout.snippet_dialogs import InstantiateSnippetDialog
         
         # Test case 1: Simple signal
-        signal = SignalNode(name="signal1", handle=-1)
+        signal = SignalNodeSignal(name="signal1", handle=-1)
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.module")
         assert result.name == "TOP.module.signal1"
         
         # Test case 2: Nested path
-        signal = SignalNode(name="sub.module.signal", handle=-1)
+        signal = SignalNodeSignal(name="sub.module.signal", handle=-1)
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.parent")
         assert result.name == "TOP.parent.sub.module.signal"
         
         # Test case 3: Empty parent scope
-        signal = SignalNode(name="signal", handle=-1)
+        signal = SignalNodeSignal(name="signal", handle=-1)
         result = InstantiateSnippetDialog.build_full_paths(signal, "")
         assert result.name == "signal"  # Should keep as-is
         
         # Test case 4: Group with children
-        child1 = SignalNode(name="sig1", handle=-1)
-        child2 = SignalNode(name="sig2", handle=-1)
-        group = SignalNode(
+        child1 = SignalNodeSignal(name="sig1", handle=-1)
+        child2 = SignalNodeSignal(name="sig2", handle=-1)
+        group = SignalNodeGroup(
             name="MyGroup",
-            is_group=True,
             children=[child1, child2]
         )
         
@@ -959,28 +945,25 @@ class TestSnippetBugRegressions:
         This verifies the complex nested group handling works correctly.
         """
         # Create a complex nested structure
-        leaf1 = SignalNode(name="signal1", handle=10)
-        leaf2 = SignalNode(name="signal2", handle=20)
-        leaf3 = SignalNode(name="signal3", handle=30)
-        leaf4 = SignalNode(name="signal4", handle=40)
+        leaf1 = SignalNodeSignal(name="signal1", handle=10)
+        leaf2 = SignalNodeSignal(name="signal2", handle=20)
+        leaf3 = SignalNodeSignal(name="signal3", handle=30)
+        leaf4 = SignalNodeSignal(name="signal4", handle=40)
         
-        inner_group1 = SignalNode(
+        inner_group1 = SignalNodeGroup(
             name="Inner1",
-            is_group=True,
             is_expanded=False,
             children=[leaf1, leaf2]
         )
-        
-        inner_group2 = SignalNode(
+
+        inner_group2 = SignalNodeGroup(
             name="Inner2", 
-            is_group=True,
             is_expanded=True,
             children=[leaf3, leaf4]
         )
-        
-        outer_group = SignalNode(
+
+        outer_group = SignalNodeGroup(
             name="Outer",
-            is_group=True,
             is_expanded=True,
             children=[inner_group1, inner_group2]
         )
@@ -1037,7 +1020,7 @@ class TestSnippetBugRegressions:
         real_signal_path, _ = test_signals[0]
         
         # Test case 1: Valid signal
-        valid_node = SignalNode(name=real_signal_path, handle=-1)
+        valid_node = SignalNodeSignal(name=real_signal_path, handle=-1)
         
         validated = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [valid_node], waveform_db
@@ -1048,7 +1031,7 @@ class TestSnippetBugRegressions:
         assert validated[0].handle != -1  # Handle should be resolved
         
         # Test case 2: Invalid signal should raise ValueError
-        invalid_node = SignalNode(name="TOP.does.not.exist", handle=-1)
+        invalid_node = SignalNodeSignal(name="TOP.does.not.exist", handle=-1)
         
         with pytest.raises(ValueError) as exc_info:
             InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1057,10 +1040,9 @@ class TestSnippetBugRegressions:
         assert "not found in waveform" in str(exc_info.value)
         
         # Test case 3: Group with valid child
-        group_node = SignalNode(
+        group_node = SignalNodeGroup(
             name="TestGroup",
-            is_group=True,
-            children=[SignalNode(name=real_signal_path, handle=-1)]
+            children=[SignalNodeSignal(name=real_signal_path, handle=-1)]
         )
         
         validated = InstantiateSnippetDialog.validate_and_resolve_nodes(

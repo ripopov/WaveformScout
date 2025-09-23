@@ -4,7 +4,7 @@ from typing import List, Dict, cast
 import pyrox
 from pyrox import SignalHandle
 
-from .data_model import SignalNode, DisplayFormat, DataFormat, WaveformSession, RenderType
+from .data_model import SignalNode, SignalNodeSignal, DisplayFormat, DataFormat, WaveformSession, RenderType
 from .waveform_db import WaveformDB
 
 
@@ -46,12 +46,11 @@ def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, hand
         display_format.data_format = DataFormat.UNSIGNED
     
     # Create signal node
-    node = SignalNode(
+    node = SignalNodeSignal(
         name=full_name,
         handle=handle,
         format=display_format,
         nickname="",
-        is_group=False,
         is_multi_bit=not is_single_bit  # Multi-bit if NOT 1-bit
     )
     

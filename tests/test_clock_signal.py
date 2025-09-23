@@ -5,7 +5,14 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from PySide6.QtWidgets import QApplication
 
-from wavescout.data_model import WaveformSession, SignalNode, DataFormat, DisplayFormat, RenderType, Time
+from wavescout.data_model import (
+    WaveformSession,
+    SignalNodeSignal,
+    DataFormat,
+    DisplayFormat,
+    RenderType,
+    Time,
+)
 from wavescout.clock_utils import (
     is_valid_clock_signal,
     calculate_event_clock_period,
@@ -191,7 +198,7 @@ class TestWaveformController:
         controller.set_session(session)
         
         # Create a signal node
-        node = SignalNode(
+        node = SignalNodeSignal(
             name="clk",
             handle=1,
             format=DisplayFormat()
@@ -225,7 +232,7 @@ class TestWaveformController:
         session = WaveformSession()
         
         # Set a clock signal
-        node = SignalNode(name="clk", handle=1, format=DisplayFormat())
+        node = SignalNodeSignal(name="clk", handle=1, format=DisplayFormat())
         session.clock_signal = (100, 0, node)  # period, phase, node
         controller.set_session(session)
         
@@ -241,8 +248,8 @@ class TestWaveformController:
         session = WaveformSession()
         
         # Create two nodes
-        clock_node = SignalNode(name="clk", handle=1, format=DisplayFormat())
-        other_node = SignalNode(name="data", handle=2, format=DisplayFormat())
+        clock_node = SignalNodeSignal(name="clk", handle=1, format=DisplayFormat())
+        other_node = SignalNodeSignal(name="data", handle=2, format=DisplayFormat())
         
         # Set clock signal
         session.clock_signal = (100, 0, clock_node)  # period, phase, node
@@ -320,7 +327,7 @@ class TestSessionPersistence:
         """Test saving and loading session with clock signal."""
         # Create session with clock signal
         session = WaveformSession()
-        clock_node = SignalNode(
+        clock_node = SignalNodeSignal(
             name="clk",
             handle=1,
             format=DisplayFormat()
@@ -353,7 +360,7 @@ class TestSessionPersistence:
         # Create session without clock signal
         session = WaveformSession()
         session.root_nodes = [
-            SignalNode(name="data", handle=1, format=DisplayFormat())
+            SignalNodeSignal(name="data", handle=1, format=DisplayFormat())
         ]
         
         # Save to temporary file
@@ -415,7 +422,7 @@ class TestRealWaveform:
         """Test setting apb_testbench.pclk as clock signal through controller."""
         from wavescout.waveform_db import WaveformDB
         from wavescout.waveform_controller import WaveformController
-        from wavescout.data_model import WaveformSession, SignalNode, DisplayFormat
+        from wavescout.data_model import WaveformSession, SignalNodeSignal, DisplayFormat
         
         # Create controller and session
         controller = WaveformController()
@@ -433,7 +440,7 @@ class TestRealWaveform:
         assert clock_handle is not None
         
         # Create a signal node for the clock
-        clock_node = SignalNode(
+        clock_node = SignalNodeSignal(
             name="apb_testbench.pclk",
             handle=clock_handle,
             format=DisplayFormat()
