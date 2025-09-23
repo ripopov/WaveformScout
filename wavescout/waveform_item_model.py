@@ -22,7 +22,7 @@ class WaveformItemModel(QAbstractItemModel):
         super().__init__(parent)
         self._session = session
         self._controller = controller
-        self._headers = ["Signal", "Value", "Format", "Waveform", "Analysis"]
+        self._headers = ["Signal", "Value", "Format", "Waveform"]
         self._cleanup_done = False
 
         # Get settings manager instance
@@ -61,7 +61,7 @@ class WaveformItemModel(QAbstractItemModel):
 
     # -- overriding row/column API --
     def columnCount(self, _parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex()) -> int:
-        return 5  # One column for each panel: Signal, Value, Format, Waveform, Analysis
+        return 4  # One column for each panel: Signal, Value, Format, Waveform
 
     def rowCount(self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex()) -> int:
         # Return number of children for given parent (or root nodes)
@@ -144,8 +144,6 @@ class WaveformItemModel(QAbstractItemModel):
                 return self._format_at_cursor(node)
             elif col == 3:
                 return ""  # Waveform painted by canvas
-            elif col == 4:
-                return self._analysis_value(node)
         elif role == Qt.ItemDataRole.ForegroundRole:
             return node.format.color
         elif role == Qt.ItemDataRole.UserRole:
@@ -345,24 +343,6 @@ class WaveformItemModel(QAbstractItemModel):
                     return QModelIndex()
         
         return index
-    
-    def _analysis_value(self, node: SignalNode) -> str:
-        # Calculate min/max/avg based on analysis mode and range
-        if node.is_group or not self._session.waveform_db:
-            return ""
-        
-        mode = self._session.analysis_mode
-        if mode.mode == "none":
-            return ""
-        
-        # TODO: Implement analysis calculations
-        # For now, return placeholder
-        if mode.mode == "max":
-            return "1"
-        elif mode.mode == "min":
-            return "0"
-        
-        return ""
     
     # -- Drag and Drop Support --
     def supportedDropActions(self) -> Qt.DropAction:

@@ -97,7 +97,7 @@ def test_values_panel(wave_widget):
     assert not values_view.isColumnHidden(2)  # Format column
     
     # Check other columns are hidden
-    for col in [0, 3, 4]:  # Signal, Waveform, Analysis columns should be hidden
+    for col in [0, 3]:  # Signal, Waveform columns should be hidden
         assert values_view.isColumnHidden(col)
     
     # Get some values
@@ -261,12 +261,12 @@ def test_headers_visible(wave_widget):
     # Get header text
     model = wave_widget.model
     headers = []
-    # The model has 5 columns: Signal, Value, Format, Waveform, Analysis
-    for col in range(5):
+    # The model has 4 columns: Signal, Value, Format, Waveform
+    for col in range(4):
         header = model.headerData(col, Qt.Horizontal, Qt.DisplayRole)
         headers.append(header)
     
-    assert headers == ["Signal", "Value", "Format", "Waveform", "Analysis"]
+    assert headers == ["Signal", "Value", "Format", "Waveform"]
     print(f"\nHeaders: {headers}")
 
 
