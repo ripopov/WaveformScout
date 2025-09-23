@@ -195,11 +195,11 @@ class WaveformItemModel(QAbstractItemModel):
         # Query WaveformDB for signal value at cursor time and format it according to node.format.data_format
         if node.is_group or not self._session.waveform_db or node.handle is None:
             return ""
-        
+
         db = self._session.waveform_db
         try:
-            # Get raw value via query_signal to preserve type (int/float/str/None)
-            signal_obj = db.get_signal(node.handle)
+            # Use cached Signal object from node
+            signal_obj = node.signal
             if not signal_obj:
                 return ""
             query = signal_obj.query_signal(max(0, self._session.cursor_time))

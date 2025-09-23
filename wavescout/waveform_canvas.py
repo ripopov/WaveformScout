@@ -773,7 +773,8 @@ class WaveformCanvas(QWidget):
                 render_type=node.format.render_type,
                 height_scaling=node.height_scaling,
                 instance_id=node.instance_id,
-                is_selected=node.instance_id in selected_ids
+                is_selected=node.instance_id in selected_ids,
+                signal=node.signal
             )
             visible_nodes_info.append(node_info)
         

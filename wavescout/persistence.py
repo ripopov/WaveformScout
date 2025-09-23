@@ -79,6 +79,8 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProt
             # Update the handle if we found it
             if handle is not None:
                 node.handle = handle
+                # Also load the Signal object
+                node.signal = waveform_db.get_signal(handle)
             # If still None, keep the existing handle (may work for aliases)
         
         # Process children

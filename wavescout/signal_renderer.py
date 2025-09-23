@@ -21,10 +21,13 @@ This module depends only on QPainter and small data types from the local data mo
 and sampling code; it contains no widget logic.
 """
 
-from typing import Dict, Tuple, Optional, Union, TypedDict
+from typing import Dict, Tuple, Optional, Union, TypedDict, TYPE_CHECKING
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPolygonF
 from PySide6.QtCore import Qt, QPointF
 from pyrox import SignalHandle
+
+if TYPE_CHECKING:
+    from pyrox import Signal
 
 from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat
 from .signal_sampling import SignalDrawingData, ValueKind
@@ -43,6 +46,7 @@ class NodeInfo(TypedDict):
     height_scaling: int
     instance_id: SignalNodeID
     is_selected: bool  # Whether this node is currently selected
+    signal: Optional["Signal"]  # Cached Signal object from node.signal
 
 class RenderParams(TypedDict, total=False):
     width: int
@@ -525,26 +529,27 @@ def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[T
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED) -> Tuple[float, float]:
+def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None) -> Tuple[float, float]:
     """Estimate global min/max from the waveform database.
-    
+
     Rationale
     - Some scaling modes need the range across the entire recording. Since the backend
       may not expose all transitions directly, we sample the signal uniformly across the
       time table to approximate min/max.
-    
+
     Args:
         handle: Signal handle used to query the DB.
-        waveform_db: Waveform database facade providing get_signal() and get_time_table().
-    
+        waveform_db: Waveform database facade providing get_time_table().
+        signal_obj: Cached Signal object from node.signal (should be provided when handle exists).
+
     Returns:
         (min_val, max_val) over the full recording; defaults to (0.0, 1.0) on failure.
     """
     if not waveform_db:
         return 0.0, 1.0
-        
+
     try:
-        signal_obj = waveform_db.get_signal(handle)
+        # Signal object should be provided from cached node.signal
         if not signal_obj:
             return 0.0, 1.0
             
@@ -613,12 +618,13 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBPro
 
 
 def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
-                    drawing_data: SignalDrawingData, 
-                    scaling_mode: AnalogScalingMode, 
+                    drawing_data: SignalDrawingData,
+                    scaling_mode: AnalogScalingMode,
                     signal_range_cache: Dict[SignalNodeID, SignalRangeCache],
                     data_format: DataFormat = DataFormat.UNSIGNED,
                     waveform_db: Optional[WaveformDBProtocol] = None,
-                    start_time: Optional[Time] = None, end_time: Optional[Time] = None) -> Tuple[float, float]:
+                    start_time: Optional[Time] = None, end_time: Optional[Time] = None,
+                    signal_obj: Optional["Signal"] = None) -> Tuple[float, float]:
     """Return analog Y-range using a small cache keyed by signal instance.
     
     Behavior
@@ -633,6 +639,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         drawing_data: Samples for the current paint pass.
         scaling_mode: AnalogScalingMode enum controlling how the range is chosen.
         signal_range_cache: Dict[SignalNodeID, SignalRangeCache] owned by the canvas.
+        signal_obj: Cached Signal object from node.signal (should be provided when handle exists).
         waveform_db: Optional database facade for global-range computation.
         start_time: Viewport start time.
         end_time: Viewport end time.
@@ -657,7 +664,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         if cache.min == float('inf'):
             # Compute and cache global range from database
             if waveform_db and handle is not None:
-                min_val, max_val = compute_global_signal_range(handle, waveform_db, data_format)
+                min_val, max_val = compute_global_signal_range(handle, waveform_db, data_format, signal_obj)
             else:
                 # Fallback to viewport data if db not available
                 min_val, max_val = compute_signal_range(drawing_data)
@@ -713,11 +720,15 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
     signal_range_cache = params.get('signal_range_cache', {})
     scaling_mode = node_info['format'].analog_scaling_mode
     waveform_db = params.get('waveform_db')
-    
+
+    # Get cached signal object directly from node_info
+    signal_obj = node_info.get('signal')
+
     if instance_id is not None and handle is not None:
         min_val, max_val = get_signal_range(
             instance_id, handle, drawing_data, scaling_mode, signal_range_cache,
-            node_info['format'].data_format, waveform_db, params['start_time'], params['end_time']
+            node_info['format'].data_format, waveform_db, params['start_time'], params['end_time'],
+            signal_obj
         )
     else:
         # Fallback to computing range from current data
@@ -956,7 +967,8 @@ def draw_overlapped_group(painter: QPainter, group_id: SignalNodeID, children: l
             if child.handle is None:
                 continue
             if db is not None:
-                cmin, cmax = compute_global_signal_range(child.handle, db, child.format.data_format)
+                # Use cached signal object from child node
+                cmin, cmax = compute_global_signal_range(child.handle, db, child.format.data_format, child.signal)
             else:
                 # Fallback: use draw_commands viewport values if available
                 dd = params.get('draw_commands', {}).get(child.handle)

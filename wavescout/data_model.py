@@ -42,6 +42,7 @@ from enum import Enum
 from pyrox import SignalHandle
 
 if TYPE_CHECKING:
+    from pyrox import Signal
     from wavescout.protocols import WaveformDBProtocol
 
 Time = int  # In Timescale units
@@ -86,6 +87,7 @@ class SignalNode:
     """A node in the signal/group tree. Can be a signal or a group."""
     name: str                          # Full hierarchical name (e.g., "top.tb.axi_bfm.clk")
     handle: Optional[SignalHandle] = None        # identifier understood by WaveformDB (None for groups)
+    signal: Optional["Signal"] = field(default=None, repr=False, compare=False)  # Cached Signal object (runtime only, not persisted)
     format: DisplayFormat = field(default_factory=DisplayFormat)
     nickname: str = ""                  # User-defined display name
     children: List["SignalNode"] = field(default_factory=list)

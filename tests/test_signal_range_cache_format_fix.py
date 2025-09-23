@@ -84,6 +84,9 @@ def test_signal_range_cache_format_invalidation():
     # Create test drawing data (this is just for fallback, not used in global scaling)
     drawing_data = create_test_drawing_data([255])  # This value differs in signed vs unsigned
     
+    # Get the signal object to pass to get_signal_range
+    signal_obj = mock_db.get_signal(handle)
+
     # First call with UNSIGNED format - using SCALE_TO_ALL_DATA to trigger global range computation
     min_val, max_val = get_signal_range(
         instance_id=instance_id,
@@ -92,7 +95,8 @@ def test_signal_range_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.UNSIGNED,
-        waveform_db=mock_db
+        waveform_db=mock_db,
+        signal_obj=signal_obj
     )
     
     # Should be cached now
@@ -108,12 +112,13 @@ def test_signal_range_cache_format_invalidation():
     # Second call with SIGNED format - should invalidate cache
     min_val, max_val = get_signal_range(
         instance_id=instance_id,
-        handle=handle, 
+        handle=handle,
         drawing_data=drawing_data,
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.SIGNED,
-        waveform_db=mock_db
+        waveform_db=mock_db,
+        signal_obj=signal_obj
     )
     
     # Cache should have been updated
@@ -141,10 +146,13 @@ def test_compute_global_signal_range_with_format():
     # Add signal with large value that differs in signed vs unsigned 32-bit
     large_value = 2147483648  # 2^31 - this will be negative in signed 32-bit
     mock_db.add_signal(handle, {0: large_value, 100: large_value, 200: large_value})
-    
+
+    # Get the signal object to pass to compute_global_signal_range
+    signal_obj = mock_db.get_signal(handle)
+
     # Test unsigned interpretation
     min_unsigned, max_unsigned = compute_global_signal_range(
-        handle, mock_db, DataFormat.UNSIGNED
+        handle, mock_db, DataFormat.UNSIGNED, signal_obj
     )
     # For 2147483648 unsigned, with 10% margin added
     expected_max_unsigned = 2147483648.0 + (2147483648.0 * 0.1) 
@@ -154,7 +162,7 @@ def test_compute_global_signal_range_with_format():
     
     # Test signed interpretation (32-bit width)
     min_signed, max_signed = compute_global_signal_range(
-        handle, mock_db, DataFormat.SIGNED
+        handle, mock_db, DataFormat.SIGNED, signal_obj
     )
     # For 32-bit signed: 2147483648 becomes -2147483648
     # With 10% margin: margin = abs(-2147483648) * 0.1
@@ -183,7 +191,8 @@ def test_cache_preserved_for_same_format():
         drawing_data=drawing_data,
         scaling_mode=AnalogScalingMode.SCALE_TO_VISIBLE_DATA,
         signal_range_cache=cache,
-        data_format=DataFormat.UNSIGNED
+        data_format=DataFormat.UNSIGNED,
+        signal_obj=None
     )
     
     # Store cache reference 
@@ -194,9 +203,10 @@ def test_cache_preserved_for_same_format():
         instance_id=instance_id,
         handle=handle,
         drawing_data=drawing_data,
-        scaling_mode=AnalogScalingMode.SCALE_TO_VISIBLE_DATA, 
+        scaling_mode=AnalogScalingMode.SCALE_TO_VISIBLE_DATA,
         signal_range_cache=cache,
-        data_format=DataFormat.UNSIGNED
+        data_format=DataFormat.UNSIGNED,
+        signal_obj=None
     )
     
     # Should be same cache object (not recreated)
@@ -229,7 +239,8 @@ def test_multiple_format_switches():
             drawing_data=drawing_data,
             scaling_mode=AnalogScalingMode.SCALE_TO_VISIBLE_DATA,
             signal_range_cache=cache,
-            data_format=data_format
+            data_format=data_format,
+            signal_obj=None
         )
         
         # Verify format is correct
@@ -256,7 +267,8 @@ def test_global_vs_viewport_cache_format_invalidation():
     drawing_data = create_test_drawing_data([200])
     mock_db = MockWaveformDB()
     mock_db.add_signal(handle, {0: 200, 100: 200})
-    
+    signal_obj = mock_db.get_signal(handle)
+
     # First: SCALE_TO_ALL_DATA with unsigned
     get_signal_range(
         instance_id=instance_id,
@@ -265,7 +277,8 @@ def test_global_vs_viewport_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.UNSIGNED,
-        waveform_db=mock_db
+        waveform_db=mock_db,
+        signal_obj=signal_obj
     )
     
     assert cache[instance_id].data_format == DataFormat.UNSIGNED
@@ -282,7 +295,8 @@ def test_global_vs_viewport_cache_format_invalidation():
         data_format=DataFormat.UNSIGNED,
         waveform_db=mock_db,
         start_time=0,
-        end_time=100
+        end_time=100,
+        signal_obj=signal_obj
     )
     
     # Should have viewport cache now
@@ -296,7 +310,8 @@ def test_global_vs_viewport_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.SIGNED,
-        waveform_db=mock_db
+        waveform_db=mock_db,
+        signal_obj=signal_obj
     )
     
     # Cache should be invalidated and recreated

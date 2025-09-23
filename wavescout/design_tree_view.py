@@ -186,14 +186,21 @@ class DesignTreeView(QWidget):
         else:
             render_type = RenderType.BOOL if is_single_bit else RenderType.BUS
         format = DisplayFormat(render_type=render_type)
-        
-        return SignalNode(
+
+        # Create the signal node
+        signal_node = SignalNode(
             name=full_path,
             handle=handle,
             format=format,
             is_multi_bit=not is_single_bit
         )
-    
+
+        # Load Signal object if handle exists
+        if handle is not None and self.waveform_db:
+            signal_node.signal = self.waveform_db.get_signal(handle)
+
+        return signal_node
+
     def _find_signal_handle(self, full_path: str) -> Optional[SignalHandle]:
         """Find signal handle in waveform database"""
         if not self.waveform_db:
@@ -500,10 +507,17 @@ class DesignTreeView(QWidget):
         else:
             render_type = RenderType.BOOL if is_single_bit else RenderType.BUS
         format = DisplayFormat(render_type=render_type)
-        
-        return SignalNode(
+
+        # Create the signal node
+        signal_node = SignalNode(
             name=full_path,
             handle=handle,
             format=format,
             is_multi_bit=not is_single_bit
         )
+
+        # Load Signal object if handle exists
+        if handle is not None and self.waveform_db:
+            signal_node.signal = self.waveform_db.get_signal(handle)
+
+        return signal_node
