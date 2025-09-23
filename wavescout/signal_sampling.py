@@ -175,7 +175,8 @@ def generate_signal_draw_commands(
         if signal.handle is None:
             return None
 
-        signal_obj = waveform_db.get_signal(signal.handle)
+        # Prefer already-attached Signal object to avoid redundant loads
+        signal_obj = signal.signal if getattr(signal, 'signal', None) is not None else waveform_db.get_signal(signal.handle)
         if not signal_obj:
             return None
         

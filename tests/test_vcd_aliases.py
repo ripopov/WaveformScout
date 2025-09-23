@@ -209,8 +209,10 @@ def test_signal_loaded_once_for_aliases(vcd_with_aliases):
     signal2 = db.get_signal(handle)
     assert signal1 is signal2, "Should return same cached signal object"
     
-    # Sample the signal - should use cached signal
-    value = db.sample(handle, 10)
+    # Sample the signal - should use cached signal via query_signal
+    sig = db.signal_from_handle(handle)
+    qr = sig.query_signal(10)
+    value = qr.value if qr.value is not None else None
     assert value is not None
     
     # Verify signal is cached (implementation detail: only one signal per handle)

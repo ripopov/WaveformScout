@@ -74,8 +74,13 @@ def compute_signal_statistics(
     valid_count = 0
     
     for time in valid_times:
-        # Get signal value at this time
-        value = waveform_db.sample(signal_node.handle, time)
+        # Get signal value at this time using node.signal if available, otherwise query via DB
+        sig = signal_node.signal if hasattr(signal_node, 'signal') and signal_node.signal is not None else waveform_db.signal_from_handle(signal_node.handle)
+        if sig is None:
+            value = None
+        else:
+            qr = sig.query_signal(max(0, time))
+            value = qr.value if qr.value is not None else None
         
         # Convert string numeric values to appropriate type
         if isinstance(value, str):
@@ -220,8 +225,13 @@ def sample_signal_value(
     Returns:
         Tuple of (value_str, value_float, value_bool) from parse_signal_value
     """
-    # Get signal value at the specified time
-    value = waveform_db.sample(signal_node.handle, time)
+    # Get signal value at the specified time using node.signal if present, else DB
+    sig = signal_node.signal if hasattr(signal_node, 'signal') and signal_node.signal is not None else waveform_db.signal_from_handle(signal_node.handle)
+    if sig is None:
+        value = None
+    else:
+        qr = sig.query_signal(max(0, time))
+        value = qr.value if qr.value is not None else None
     
     # Convert string numeric values to appropriate type
     if isinstance(value, str):

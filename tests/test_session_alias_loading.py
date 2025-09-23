@@ -11,6 +11,14 @@ from wavescout.waveform_db import WaveformDB
 from .test_utils import get_test_input_path, TestFiles
 
 
+def _test_sample(db, handle, t):
+    sig = db.signal_from_handle(handle)
+    if sig is None:
+        return ""
+    qr = sig.query_signal(max(0, t))
+    return str(qr.value) if qr.value is not None else ""
+
+
 class TestSessionAliasLoading:
     """Test that session loading correctly handles signal aliases across backends."""
     
@@ -165,7 +173,7 @@ class TestSessionAliasLoading:
             db = session.waveform_db
             
             # Test pready (handle 0) - should be a 1-bit signal with value 1 at t=0
-            value_pready = db.sample(0, 0)
+            value_pready = _test_sample(db, 0, 0)
             assert value_pready == "1", f"pready should be 1 at t=0, got {value_pready}"
             
             # Test pclk (handle 3) - should be a clock with many transitions
@@ -184,11 +192,11 @@ class TestSessionAliasLoading:
                 if group.name == "Group1":
                     for child in group.children:
                         if "pready" in child.name and child.handle is not None:
-                            group1_pready = db.sample(child.handle, 0)
+                            group1_pready = _test_sample(db, child.handle, 0)
                 elif group.name == "Group2_Aliases":
                     for child in group.children:
                         if "pready" in child.name and child.handle is not None:
-                            group2_pready = db.sample(child.handle, 0)
+                            group2_pready = _test_sample(db, child.handle, 0)
             
             assert group1_pready == group2_pready == "1", \
                 f"Aliased pready signals should have same value: group1={group1_pready}, group2={group2_pready}"
@@ -218,7 +226,7 @@ class TestSessionAliasLoading:
             db = session.waveform_db
             
             # Test pready (handle 0)
-            value_pready = db.sample(0, 0)
+            value_pready = _test_sample(db, 0, 0)
             assert value_pready == "1", f"pready should be 1 at t=0, got {value_pready}"
             
             # Test pclk (handle 3)
@@ -233,11 +241,11 @@ class TestSessionAliasLoading:
                 if group.name == "Group1":
                     for child in group.children:
                         if "pclk" in child.name and child.handle is not None:
-                            group1_pclk_value = db.sample(child.handle, 100000)  # Sample at 100ns
+                            group1_pclk_value = _test_sample(db, child.handle, 100000)  # Sample at 100ns
                 elif group.name == "Group2_Aliases":
                     for child in group.children:
                         if "pclk" in child.name and child.handle is not None:
-                            group2_pclk_value = db.sample(child.handle, 100000)  # Sample at 100ns
+                            group2_pclk_value = _test_sample(db, child.handle, 100000)  # Sample at 100ns
             
             assert group1_pclk_value == group2_pclk_value, \
                 f"Aliased pclk signals should have same value at t=100000: group1={group1_pclk_value}, group2={group2_pclk_value}"
@@ -263,7 +271,7 @@ class TestSessionAliasLoading:
 
             # Test values for handle 0 (pready)
             for t in [0, 100, 1000, 10000]:
-                val = db.sample(0, t)
+                val = _test_sample(db, 0, t)
                 assert val is not None, f"Expected value at t={t}"
 
             # Test transition counts for handle 3 (pclk)
@@ -301,7 +309,7 @@ class TestSessionAliasLoading:
         assert db.is_signal_cached(3), "Handle 3 should be cached"
         
         # Check that values are correct (not corrupted by duplicate loading)
-        value_0 = db.sample(0, 0)
+        value_0 = _test_sample(db, 0, 0)
         assert value_0 == "1", f"Handle 0 (pready) should have value 1, got {value_0}"
         
         # Check clock transitions

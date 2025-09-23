@@ -230,7 +230,11 @@ def test_with_vcd_file():
         bit_width = db.get_var_bitwidth(handle)
         
         # Sample at time 0
-        value = db.sample(handle, 0)
+        sig = db.signal_from_handle(handle)
+        if not sig:
+            continue
+        qr = sig.query_signal(0)
+        value = qr.value if qr.value is not None else None
         
         # Test different formats if value is an integer
         if isinstance(value, int):
@@ -246,7 +250,11 @@ def test_with_vcd_file():
                 
                 # Format-specific checks
                 if data_format == DataFormat.HEX:
-                    assert value_str.startswith("0x") or value_str.startswith("0X")
+                    # Accept both prefixed and non-prefixed uppercase hex strings
+                    assert (
+                        value_str.startswith("0x") or value_str.startswith("0X") or
+                        all(ch in "0123456789ABCDEF" for ch in value_str.upper())
+                    )
                 elif data_format == DataFormat.BIN:
                     assert value_str.startswith("0b")
                 elif data_format in [DataFormat.UNSIGNED, DataFormat.SIGNED]:

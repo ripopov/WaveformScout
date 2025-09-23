@@ -101,18 +101,6 @@ class WaveformDB:
 
         return transitions
 
-    def sample(self, handle: SignalHandle, t: Time) -> str:
-        """Get signal value at specific time."""
-        signal = self.get_signal(handle)
-        if not signal:
-            return ""
-
-        # Use query_signal for efficient lookup
-        query_result = signal.query_signal(max(0, t))
-        if query_result.value is not None:
-            return str(query_result.value)
-
-        return ""
 
     def sample_with_next_change(self, handle: SignalHandle, t: Time) -> Tuple[str, Optional[Time]]:
         """Get signal value at specific time and the time of next change.
