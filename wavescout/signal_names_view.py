@@ -602,14 +602,14 @@ class SignalNamesView(BaseColumnView):
             return
         
         # Serialize nodes for internal format
-        yaml_str = self._serialize_nodes(nodes)
+        json_str = self._serialize_nodes(nodes)
         
         # Create plain text format
         plain_text = self._nodes_to_plain_text(nodes)
         
         # Set both formats on clipboard
         mime_data = QMimeData()
-        mime_data.setData(self.SIGNAL_NODE_MIME_TYPE, yaml_str.encode('utf-8'))
+        mime_data.setData(self.SIGNAL_NODE_MIME_TYPE, json_str.encode('utf-8'))
         mime_data.setText(plain_text)
         
         clipboard = QApplication.clipboard()
@@ -636,10 +636,10 @@ class SignalNamesView(BaseColumnView):
             try:
                 # Ensure we have bytes for decoding
                 if isinstance(data, bytes):
-                    yaml_str = data.decode('utf-8')
+                    json_str = data.decode('utf-8')
                 else:
-                    yaml_str = bytes(data).decode('utf-8')
-                nodes = self._deserialize_nodes(yaml_str)
+                    json_str = bytes(data).decode('utf-8')
+                nodes = self._deserialize_nodes(json_str)
                 
                 if nodes:
                     # Validate nodes against current WaveformDB

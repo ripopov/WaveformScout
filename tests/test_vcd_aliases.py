@@ -148,16 +148,16 @@ def test_save_load_session_with_aliases(vcd_with_aliases, tmp_path):
             break
     
     # Save session
-    yaml_path = tmp_path / "test_aliases.json"
-    save_session(session, yaml_path)
-    
-    # Read the YAML to verify handles
+    json_path = tmp_path / "test_aliases.json"
+    save_session(session, json_path)
+
+    # Read the JSON to verify handles
     import json
-    with open(yaml_path, 'r') as f:
-        yaml_data = json.load(f)
+    with open(json_path, 'r') as f:
+        json_data = json.load(f)
     
     # Verify both nodes have the same non-null handle
-    nodes = yaml_data['root_nodes']
+    nodes = json_data['root_nodes']
     assert len(nodes) == 2
     
     node1_data = next(n for n in nodes if n['name'] == 'TOP.core_clk')
@@ -165,10 +165,10 @@ def test_save_load_session_with_aliases(vcd_with_aliases, tmp_path):
     
     assert node1_data['handle'] is not None, "TOP.core_clk should have non-null handle"
     assert node2_data['handle'] is not None, "TOP.tb_top.core_clk should have non-null handle"
-    assert node1_data['handle'] == node2_data['handle'], "Aliases should have same handle in YAML"
-    
+    assert node1_data['handle'] == node2_data['handle'], "Aliases should have same handle in JSON"
+
     # Load session and verify
-    loaded_session = load_session(yaml_path)
+    loaded_session = load_session(json_path)
     assert len(loaded_session.root_nodes) == 2
     
     # Both nodes should have the same handle

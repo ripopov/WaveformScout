@@ -153,11 +153,11 @@ def test_copy_paste_signals(qtbot, tmp_path):
     # Paste again - deserialize from clipboard and insert directly
     data = mime_data.data(SignalNamesView.SIGNAL_NODE_MIME_TYPE).data()
     if isinstance(data, bytes):
-        yaml_str = data.decode('utf-8')
+        json_str = data.decode('utf-8')
     else:
-        yaml_str = bytes(data).decode('utf-8')
-    
-    nodes_to_paste = names_view._deserialize_nodes(yaml_str)
+        json_str = bytes(data).decode('utf-8')
+
+    nodes_to_paste = names_view._deserialize_nodes(json_str)
     validated = names_view._validate_nodes(nodes_to_paste)
     
     # Insert directly using controller
@@ -171,7 +171,7 @@ def test_copy_paste_signals(qtbot, tmp_path):
     expected_final = expected_after_paste + 3
     assert len(session.root_nodes) == expected_final, f"Should have {expected_final} signals after second paste, got {len(session.root_nodes)}"
     
-    # Step 6: Save session to YAML
+    # Step 6: Save session to JSON
     session_file = tmp_path / "test_session.json"
     save_session(session, session_file)
     

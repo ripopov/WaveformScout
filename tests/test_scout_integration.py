@@ -121,19 +121,19 @@ class WaveScoutTestHelper:
         return False
     
     @staticmethod
-    def save_and_verify_yaml(session, yaml_path: Path, verification_func: Callable) -> None:
+    def save_and_verify_json(session, json_path: Path, verification_func: Callable) -> None:
         """
-        Save session to YAML and run verification function on the data.
+        Save session to JSON and run verification function on the data.
         
         Args:
             session: WaveScout session object
-            yaml_path: Path where to save YAML
-            verification_func: Function that takes yaml data dict and performs assertions
+            json_path: Path where to save JSON
+            verification_func: Function that takes JSON data dict and performs assertions
         """
-        save_session(session, yaml_path)
-        assert yaml_path.exists(), "Session YAML was not saved"
+        save_session(session, json_path)
+        assert json_path.exists(), "Session JSON was not saved"
         
-        with open(yaml_path, "r") as f:
+        with open(json_path, "r") as f:
             data = json.load(f)
         verification_func(data)
     
@@ -255,14 +255,14 @@ def test_height_scaling_widget_api(qtbot):
     Test programmatic height scaling through WaveScoutWidget API.
     
     This test verifies that signal height scaling can be set programmatically
-    and is correctly persisted when saving sessions to YAML.
+    and is correctly persisted when saving sessions to JSON.
     
     Test scenario:
     1. Create WaveScoutWidget and load apb_sim.vcd
     2. Programmatically add apb_testbench.prdata and apb_testbench.paddr signals
     3. Set height scaling to 8x for prdata using internal API
-    4. Save session to YAML
-    5. Verify YAML contains correct height_scaling value
+    4. Save session to JSON
+    5. Verify JSON contains correct height_scaling value
     """
     helper = WaveScoutTestHelper()
     vcd_path = TestPaths.APB_SIM_VCD
@@ -302,21 +302,21 @@ def test_height_scaling_widget_api(qtbot):
     # Use the controller to set height scaling
     widget.controller.set_node_format(prdata_node.instance_id, height_scaling=8)
 
-    # Verify persistence in YAML
+    # Verify persistence in JSON
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_height_scaling.json"
+        json_path = Path(tmpdir) / "test_height_scaling.json"
         
         def verify_height_scaling(data):
             nodes = data.get("root_nodes", [])
-            prdata_yaml = next(
+            prdata_json = next(
                 (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
                 None
             )
-            assert prdata_yaml is not None, "prdata node not found in saved YAML"
-            assert prdata_yaml.get("height_scaling") == 8, \
-                f"Expected height_scaling 8, got {prdata_yaml.get('height_scaling')}"
+            assert prdata_json is not None, "prdata node not found in saved JSON"
+            assert prdata_json.get("height_scaling") == 8, \
+                f"Expected height_scaling 8, got {prdata_json.get('height_scaling')}"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_height_scaling)
+        helper.save_and_verify_json(session, json_path, verify_height_scaling)
 
     widget.close()
 
@@ -333,7 +333,7 @@ def test_height_scaling_ui_interaction(qtbot):
     2. Navigate design tree to find apb_testbench scope
     3. Add prdata and paddr signals via UI interaction
     4. Change prdata height scaling to 8x
-    5. Save session and verify YAML contains correct height_scaling
+    5. Save session and verify JSON contains correct height_scaling
     """
     helper = WaveScoutTestHelper()
     window = helper.setup_main_window_with_vcd(TestPaths.APB_SIM_VCD, qtbot)
@@ -402,20 +402,20 @@ def test_height_scaling_ui_interaction(qtbot):
     window.wave_widget.controller.set_node_format(prdata_node.instance_id, height_scaling=8)
     assert prdata_node.height_scaling == 8
     
-    # Verify YAML persistence
+    # Verify JSON persistence
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_height_scaling.json"
+        json_path = Path(tmpdir) / "test_height_scaling.json"
         
         def verify_height_scaling(data):
             nodes = data.get("root_nodes", [])
-            prdata_yaml = next(
+            prdata_json = next(
                 (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
                 None
             )
-            assert prdata_yaml is not None
-            assert prdata_yaml.get("height_scaling") == 8
+            assert prdata_json is not None
+            assert prdata_json.get("height_scaling") == 8
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_height_scaling)
+        helper.save_and_verify_json(session, json_path, verify_height_scaling)
     
     window.close()
 
@@ -431,7 +431,7 @@ def test_height_scaling_for_analog_signals(qtbot):
     1. Load analog_signals_short.vcd containing sine wave signals
     2. Add top.sine_1mhz and top.sine_2mhz signals
     3. Set different height scaling (8x and 3x respectively)
-    4. Save session to YAML
+    4. Save session to JSON
     5. Verify each signal has its correct height_scaling value
     """
     helper = WaveScoutTestHelper()
@@ -493,9 +493,9 @@ def test_height_scaling_for_analog_signals(qtbot):
     controller.set_node_format(sine1_node.instance_id, height_scaling=8)
     controller.set_node_format(sine2_node.instance_id, height_scaling=3)
     
-    # Verify in YAML
+    # Verify in JSON
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_height_scaling_analog.json"
+        json_path = Path(tmpdir) / "test_height_scaling_analog.json"
         
         def verify_analog_scaling(data):
             nodes = data.get("root_nodes", [])
@@ -506,7 +506,7 @@ def test_height_scaling_for_analog_signals(qtbot):
             assert s1.get("height_scaling") == 8
             assert s2.get("height_scaling") == 3
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_analog_scaling)
+        helper.save_and_verify_json(session, json_path, verify_analog_scaling)
     
     window.close()
 
@@ -520,15 +520,15 @@ def test_signal_grouping_and_reordering(qtbot, monkeypatch):
     Test signal grouping and drag-and-drop reordering in Names panel.
     
     This test verifies that signals can be grouped together and that groups
-    can be reordered via drag-and-drop operations. It also tests YAML
+    can be reordered via drag-and-drop operations. It also tests JSON
     persistence of the group structure and ordering.
     
     Test scenario:
     1. Load apb_sim.vcd and add 5 signals
     2. Group first 3 signals together
-    3. Verify group structure in YAML (1 group with 3 children, 2 independent)
+    3. Verify group structure in JSON (1 group with 3 children, 2 independent)
     4. Drag group between the two independent signals
-    5. Verify new order in YAML (independent -> group -> independent)
+    5. Verify new order in JSON (independent -> group -> independent)
     """
     helper = WaveScoutTestHelper()
     window = helper.setup_main_window_with_vcd(TestPaths.APB_SIM_VCD, qtbot)
@@ -579,7 +579,7 @@ def test_signal_grouping_and_reordering(qtbot, monkeypatch):
     
     with tempfile.TemporaryDirectory() as tmpdir:
         # Verify initial structure
-        yaml_path1 = Path(tmpdir) / "test_grouping_step1.json"
+        json_path1 = Path(tmpdir) / "test_grouping_step1.json"
         
         def verify_initial_structure(data):
             rn = data.get("root_nodes", [])
@@ -589,7 +589,7 @@ def test_signal_grouping_and_reordering(qtbot, monkeypatch):
             assert len(non_groups) >= 2
             assert len(groups[0].get("children", [])) == 3
         
-        helper.save_and_verify_yaml(session, yaml_path1, verify_initial_structure)
+        helper.save_and_verify_json(session, json_path1, verify_initial_structure)
         
         # Drag group to position 1
         model_waves = wave_widget.model
@@ -600,7 +600,7 @@ def test_signal_grouping_and_reordering(qtbot, monkeypatch):
         qtbot.wait(10)
         
         # Verify new structure
-        yaml_path2 = Path(tmpdir) / "test_grouping_step2.json"
+        json_path2 = Path(tmpdir) / "test_grouping_step2.json"
         
         def verify_reordered_structure(data):
             rn = data.get("root_nodes", [])
@@ -608,7 +608,7 @@ def test_signal_grouping_and_reordering(qtbot, monkeypatch):
             # Should be: signal, group, signal
             assert types == [False, True, False], f"Unexpected order: {types}"
         
-        helper.save_and_verify_yaml(session, yaml_path2, verify_reordered_structure)
+        helper.save_and_verify_json(session, json_path2, verify_reordered_structure)
     
     window.close()
 
@@ -630,7 +630,7 @@ def test_split_mode_keyboard_shortcut(qtbot):
     3. Select first variable in VarsView
     4. Press 'i' key 3 times
     5. Verify signal appears 3 times in session
-    6. Save to YAML and verify signal appears 3 times
+    6. Save to JSON and verify signal appears 3 times
     """
     helper = WaveScoutTestHelper()
     window = helper.setup_main_window_with_vcd(TestPaths.APB_SIM_VCD, qtbot)
@@ -693,9 +693,9 @@ def test_split_mode_keyboard_shortcut(qtbot):
     )
     assert signal_count == 3, f"Expected 3 occurrences, found {signal_count}"
     
-    # Verify in YAML
+    # Verify in JSON
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_split_mode.json"
+        json_path = Path(tmpdir) / "test_split_mode.json"
         
         def verify_signal_count(data):
             root_nodes = data.get("root_nodes", [])
@@ -703,9 +703,9 @@ def test_split_mode_keyboard_shortcut(qtbot):
                 1 for node in root_nodes 
                 if node.get("name", "").endswith(signal_name)
             )
-            assert count == 3, f"Expected 3 in YAML, found {count}"
+            assert count == 3, f"Expected 3 in JSON, found {count}"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_signal_count)
+        helper.save_and_verify_json(session, json_path, verify_signal_count)
     
     window.close()
 
@@ -723,7 +723,7 @@ def test_split_mode_inner_scope_selection(qtbot):
     3. Navigate to TOP.tb_top inner scope
     4. Select first 3 variables using multi-selection
     5. Press 'i' to add all selected variables
-    6. Verify all 3 variables appear in session and YAML
+    6. Verify all 3 variables appear in session and JSON
     """
     helper = WaveScoutTestHelper()
     from scout import WaveScoutMainWindow
@@ -808,19 +808,19 @@ def test_split_mode_inner_scope_selection(qtbot):
     assert session.root_nodes is not None
     assert len(session.root_nodes) >= 3
     
-    # Verify in YAML
+    # Verify in JSON
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_inner_scope.json"
+        json_path = Path(tmpdir) / "test_inner_scope.json"
         
         def verify_selected_vars(data):
             root_nodes = data.get("root_nodes", [])
             assert len(root_nodes) >= 3
             
-            yaml_names = [node.get('name') for node in root_nodes]
+            json_names = [node.get('name') for node in root_nodes]
             for var_path in selected_vars:
-                assert var_path in yaml_names, f"Variable '{var_path}' not found"
+                assert var_path in json_names, f"Variable '{var_path}' not found"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_selected_vars)
+        helper.save_and_verify_json(session, json_path, verify_selected_vars)
     
     # Ensure all background operations complete before closing
     qtbot.wait(200)  # Give time for any pending operations
@@ -856,8 +856,8 @@ def test_event_signal_render_type_assignment(qtbot):
     1. Load vcd_extensions.vcd containing EVENT_IN variable
     2. Navigate to main scope and find EVENT_IN
     3. Add EVENT_IN to waveform
-    4. Save session to YAML
-    5. Verify EVENT_IN has render_type 'event' in YAML
+    4. Save session to JSON
+    5. Verify EVENT_IN has render_type 'event' in JSON
     """
     helper = WaveScoutTestHelper()
     window = helper.setup_main_window_with_vcd(TestPaths.VCD_EXTENSIONS, qtbot)
@@ -895,10 +895,10 @@ def test_event_signal_render_type_assignment(qtbot):
     assert event_signal_added, "'EVENT_IN' not found in VarsView"
     qtbot.wait(100)
     
-    # Verify render_type in YAML
+    # Verify render_type in JSON
     session = window.wave_widget.session
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "event_render_type.json"
+        json_path = Path(tmpdir) / "event_render_type.json"
         
         def verify_event_render_type(data):
             nodes = data.get("root_nodes", [])
@@ -906,12 +906,12 @@ def test_event_signal_render_type_assignment(qtbot):
                 (n for n in nodes if n.get("name", "").endswith("main.EVENT_IN")),
                 None
             )
-            assert ev_node is not None, "EVENT_IN not found in YAML"
+            assert ev_node is not None, "EVENT_IN not found in JSON"
             fmt = ev_node.get("format") or {}
             assert fmt.get("render_type") == "event", \
                 f"Expected render_type 'event', got {fmt.get('render_type')}"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_event_render_type)
+        helper.save_and_verify_json(session, json_path, verify_event_render_type)
     
     window.close()
 
@@ -926,14 +926,14 @@ def test_analog_scale_visible_menu_integration(qtbot):
     
     This test verifies that the refactored context menu correctly sets analog
     render mode with "scale to visible data" option and that this setting is
-    properly persisted to YAML.
+    properly persisted to JSON.
     
     Test scenario:
     1. Load waveform file (apb_sim.vcd)
     2. Add a multi-bit signal (apb_testbench.prdata)
     3. Change signal render mode to "Analog Scale Visible" via the new API
-    4. Save session to YAML
-    5. Verify YAML contains correct render_type and analog_scaling_mode
+    4. Save session to JSON
+    5. Verify JSON contains correct render_type and analog_scaling_mode
     """
     helper = WaveScoutTestHelper()
     window = helper.setup_main_window_with_vcd(TestPaths.APB_SIM_VCD, qtbot)
@@ -1000,44 +1000,44 @@ def test_analog_scale_visible_menu_integration(qtbot):
     assert prdata_node.format.render_type == RenderType.ANALOG
     assert prdata_node.format.analog_scaling_mode == AnalogScalingMode.SCALE_TO_VISIBLE_DATA
     
-    # Save session to YAML and verify
+    # Save session to JSON and verify
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_analog_scale_visible.json"
+        json_path = Path(tmpdir) / "test_analog_scale_visible.json"
         
         def verify_analog_scale_visible(data):
             nodes = data.get("root_nodes", [])
-            prdata_yaml = next(
+            prdata_json = next(
                 (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
                 None
             )
-            assert prdata_yaml is not None, "prdata node not found in saved YAML"
+            assert prdata_json is not None, "prdata node not found in saved JSON"
             
             # Check format section
-            format_data = prdata_yaml.get("format", {})
+            format_data = prdata_json.get("format", {})
             assert format_data.get("render_type") == "analog", \
                 f"Expected render_type 'analog', got {format_data.get('render_type')}"
             assert format_data.get("analog_scaling_mode") == "scale_to_visible", \
                 f"Expected analog_scaling_mode 'scale_to_visible', got {format_data.get('analog_scaling_mode')}"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_analog_scale_visible)
+        helper.save_and_verify_json(session, json_path, verify_analog_scale_visible)
 
 
 def test_signal_rename_and_persistence(qtbot):
     """
-    Test signal renaming functionality and persistence in session YAML.
+    Test signal renaming functionality and persistence in session JSON.
     
     This test verifies that:
     1. Signals can be renamed with a nickname through the UI
     2. Nicknames are displayed in the SignalNames view
-    3. Nicknames persist when saving sessions to YAML
+    3. Nicknames persist when saving sessions to JSON
     4. Nicknames are restored correctly when loading sessions
     
     Test scenario:
     1. Create WaveScoutWidget and load apb_sim.vcd
     2. Add two signals to the wave widget
     3. Rename signals with nicknames using the API
-    4. Save session to YAML file
-    5. Verify YAML contains the nicknames
+    4. Save session to JSON file
+    5. Verify JSON contains the nicknames
     6. Load the saved session
     7. Verify nicknames are displayed correctly
     """
@@ -1121,38 +1121,38 @@ def test_signal_rename_and_persistence(qtbot):
             # Verify that the rename was applied through the dialog
             assert prdata_node.nickname == "TestNickname", "Nickname should be updated via dialog"
             
-            # Reset nickname back to "SignalA" for YAML verification
+            # Reset nickname back to "SignalA" for JSON verification
             prdata_node.nickname = "SignalA"
     
-    # Verify persistence in YAML
+    # Verify persistence in JSON
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_rename_signals.json"
+        json_path = Path(tmpdir) / "test_rename_signals.json"
         
         def verify_nicknames(data):
             nodes = data.get("root_nodes", [])
             
             # Find prdata node
-            prdata_yaml = next(
+            prdata_json = next(
                 (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
                 None
             )
-            assert prdata_yaml is not None, "prdata node not found in saved YAML"
-            assert prdata_yaml.get("nickname") == "SignalA", \
-                f"Expected nickname 'SignalA', got {prdata_yaml.get('nickname')}"
+            assert prdata_json is not None, "prdata node not found in saved JSON"
+            assert prdata_json.get("nickname") == "SignalA", \
+                f"Expected nickname 'SignalA', got {prdata_json.get('nickname')}"
             
             # Find paddr node
-            paddr_yaml = next(
+            paddr_json = next(
                 (n for n in nodes if n.get("name", "").endswith("apb_testbench.paddr")),
                 None
             )
-            assert paddr_yaml is not None, "paddr node not found in saved YAML"
-            assert paddr_yaml.get("nickname") == "SignalB", \
-                f"Expected nickname 'SignalB', got {paddr_yaml.get('nickname')}"
+            assert paddr_json is not None, "paddr node not found in saved JSON"
+            assert paddr_json.get("nickname") == "SignalB", \
+                f"Expected nickname 'SignalB', got {paddr_json.get('nickname')}"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_nicknames)
+        helper.save_and_verify_json(session, json_path, verify_nicknames)
         
         # Now test loading the session and verifying nicknames are restored
-        loaded_session = load_session(yaml_path)
+        loaded_session = load_session(json_path)
         
         # Check that nicknames are present in loaded session
         loaded_prdata = next(
@@ -1180,7 +1180,7 @@ def test_group_rename_functionality(qtbot):
     
     This test verifies that:
     1. Groups can be renamed with a nickname
-    2. Group nicknames persist in session YAML
+    2. Group nicknames persist in session JSON
     3. Group nicknames are restored when loading sessions
     """
     helper = WaveScoutTestHelper()
@@ -1235,23 +1235,23 @@ def test_group_rename_functionality(qtbot):
     # Verify nickname is set
     assert group_node.nickname == "MyCustomGroup"
     
-    # Verify persistence in YAML
+    # Verify persistence in JSON
     with tempfile.TemporaryDirectory() as tmpdir:
-        yaml_path = Path(tmpdir) / "test_group_rename.json"
+        json_path = Path(tmpdir) / "test_group_rename.json"
         
         def verify_group_nickname(data):
             nodes = data.get("root_nodes", [])
-            assert len(nodes) > 0, "No root nodes found in YAML"
+            assert len(nodes) > 0, "No root nodes found in JSON"
             
-            group_yaml = nodes[0]  # Should be our group
-            assert group_yaml.get("is_group") is True, "First node should be a group"
-            assert group_yaml.get("nickname") == "MyCustomGroup", \
-                f"Expected group nickname 'MyCustomGroup', got {group_yaml.get('nickname')}"
+            group_json = nodes[0]  # Should be our group
+            assert group_json.get("is_group") is True, "First node should be a group"
+            assert group_json.get("nickname") == "MyCustomGroup", \
+                f"Expected group nickname 'MyCustomGroup', got {group_json.get('nickname')}"
         
-        helper.save_and_verify_yaml(session, yaml_path, verify_group_nickname)
+        helper.save_and_verify_json(session, json_path, verify_group_nickname)
         
         # Load session and verify nickname is restored
-        loaded_session = load_session(yaml_path)
+        loaded_session = load_session(json_path)
         assert len(loaded_session.root_nodes) > 0, "No root nodes in loaded session"
         
         loaded_group = loaded_session.root_nodes[0]

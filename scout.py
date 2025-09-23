@@ -1053,7 +1053,7 @@ class WaveScoutMainWindow(FramelessWindow):
         self.load_file(path)
                 
     def save_session(self):
-        """Save the current session to a YAML file."""
+        """Save the current session to a JSON file."""
         if not self.wave_widget.session:
             show_warning(self, "No Session", "No session to save.")
             return

@@ -46,7 +46,7 @@ Research the following areas based on feature requirements:
 - **`wavescout/backend_types.py`**: If feature uses backend types - Protocol definitions for Wellen types
 - **`wavescout/theme.py`**: If feature affects theming - Theme management and color schemes
 - **`wavescout/config.py`**: If feature needs configuration - RenderingConfig, ColorScheme, UIConfig
-- **`wavescout/persistence.py`**: If feature affects session saving - YAML session persistence
+- **`wavescout/persistence.py`**: If feature affects session saving - JSON session persistence
 - **`wavescout/markers_window.py`**: If feature involves markers - Marker management dialog
 
 **Architecture Patterns to Consider:**
@@ -74,7 +74,7 @@ The data model (`data_model.py`) is the single source of truth for viewport conf
 - New fields for existing dataclasses (with types and defaults)
 - New enums for modes/states
 - New dataclasses if needed
-- Persistence implications (YAML serialization)
+- Persistence implications (JSON serialization)
 
 ### 3. Implementation Planning
 

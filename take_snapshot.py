@@ -3,11 +3,11 @@
 Generate PNG snapshots of WaveScout waveform viewer from saved sessions.
 
 Usage:
-    python take_snapshot.py [--backend wellen|libfst] <session.yaml> [output.png]
+    python take_snapshot.py [--backend wellen|libfst] <session.json> [output.png]
     
 Args:
     --backend    - FST backend to use: 'wellen' (pyrox) or 'libfst' (pylibfst)
-    session.yaml - WaveScout session file (auto-detected if omitted)
+    session.json - WaveScout session file (auto-detected if omitted)
     output.png   - Output image path (default: snapshot.png)
 
 Renders a 1200x800 WaveScout widget with the loaded session and saves it as PNG.

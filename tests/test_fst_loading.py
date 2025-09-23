@@ -7,14 +7,14 @@ Tests the complete FST workflow with both pyrox and pylibfst backends:
 2. Load test_inputs/des.fst file with specified backend
 3. Expand scopes in design tree: top -> des
 4. Add 10 signals from top.des scope to waveform widget
-5. Save session to YAML file
-6. Verify that YAML has 10 signal nodes with top.des.* names
+5. Save session to JSON file
+6. Verify that JSON has 10 signal nodes with top.des.* names
 
 Key Features Tested:
 - FST file loading through both Wellen and pylibfst backends
 - Design tree navigation and scope expansion
 - Signal selection and addition to waveform
-- Session persistence to YAML
+- Session persistence to JSON
 - Signal path preservation (top.des.* hierarchy)
 
 Usage:
@@ -185,10 +185,10 @@ def test_fst_loading():
     - Verify: 10 signals appear in session.root_nodes
     
     Step 4: Save Session
-    - Save to temporary YAML file
+    - Save to temporary JSON file
     - Verify: File created with complete session data
     
-    Step 5: Validate YAML
+    Step 5: Validate JSON
     - Check root_nodes: 10 signals present
     - Check signal names: all have top.des.* prefix
     - Verify: Signal hierarchy preserved correctly
@@ -197,7 +197,7 @@ def test_fst_loading():
     - FST file loads successfully
     - Design tree shows correct hierarchy
     - 10 signals added to waveform
-    - YAML contains all signals with correct paths
+    - JSON contains all signals with correct paths
     """
     
     # Create application
@@ -289,20 +289,20 @@ def test_fst_loading():
         print(f"   [OK] Successfully added {len(session.root_nodes)} signals to session")
         
         # Step 4: Save session
-        print("\n4. Saving session to YAML...")
+        print("\n4. Saving session to JSON...")
         save_session(session, Path(temp_session_path))
         print(f"   [OK] Session saved to: {temp_session_path}")
         
-        # Step 5: Validate YAML
-        print("\n5. Validating saved YAML...")
+        # Step 5: Validate JSON
+        print("\n5. Validating saved JSON...")
         with open(temp_session_path, 'r') as f:
-            yaml_data = json.load(f)
+            json_data = json.load(f)
         
         # Check that we have root_nodes
-        assert 'root_nodes' in yaml_data, "YAML missing root_nodes"
-        root_nodes = yaml_data['root_nodes']
+        assert 'root_nodes' in json_data, "JSON missing root_nodes"
+        root_nodes = json_data['root_nodes']
         
-        print(f"   Found {len(root_nodes)} root nodes in YAML")
+        print(f"   Found {len(root_nodes)} root nodes in JSON")
         
         # Check that signals have correct naming
         signal_names = []
@@ -315,16 +315,16 @@ def test_fst_loading():
                 assert 'top.des' in name or name in added_signals, \
                     f"Signal name '{name}' doesn't match expected pattern"
         
-        print(f"   Signal names in YAML:")
+        print(f"   Signal names in JSON:")
         for name in signal_names[:10]:  # Show first 10
             print(f"     - {name}")
         
         # Check db_uri is present
-        assert 'db_uri' in yaml_data, "YAML missing db_uri"
-        assert yaml_data['db_uri'].endswith('des.fst'), \
-            f"Unexpected db_uri: {yaml_data['db_uri']}"
+        assert 'db_uri' in json_data, "JSON missing db_uri"
+        assert json_data['db_uri'].endswith('des.fst'), \
+            f"Unexpected db_uri: {json_data['db_uri']}"
         
-        print("   [OK] YAML validation successful")
+        print("   [OK] JSON validation successful")
         print("\n[TEST PASSED] FST loading successful!")
         
     except Exception as e:
