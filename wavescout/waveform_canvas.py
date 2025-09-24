@@ -701,7 +701,7 @@ class WaveformCanvas(QWidget):
         ]
         
         # Add visible nodes info
-        key_params.append(len(params['visible_nodes_info']))
+        key_params.append(len(params.get('visible_nodes', [])))
         # Include node handles, height scaling, data format, and COLOR to detect changes
         if 'visible_nodes' in params:
             key_params.append(
@@ -730,25 +730,10 @@ class WaveformCanvas(QWidget):
         if self._model and self._model._controller:
             selected_ids = self._model._controller._selected_ids
 
-        # Build visible_nodes_info for backward compatibility
-        # TODO: Remove this once all renderers are updated to use layout directly
-        visible_nodes_info: List[NodeInfo] = []
         visible_nodes: List[SignalNode] = []
         for row in self._layout.rows:
             node = row.source
             visible_nodes.append(node)
-            node_info: NodeInfo = NodeInfo(
-                name=node.name,
-                handle=node.handle if isinstance(node, SignalNodeSignal) else None,
-                is_group=isinstance(node, SignalNodeGroup),
-                format=node.format if isinstance(node, SignalNodeSignal) else DisplayFormat(),
-                render_type=node.format.render_type if isinstance(node, SignalNodeSignal) else RenderType.BOOL,
-                height_scaling=node.height_scaling,
-                instance_id=node.instance_id,
-                is_selected=node.instance_id in selected_ids,
-                signal=node.signal if isinstance(node, SignalNodeSignal) else None
-            )
-            visible_nodes_info.append(node_info)
 
         # Get waveform_db reference if available
         waveform_db = None
@@ -763,8 +748,8 @@ class WaveformCanvas(QWidget):
             end_time=self._end_time,
             cursor_time=self._cursor_time,
             scroll_value=scroll_value,
-            visible_nodes_info=visible_nodes_info,
-            visible_nodes=visible_nodes,  # For backward compatibility
+            visible_nodes_info=[],  # Deprecated field
+            visible_nodes=visible_nodes,
             waveform_db=waveform_db,
             generation=self._render_generation,
             row_heights=self._row_heights.copy(),  # Pass row heights for rendering
@@ -1117,46 +1102,6 @@ class WaveformCanvas(QWidget):
                     renderer = GROUP_RENDERERS[mode]
                     renderer(painter, payload, y, row_height, params)
 
-    def _draw_row(self, painter: QPainter, node_info: NodeInfo, draw_commands: Dict[SignalHandle, SignalDrawingData], row: int, y: int, row_height: int, params: RenderParams) -> None:
-        """Thread-safe version of row drawing."""
-        # Determine background color
-        if params.get('highlight_selected', False) and node_info.get('is_selected', False):
-            # Use solid dark purple selection background for highlighted selected signals
-            bg_color = QColor(config.COLORS.SELECTION_BACKGROUND)
-        elif row % 2 == 0:
-            # Use alternating row color
-            bg_color = QColor(config.COLORS.ALTERNATE_ROW)
-        else:
-            # Use default background (transparent, no fill needed)
-            bg_color = None
-        
-        # Draw background if needed
-        if bg_color:
-            painter.fillRect(0, y, params['width'], row_height, bg_color)
-        
-        # Draw border
-        border_pen = QPen(QColor(config.COLORS.BORDER))
-        border_pen.setWidth(0)  # cosmetic 1 device-pixel
-        painter.setPen(border_pen)
-        painter.drawLine(0, y + row_height - 1, params['width'], y + row_height - 1)
-        
-        # Note: Virtual nodes are no longer supported in the new layout system.
-        # This _draw_row method is only kept for backward compatibility.
-        # New code should use _draw_layout_row instead.
-
-        # Draw signal if it has drawing commands
-        if node_info['handle'] is not None and node_info['handle'] in draw_commands:
-            drawing_data = draw_commands[node_info['handle']]
-            # Use render_type from node_info, not from drawing_data
-            render_type = node_info.get('render_type') or node_info['format'].render_type
-            if render_type == RenderType.BOOL:
-                draw_digital_signal(painter, node_info, drawing_data, y, row_height, params)
-            elif render_type == RenderType.BUS:
-                draw_bus_signal(painter, node_info, drawing_data, y, row_height, params)
-            elif render_type == RenderType.ANALOG:
-                draw_analog_signal(painter, node_info, drawing_data, y, row_height, params)
-            elif render_type == RenderType.EVENT:
-                draw_event_signal(painter, node_info, drawing_data, y, row_height, params)
     
     def _draw_cursor(self, painter: QPainter, params: RenderParams) -> None:
         """Thread-safe version of cursor drawing."""
