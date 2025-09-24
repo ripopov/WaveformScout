@@ -62,7 +62,6 @@ class RenderParams(TypedDict, total=False):
     visible_nodes: list[SignalNode]  # SignalNode objects
     waveform_db: Optional[WaveformDBProtocol]
     generation: int
-    row_heights: Dict[int, int]
     base_row_height: int
     header_height: int
     waveform_max_time: Optional[Time]

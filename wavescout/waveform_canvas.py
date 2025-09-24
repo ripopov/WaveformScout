@@ -101,7 +101,6 @@ class WaveformCanvas(QWidget):
         self._row_height = RENDERING.DEFAULT_ROW_HEIGHT  # Default/base row height
         self._header_height = RENDERING.DEFAULT_HEADER_HEIGHT  # Default header height - standard QTreeView header height
         self._time_scale = 1.0  # pixels per time unit
-        self._row_heights: Dict[int, int] = {}  # Dictionary to store row heights by row index
         self._start_time = 0
         self._end_time = 1000000
         self._cursor_time = 0
@@ -325,12 +324,6 @@ class WaveformCanvas(QWidget):
 
         # Build new layout from model
         self._layout = build_layout(self._model, self._row_height)
-
-        # Update the row_heights dict for compatibility
-        # TODO: Remove this once all dependencies on _row_heights are migrated
-        self._row_heights = {}
-        for i, row in enumerate(self._layout.rows):
-            self._row_heights[i] = row.height_px
 
         # Don't automatically generate draw commands here - let paintEvent handle it
         # This prevents generating commands with wrong viewport before setTimeRange is called
@@ -712,9 +705,6 @@ class WaveformCanvas(QWidget):
                        node.format.color if isinstance(node, SignalNodeSignal) else None)  # Include color for theme changes
                       for node in params['visible_nodes'])
             )
-        # Include row heights to detect layout changes
-        if 'row_heights' in params:
-            key_params.append(tuple(params['row_heights'].items()))
         
         return hash(tuple(key_params))
     
@@ -751,7 +741,6 @@ class WaveformCanvas(QWidget):
             visible_nodes=visible_nodes,
             waveform_db=waveform_db,
             generation=self._render_generation,
-            row_heights=self._row_heights.copy(),  # Pass row heights for rendering
             base_row_height=self._row_height,
             header_height=self._header_height,  # Include header height for proper rendering
             waveform_max_time=self._waveform_max_time,  # Add waveform max time for renderer

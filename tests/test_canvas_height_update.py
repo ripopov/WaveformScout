@@ -65,13 +65,12 @@ def test_canvas_updates_on_height_change(qtbot):
     qtbot.wait(50)
     
     # Check initial row heights (all should be default)
-    assert hasattr(canvas, '_row_heights'), "Canvas should have _row_heights dict"
-    initial_heights = dict(canvas._row_heights)
+    assert hasattr(canvas, '_layout'), "Canvas should have _layout"
     base_height = canvas._row_height
-    
+
     # All rows should start at base height
-    for row, height in initial_heights.items():
-        assert height == base_height, f"Row {row} should have base height"
+    for row in canvas._layout.rows:
+        assert row.height_px == base_height, f"Row should have base height"
     
     # Get the first signal node
     prdata_node = found_nodes["prdata"]
@@ -83,10 +82,10 @@ def test_canvas_updates_on_height_change(qtbot):
     # Check canvas row heights updated
     canvas.update()
     qtbot.wait(50)
-    
+
     # The first row should now have scaled height
-    assert 0 in canvas._row_heights, "Row 0 should exist"
-    assert canvas._row_heights[0] == base_height * 4, f"Row 0 should be scaled 4x, got {canvas._row_heights[0]}"
+    assert len(canvas._layout.rows) > 0, "Should have at least one row"
+    assert canvas._layout.rows[0].height_px == base_height * 4, f"Row 0 should be scaled 4x, got {canvas._layout.rows[0].height_px}"
     
     # Now test analog mode auto-height
     paddr_node = found_nodes["paddr"]
@@ -105,8 +104,8 @@ def test_canvas_updates_on_height_change(qtbot):
     qtbot.wait(50)
     
     # Check paddr row is now scaled
-    assert 1 in canvas._row_heights, "Row 1 should exist"
-    assert canvas._row_heights[1] == base_height * 3, f"Row 1 should be scaled 3x for analog"
+    assert len(canvas._layout.rows) > 1, "Should have at least two rows"
+    assert canvas._layout.rows[1].height_px == base_height * 3, f"Row 1 should be scaled 3x for analog"
     
     # Verify the node itself has the right values
     assert paddr_node.format.render_type == RenderType.ANALOG
@@ -155,9 +154,9 @@ def test_multiple_height_changes_update_canvas(qtbot):
         qtbot.wait(50)
         
         # Verify canvas updated
-        assert 0 in canvas._row_heights
+        assert len(canvas._layout.rows) > 0, "Should have at least one row"
         expected = base_height * height
-        actual = canvas._row_heights[0]
+        actual = canvas._layout.rows[0].height_px
         assert actual == expected, f"Height {height}: expected {expected}, got {actual}"
     
     widget.close()

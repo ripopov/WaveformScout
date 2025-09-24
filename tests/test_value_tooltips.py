@@ -242,9 +242,10 @@ class TestValueTooltips:
             
             # Check that row heights are scaled
             base_height = canvas._row_height
-            assert canvas._row_heights.get(0, base_height) == base_height * 1.0
-            assert canvas._row_heights.get(1, base_height) == base_height * 2.0
-            assert canvas._row_heights.get(2, base_height) == base_height * 0.5
+            assert len(canvas._layout.rows) >= 3, "Should have at least 3 rows"
+            assert canvas._layout.rows[0].height_px == base_height * 1.0
+            assert canvas._layout.rows[1].height_px == base_height * 2.0
+            assert canvas._layout.rows[2].height_px == base_height * 0.5
             
             # Verify tooltip positioning calculation would use scaled heights
             # This tests the algorithm without actually rendering
