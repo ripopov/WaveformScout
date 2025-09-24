@@ -5,13 +5,10 @@ of rows in the waveform canvas, replacing the virtual node hack with explicit
 row descriptors.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from wavescout.data_model import SignalNodeID
-from pyrox import SignalHandle
 from wavescout.data_model import GroupRenderMode, SignalNode, SignalNodeGroup, SignalNodeSignal
 from wavescout.waveform_item_model import WaveformItemModel
 

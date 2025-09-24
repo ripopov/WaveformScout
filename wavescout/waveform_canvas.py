@@ -29,7 +29,7 @@ from .signal_renderer import (
     draw_digital_signal, draw_bus_signal, draw_analog_signal, draw_event_signal,
     NodeInfo, RenderParams, draw_overlapped_group, GROUP_RENDERERS, GroupDrawingPayload
 )
-from .canvas_layout import CanvasLayout, build_layout, VisibleRow, GroupContentDescriptor
+from .canvas_layout import CanvasLayout, build_layout, VisibleRow
 from . import config
 RENDERING = config.RENDERING
 MARKER_LABELS = config.MARKER_LABELS
@@ -748,7 +748,6 @@ class WaveformCanvas(QWidget):
             end_time=self._end_time,
             cursor_time=self._cursor_time,
             scroll_value=scroll_value,
-            visible_nodes_info=[],  # Deprecated field
             visible_nodes=visible_nodes,
             waveform_db=waveform_db,
             generation=self._render_generation,

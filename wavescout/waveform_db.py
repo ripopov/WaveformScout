@@ -1,12 +1,9 @@
 """WaveformDB implementation with backend-agnostic design."""
 
-from __future__ import annotations
 from typing import List, Tuple, Optional, Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pyrox import Scope
-from pathlib import Path
-import threading
 
 import pyrox
 

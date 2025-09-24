@@ -1,12 +1,10 @@
 """Signal analysis engine for computing statistical measurements on waveform signals."""
 
-from __future__ import annotations
-
 import math
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Optional, Tuple, Any
 from dataclasses import dataclass
 
-from .data_model import SignalNode, SignalNodeSignal, Time
+from .data_model import SignalNodeSignal, Time
 from .signal_sampling import parse_signal_value
 
 

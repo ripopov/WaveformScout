@@ -3,7 +3,7 @@
 import json
 import pathlib
 import time
-from typing import Dict, Any, List, Optional, Union, cast
+from typing import Dict, Any, List, Optional, cast
 from .timing_utils import tprint
 from dataclasses import asdict
 from enum import Enum

@@ -7,7 +7,6 @@ It uses a simple callback-based notification mechanism (no Qt dependencies) so
 it can be unit-tested easily. UI widgets (like WaveScoutWidget) can subscribe to
 these callbacks and update their views accordingly.
 """
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Iterable, Set

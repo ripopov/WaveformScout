@@ -10,7 +10,7 @@ from typing import List, Tuple, Optional, Any
 from .protocols import WaveformDBProtocol
 import math
 
-from .data_model import SignalNode, SignalNodeSignal, Time, DataFormat
+from .data_model import SignalNodeSignal, Time, DataFormat
 from .config import RENDERING
 import struct
 

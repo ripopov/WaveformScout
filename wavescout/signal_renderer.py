@@ -21,7 +21,7 @@ This module depends only on QPainter and small data types from the local data mo
 and sampling code; it contains no widget logic.
 """
 
-from typing import Dict, Tuple, Optional, Union, TypedDict, TYPE_CHECKING, Protocol
+from typing import Dict, Tuple, Optional, TypedDict, TYPE_CHECKING, Protocol
 from dataclasses import dataclass
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPolygonF
 from PySide6.QtCore import Qt, QPointF
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from pyrox import Signal
     from .canvas_layout import CanvasLayout, GroupContentDescriptor
 
-from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalNodeSignal, SignalRangeCache, DataFormat, GroupRenderMode
+from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat, GroupRenderMode
 from .signal_sampling import SignalDrawingData, ValueKind
 from . import config
 RENDERING = config.RENDERING
