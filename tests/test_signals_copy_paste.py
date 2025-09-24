@@ -100,12 +100,16 @@ def test_copy_paste_signals(qtbot, tmp_path):
     # Clear any existing selection
     selection_model.clear()
     
-    # Select first 3 signals
+    # Select first 3 signals and track which ones we selected for verification
+    selected_names = []
     for i in range(3):
         index = model.index(i, 0, QModelIndex())
         if index.isValid():
+            # Get the node name for tracking what we copied
+            node = session.root_nodes[i]
+            selected_names.append(node.name)
             selection_model.select(index, selection_model.SelectionFlag.Select | selection_model.SelectionFlag.Rows)
-    
+
     # Verify selection
     selected_nodes = names_view._get_all_selected_nodes()
     assert len(selected_nodes) == 3, f"Should have 3 selected nodes, got {len(selected_nodes)}"
@@ -206,14 +210,16 @@ def test_copy_paste_signals(qtbot, tmp_path):
     name_counts = Counter(node_names)
 
     # The 3 copied signals should appear 3 times each (original + 2 pastes)
-    # The other signals should appear once each
-    three_count_names = sum(1 for count in name_counts.values() if count == 3)
-    one_count_names = sum(1 for count in name_counts.values() if count == 1)
+    # Check that the specific signals we selected appear 3 times
+    for signal_name in selected_names:
+        expected_count = 3  # original + 2 pastes
+        actual_count = name_counts.get(signal_name, 0)
+        assert actual_count == expected_count, f"Signal '{signal_name}' should appear {expected_count} times, got {actual_count}. Name counts: {dict(name_counts)}"
 
-    # We should have 3 signals that appear 3 times (the ones we copied)
-    assert three_count_names == 3, f"Should have 3 signals appearing 3 times, got {three_count_names}. Name counts: {dict(name_counts)}"
-    # The rest should appear once
-    assert one_count_names == num_signals - 3, f"Should have {num_signals - 3} signals appearing once, got {one_count_names}"
+    # All other signals should appear once
+    for name, count in name_counts.items():
+        if name not in selected_names:
+            assert count == 1, f"Signal '{name}' (not copied) should appear 1 time, got {count}. Name counts: {dict(name_counts)}"
     
     # Load session back to verify it's valid
     loaded_session = load_session(session_file)
