@@ -6,7 +6,7 @@ integration tests in test_delete_integration.py, these tests focus on the
 internal state of the canvas to ensure proper cleanup and rendering updates.
 
 Key Testing Focus:
-- Canvas's _visible_nodes list maintenance
+- Canvas's layout row maintenance
 - Proper removal of deleted nodes from rendering pipeline
 - Hierarchical deletion (groups with children)
 - Canvas state consistency after deletion operations
@@ -24,7 +24,7 @@ Test Scenarios:
 
 Technical Details:
 - Directly calls widget._delete_selected_nodes() for focused testing
-- Examines canvas._visible_nodes internal state
+- Examines canvas._layout internal state
 - Uses processEvents() to ensure signal propagation
 - Complements integration tests by verifying implementation details
 
@@ -65,9 +65,9 @@ def test_canvas_updates_on_node_deletion(wave_widget, qtbot):
     canvas = wave_widget._canvas
     model = wave_widget.model
     
-    # Get initial visible node count
-    initial_count = len(canvas._visible_nodes)
-    print(f"\nInitial visible nodes: {initial_count}")
+    # Get initial visible row count
+    initial_count = len(canvas._layout.rows)
+    print(f"\nInitial visible rows: {initial_count}")
     
     # Select first few nodes
     wave_widget._selection_model.clearSelection()
@@ -92,7 +92,7 @@ def test_canvas_updates_on_node_deletion(wave_widget, qtbot):
         QCoreApplication.processEvents()
         
         # Check that canvas visible nodes updated
-        final_count = len(canvas._visible_nodes)
+        final_count = len(canvas._layout.rows)
         print(f"Final visible nodes: {final_count}")
         
         # Should have fewer visible nodes
@@ -101,7 +101,8 @@ def test_canvas_updates_on_node_deletion(wave_widget, qtbot):
         
         # Verify deleted nodes are not in canvas visible nodes
         for node in nodes_to_delete:
-            assert node not in canvas._visible_nodes, \
+            row_sources = [row.source for row in canvas._layout.rows]
+            assert node not in row_sources, \
                 f"Deleted node {node.name} should not be in visible nodes"
 
 
@@ -126,7 +127,7 @@ def test_canvas_updates_on_group_deletion(wave_widget, qtbot):
     
     if group_index and group_node:
         # Get initial count
-        initial_count = len(canvas._visible_nodes)
+        initial_count = len(canvas._layout.rows)
         print(f"\nInitial visible nodes: {initial_count}")
         print(f"Deleting group '{group_node.name}' with {child_count} children")
         
@@ -140,7 +141,7 @@ def test_canvas_updates_on_group_deletion(wave_widget, qtbot):
         QCoreApplication.processEvents()
         
         # Check canvas updated
-        final_count = len(canvas._visible_nodes)
+        final_count = len(canvas._layout.rows)
         print(f"Final visible nodes: {final_count}")
         
         # Should have removed group + all its children
@@ -149,6 +150,7 @@ def test_canvas_updates_on_group_deletion(wave_widget, qtbot):
             f"Expected to remove {expected_removed} nodes, but count went from {initial_count} to {final_count}"
         
         # Verify group and children not in visible nodes
-        assert group_node not in canvas._visible_nodes
+        row_sources = [row.source for row in canvas._layout.rows]
+        assert group_node not in row_sources
         for child in group_node.children:
-            assert child not in canvas._visible_nodes
+            assert child not in row_sources

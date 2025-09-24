@@ -252,11 +252,12 @@ class TestValueTooltips:
             
             # Calculate Y positions as the tooltip method would
             y_positions = []
-            for row_idx in range(min(3, len(canvas._visible_nodes))):
-                row_y = header_height
-                for i in range(row_idx):
-                    row_y += canvas._row_heights.get(i, base_height)
-                row_height = canvas._row_heights.get(row_idx, base_height)
+            for row_idx in range(min(3, len(canvas._layout.rows))):
+                if row_idx >= len(canvas._layout.row_offsets):
+                    break
+                row = canvas._layout.rows[row_idx]
+                row_y = canvas._layout.row_offsets[row_idx] + header_height
+                row_height = row.height_px
                 tooltip_y = row_y + row_height // 2
                 y_positions.append(tooltip_y)
             

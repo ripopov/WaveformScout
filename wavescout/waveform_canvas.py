@@ -27,8 +27,9 @@ from .signal_sampling import (
 )
 from .signal_renderer import (
     draw_digital_signal, draw_bus_signal, draw_analog_signal, draw_event_signal,
-    NodeInfo, RenderParams, draw_overlapped_group
+    NodeInfo, RenderParams, draw_overlapped_group, GROUP_RENDERERS, GroupDrawingPayload
 )
+from .canvas_layout import CanvasLayout, build_layout, VisibleRow, GroupContentDescriptor
 from . import config
 RENDERING = config.RENDERING
 MARKER_LABELS = config.MARKER_LABELS
@@ -105,8 +106,7 @@ class WaveformCanvas(QWidget):
         self._end_time = 1000000
         self._cursor_time = 0
         self._shared_scrollbar: Optional[QScrollBar] = None
-        self._visible_nodes: List[SignalNode] = []  # Flattened list of visible nodes
-        self._row_to_node: Dict[int, SignalNode] = {}   # Map row index to node
+        self._layout: CanvasLayout = CanvasLayout()  # Replace visible_nodes with layout
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setMinimumWidth(RENDERING.MIN_CANVAS_WIDTH)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # Accept keyboard focus for V key shortcut
@@ -315,75 +315,23 @@ class WaveformCanvas(QWidget):
             self.update()
 
     def updateVisibleNodes(self) -> None:
-        """Update the list of visible nodes based on expansion state."""
-        self._visible_nodes = []
-        self._row_to_node = {}
-        self._row_heights = {}  # Reset row heights
-
+        """Update the layout based on expansion state."""
         if not self._model:
+            self._layout = CanvasLayout()
             return
-        
+
         # Update waveform time boundaries
         self._update_waveform_bounds()
-        
-        # Store model in local variable for type narrowing
-        model = self._model
 
-        def add_visible_nodes(parent_index: QModelIndex = QModelIndex(), row_offset: int = 0) -> int:
-            """Recursively add visible nodes."""
-            rows = model.rowCount(parent_index)
-            current_row = row_offset
+        # Build new layout from model
+        self._layout = build_layout(self._model, self._row_height)
 
-            for row in range(rows):
-                index = model.index(row, 0, parent_index)
-                node = model.data(index, Qt.ItemDataRole.UserRole)
+        # Update the row_heights dict for compatibility
+        # TODO: Remove this once all dependencies on _row_heights are migrated
+        self._row_heights = {}
+        for i, row in enumerate(self._layout.rows):
+            self._row_heights[i] = row.height_px
 
-                if node:
-                    # Always show the group node row as is
-                    self._visible_nodes.append(node)
-                    self._row_to_node[current_row] = node
-                    self._row_heights[current_row] = self._row_height * node.height_scaling
-                    current_row += 1
-
-                    # Handle special group render modes
-                    if getattr(node, 'is_group', False) and node.is_expanded and node.group_render_mode != GroupRenderMode.SEPARATE_ROWS:
-                        # For non-default render modes, add a special rendering row after the group
-                        # Only if expanded and has child signals
-                        child_signals: List[SignalNode] = [
-                            c for c in node.children
-                            if isinstance(c, SignalNodeSignal) and c.handle is not None
-                        ]
-                        if child_signals:
-                            # Compute combined height scaling as sum of children
-                            combined_scaling = sum(max(1, c.height_scaling) for c in child_signals)
-                            # Create a virtual node to represent the combined rendering
-                            # Store reference to parent group and children for rendering
-                            virtual_node = SignalNodeSignal(name=f"{node.name}_virtual", handle=None)
-                            virtual_node.height_scaling = combined_scaling
-                            # Store parent group reference and children in the virtual node
-                            # Using special attributes to identify this as a group render node
-                            setattr(virtual_node, '_group_render_parent', node)
-                            setattr(virtual_node, '_group_render_children', child_signals)
-                            self._visible_nodes.append(virtual_node)
-                            self._row_to_node[current_row] = virtual_node
-                            self._row_heights[current_row] = self._row_height * combined_scaling
-                            current_row += 1
-                        # Skip recursing into children for non-default render modes
-                        continue
-
-                    # Add children if expanded (normal behavior)
-                    if model.hasChildren(index):
-                        # Check if node is expanded (from data model)
-                        is_expanded = node.is_group and node.is_expanded
-
-                        if is_expanded:
-                            current_row = add_visible_nodes(index, current_row)
-
-            return current_row
-
-        add_visible_nodes()
-        
-        
         # Don't automatically generate draw commands here - let paintEvent handle it
         # This prevents generating commands with wrong viewport before setTimeRange is called
     
@@ -624,8 +572,8 @@ class WaveformCanvas(QWidget):
         if self._cursor_time < self._start_time or self._cursor_time > self._end_time:
             return
             
-        # Check if we have model and visible nodes
-        if not self._model or not self._visible_nodes:
+        # Check if we have model and layout
+        if not self._model or not self._layout.rows:
             return
             
         # Get cursor x position
@@ -648,25 +596,24 @@ class WaveformCanvas(QWidget):
         text_color = QColor(config.COLORS.VALUE_TOOLTIP_TEXT)
         border_color = QColor(config.COLORS.VALUE_TOOLTIP_BORDER)
         
-        # Iterate through visible nodes and draw tooltips
-        for row_idx, node in enumerate(self._visible_nodes):
-            # Skip groups - they don't have values
-            if isinstance(node, SignalNodeGroup):
+        # Iterate through layout rows and draw tooltips for signals
+        for row_idx, row in enumerate(self._layout.rows):
+            # Skip non-signal rows - they don't have direct values
+            if row.kind != 'signal':
                 continue
 
-            # Now we know it's a SignalNodeSignal
-            assert isinstance(node, SignalNodeSignal)
+            node = row.source
+            # Skip groups - they don't have values
+            if not isinstance(node, SignalNodeSignal):
+                continue
+
             signal_node = node
 
-            # Calculate row Y position using scaled heights
-            # Sum up all previous row heights to get the Y position
-            row_y = self._header_height
-            for i in range(row_idx):
-                row_y += self._row_heights.get(i, self._row_height)
-            row_y -= scroll_value
-
-            # Get the scaled height for this row
-            row_height = self._row_heights.get(row_idx, self._row_height)
+            # Get row Y position from layout
+            if row_idx >= len(self._layout.row_offsets):
+                continue
+            row_y = self._layout.row_offsets[row_idx] + self._header_height - scroll_value
+            row_height = row.height_px
 
             # Skip if row is outside visible area
             if row_y + row_height < 0 or row_y > self.height():
@@ -777,15 +724,19 @@ class WaveformCanvas(QWidget):
         scroll_value = 0
         if self._shared_scrollbar:
             scroll_value = self._shared_scrollbar.value()
-        
+
         # Get selected IDs from controller
         selected_ids: Set[int] = set()
         if self._model and self._model._controller:
             selected_ids = self._model._controller._selected_ids
-        
-        # Only copy visible nodes info, not the actual nodes
+
+        # Build visible_nodes_info for backward compatibility
+        # TODO: Remove this once all renderers are updated to use layout directly
         visible_nodes_info: List[NodeInfo] = []
-        for i, node in enumerate(self._visible_nodes):
+        visible_nodes: List[SignalNode] = []
+        for row in self._layout.rows:
+            node = row.source
+            visible_nodes.append(node)
             node_info: NodeInfo = NodeInfo(
                 name=node.name,
                 handle=node.handle if isinstance(node, SignalNodeSignal) else None,
@@ -798,12 +749,12 @@ class WaveformCanvas(QWidget):
                 signal=node.signal if isinstance(node, SignalNodeSignal) else None
             )
             visible_nodes_info.append(node_info)
-        
+
         # Get waveform_db reference if available
         waveform_db = None
         if self._model and self._model._session and self._model._session.waveform_db:
             waveform_db = self._model._session.waveform_db
-        
+
         return RenderParams(
             width=self.width(),
             height=self.height(),
@@ -813,7 +764,7 @@ class WaveformCanvas(QWidget):
             cursor_time=self._cursor_time,
             scroll_value=scroll_value,
             visible_nodes_info=visible_nodes_info,
-            visible_nodes=self._visible_nodes.copy(),  # Pass full nodes for draw command generation
+            visible_nodes=visible_nodes,  # For backward compatibility
             waveform_db=waveform_db,
             generation=self._render_generation,
             row_heights=self._row_heights.copy(),  # Pass row heights for rendering
@@ -822,6 +773,7 @@ class WaveformCanvas(QWidget):
             waveform_max_time=self._waveform_max_time,  # Add waveform max time for renderer
             signal_range_cache=self._signal_range_cache,  # Pass signal range cache for analog rendering
             highlight_selected=self._highlight_selected,  # Pass highlight flag
+            layout=self._layout,  # Pass the new layout
         )
     
     def _render_to_image(self, params: RenderParams, generation: int) -> Tuple[QImage, int, float]:
@@ -838,40 +790,41 @@ class WaveformCanvas(QWidget):
         draw_cmd_start = time_module.time()
         
         # Generate draw commands only for signals in the render area
-        if params['waveform_db']:
+        if params['waveform_db'] and 'layout' in params:
+            layout = params['layout']
             # Calculate which signals are in the render area (with buffer)
             y_offset = params.get('header_height', RENDERING.DEFAULT_HEADER_HEIGHT)
             viewport_top = y_offset
             viewport_bottom = params['height']
-            
+
             # Add buffer zones for smooth scrolling
             base_row_height = params.get('base_row_height', 20)
             buffer_rows = 3
             buffer_distance = buffer_rows * base_row_height * 2
             render_top = viewport_top - buffer_distance
             render_bottom = viewport_bottom + buffer_distance
-            
-            # Filter signals that are in the render area
-            cumulative_y = y_offset
-            row_heights = params.get('row_heights', {})
+
+            # Collect signals and group data to render
             signals_to_render = []
-            
-            for row, node in enumerate(params['visible_nodes']):
-                row_height = row_heights.get(row, base_row_height)
-                y = cumulative_y - params['scroll_value']
-                row_bottom = y + row_height
-                
-                # Check if this row is in the render area
-                if not (row_bottom < render_top or y > render_bottom):
-                    # Row is in render area, include it if it's a signal
-                    if isinstance(node, SignalNodeSignal) and node.handle is not None:
-                        signals_to_render.append(node)
-                    # If this is a virtual group render node, include its children
-                    if hasattr(node, '_group_render_children'):
-                        signals_to_render.extend(node._group_render_children)
-                
-                cumulative_y += row_height
-            
+            group_draw_data: Dict[SignalNodeID, GroupDrawingPayload] = {}
+
+            if layout:
+                for i, row in enumerate(layout.rows):
+                    if i >= len(layout.row_offsets):
+                        break
+                    y = layout.row_offsets[i] + y_offset - params['scroll_value']
+                    row_bottom = y + row.height_px
+
+                    # Check if this row is in the render area
+                    if not (row_bottom < render_top or y > render_bottom):
+                        if row.kind == 'signal':
+                            node = row.source
+                            if isinstance(node, SignalNodeSignal) and node.handle is not None:
+                                signals_to_render.append(node)
+                        elif row.kind == 'group_content' and row.descriptor:
+                            # Add all child signals from the group
+                            signals_to_render.extend(row.descriptor.children)
+
             # Generate draw commands only for signals in render area
             draw_commands = self._generate_all_draw_commands(
                 signals_to_render,
@@ -880,9 +833,72 @@ class WaveformCanvas(QWidget):
                 params['width'],
                 params['waveform_db']
             )
+
+            # Build group drawing payloads
+            signal_range_cache = params.get('signal_range_cache', {})
+            waveform_db = params['waveform_db']
+
+            if layout:
+                for i, row in enumerate(layout.rows):
+                    if row.kind == 'group_content' and row.descriptor:
+                        group_id = row.descriptor.cache_key
+
+                        # Compute group range if not cached
+                        if group_id not in signal_range_cache or signal_range_cache[group_id].min == float('inf'):
+                            min_val = float('inf')
+                            max_val = float('-inf')
+
+                            for child in row.descriptor.children:
+                                if child.handle is None:
+                                    continue
+                                if waveform_db is not None:
+                                    from .signal_renderer import compute_global_signal_range
+                                    cmin, cmax = compute_global_signal_range(child.handle, waveform_db, child.format.data_format, child.signal)
+                                else:
+                                    # Fallback to viewport samples
+                                    dd = draw_commands.draw_commands.get(child.handle)
+                                    if dd and dd.samples:
+                                        vals = [s.value_float for _, s in dd.samples if s.value_float is not None]
+                                        if vals:
+                                            cmin = min(vals)
+                                            cmax = max(vals)
+                                        else:
+                                            cmin, cmax = 0.0, 1.0
+                                    else:
+                                        cmin, cmax = 0.0, 1.0
+                                if cmin < min_val:
+                                    min_val = cmin
+                                if cmax > max_val:
+                                    max_val = cmax
+
+                            if min_val == float('inf') or max_val == float('-inf') or min_val == max_val:
+                                if min_val == float('inf') or max_val == float('-inf'):
+                                    min_val, max_val = 0.0, 1.0
+                                else:
+                                    margin = abs(min_val) * 0.1 if min_val != 0 else 1.0
+                                    min_val -= margin
+                                    max_val += margin
+
+                            from .data_model import DataFormat
+                            signal_range_cache[group_id] = SignalRangeCache(min=min_val, max=max_val, viewport_ranges={}, data_format=DataFormat.UNSIGNED)
+
+                        # Build child drawings dict
+                        child_drawings = {}
+                        for child in row.descriptor.children:
+                            if child.handle and child.handle in draw_commands.draw_commands:
+                                child_drawings[child.handle] = draw_commands.draw_commands[child.handle]
+
+                        group_draw_data[group_id] = GroupDrawingPayload(
+                            descriptor=row.descriptor,
+                            child_drawings=child_drawings,
+                            range=signal_range_cache[group_id]
+                        )
+
             params['draw_commands'] = draw_commands.draw_commands
+            params['group_draw_data'] = group_draw_data
         else:
             params['draw_commands'] = {}
+            params['group_draw_data'] = {}
         
         draw_cmd_time = (time_module.time() - draw_cmd_start) * 1000
         
@@ -942,22 +958,27 @@ class WaveformCanvas(QWidget):
     
     
     def _render_waveforms(self, painter: QPainter, params: RenderParams) -> None:
-        """Render waveforms (thread-safe version)."""
+        """Render waveforms using new layout system."""
         import time as time_module
 
-        # Don't draw ruler here - it's drawn separately in paintEvent to ensure it's always on top
-        
         # Check if we have draw commands
         draw_commands = params.get('draw_commands', {})
-        if not draw_commands:
+        group_draw_data = params.get('group_draw_data', {})
+        layout = params.get('layout')
+
+        if not draw_commands and not group_draw_data:
             # Show loading message
             painter.setPen(QColor(config.COLORS.TEXT_MUTED))
             painter.setFont(QFont("Arial", RENDERING.FONT_SIZE_LARGE))
             painter.drawText(params['width'] // 2 - 50, params['height'] // 2, "Loading waveforms...")
             return
 
-        # Waveforms need to be offset by header height even in cached image
-        y_offset = params.get('header_height', RENDERING.DEFAULT_HEADER_HEIGHT)  # Use header height from params
+        if not layout:
+            # Fallback to legacy rendering if no layout
+            return
+
+        # Waveforms need to be offset by header height
+        y_offset = params.get('header_height', RENDERING.DEFAULT_HEADER_HEIGHT)
 
         painter.save()
         # Set clipping to prevent drawing outside the waveform area
@@ -966,39 +987,32 @@ class WaveformCanvas(QWidget):
         # Calculate visible viewport bounds for culling with buffer zones
         viewport_top = y_offset
         viewport_bottom = params['height']
-        
-        # Add buffer zones: render 3 extra rows above and below visible area for smooth scrolling
+
+        # Add buffer zones: render 3 extra rows above and below visible area
         base_row_height = params.get('base_row_height', 20)
         buffer_rows = 3
-        buffer_distance = buffer_rows * base_row_height * 2  # Use 2x base height as conservative estimate
-        
+        buffer_distance = buffer_rows * base_row_height * 2
+
         # Expand the render bounds by the buffer distance
         render_top = viewport_top - buffer_distance
         render_bottom = viewport_bottom + buffer_distance
-        
-        # Draw each visible row
-        cumulative_y = y_offset
-        row_heights = params.get('row_heights', {})
-        
-        for row, node_info in enumerate(params['visible_nodes_info']):
-            # Get the height for this row
-            row_height = row_heights.get(row, base_row_height)
-            
-            # Calculate y position: cumulative position minus scroll offset
-            y = cumulative_y - params['scroll_value']
-            
-            # Viewport culling with buffer: skip rows that are completely outside the extended render area
+
+        # Draw each visible row using layout
+        for i, row in enumerate(layout.rows):
+            if i >= len(layout.row_offsets):
+                break
+
+            # Calculate y position: row offset minus scroll offset
+            y = layout.row_offsets[i] + y_offset - params['scroll_value']
+            row_height = row.height_px
+
+            # Viewport culling: skip rows outside the render area
             row_bottom = y + row_height
             if row_bottom < render_top or y > render_bottom:
-                # Row is completely outside render area (including buffer), skip rendering
-                cumulative_y += row_height
                 continue
-            
-            # Draw the row (it's in the render area)
-            self._draw_row(painter, node_info, draw_commands, row, y, row_height, params)
-            
-            # Update cumulative y for next row
-            cumulative_y += row_height
+
+            # Draw the row based on its type
+            self._draw_layout_row(painter, row, i, y, row_height, draw_commands, group_draw_data, params)
 
         painter.restore()
         
@@ -1033,6 +1047,76 @@ class WaveformCanvas(QWidget):
             label = f"{time}"
             painter.drawText(x - 20, 5, 40, 20, Qt.AlignmentFlag.AlignCenter, label)
     
+    def _draw_layout_row(self, painter: QPainter, row: VisibleRow, row_index: int, y: int, row_height: int,
+                         draw_commands: Dict[SignalHandle, SignalDrawingData],
+                         group_draw_data: Dict[SignalNodeID, GroupDrawingPayload],
+                         params: RenderParams) -> None:
+        """Draw a row based on its layout descriptor."""
+        # Determine background color
+        is_selected = False
+        if self._model and self._model._controller:
+            is_selected = row.source.instance_id in self._model._controller._selected_ids
+
+        if params.get('highlight_selected', False) and is_selected:
+            # Use solid dark purple selection background for highlighted selected signals
+            bg_color = QColor(config.COLORS.SELECTION_BACKGROUND)
+        elif row_index % 2 == 0:
+            # Use alternating row color
+            bg_color = QColor(config.COLORS.ALTERNATE_ROW)
+        else:
+            # Use default background (transparent, no fill needed)
+            bg_color = None
+
+        # Draw background if needed
+        if bg_color:
+            painter.fillRect(0, y, params['width'], row_height, bg_color)
+
+        # Draw border
+        border_pen = QPen(QColor(config.COLORS.BORDER))
+        border_pen.setWidth(0)  # cosmetic 1 device-pixel
+        painter.setPen(border_pen)
+        painter.drawLine(0, y + row_height - 1, params['width'], y + row_height - 1)
+
+        # Handle different row types
+        if row.kind == 'group_header':
+            # Just draw the background and border for group headers
+            pass
+        elif row.kind == 'signal':
+            # Draw a regular signal
+            node = row.source
+            if isinstance(node, SignalNodeSignal) and node.handle and node.handle in draw_commands:
+                drawing_data = draw_commands[node.handle]
+                # Create node_info for renderer compatibility
+                node_info: NodeInfo = {
+                    'name': node.name,
+                    'handle': node.handle,
+                    'is_group': False,
+                    'format': node.format,
+                    'render_type': node.format.render_type,
+                    'height_scaling': node.height_scaling,
+                    'instance_id': node.instance_id,
+                    'is_selected': is_selected,
+                    'signal': node.signal,
+                }
+                render_type = node.format.render_type
+                if render_type == RenderType.BOOL:
+                    draw_digital_signal(painter, node_info, drawing_data, y, row_height, params)
+                elif render_type == RenderType.BUS:
+                    draw_bus_signal(painter, node_info, drawing_data, y, row_height, params)
+                elif render_type == RenderType.ANALOG:
+                    draw_analog_signal(painter, node_info, drawing_data, y, row_height, params)
+                elif render_type == RenderType.EVENT:
+                    draw_event_signal(painter, node_info, drawing_data, y, row_height, params)
+        elif row.kind == 'group_content' and row.descriptor:
+            # Draw group content using the registry
+            group_id = row.descriptor.cache_key
+            if group_id in group_draw_data:
+                payload = group_draw_data[group_id]
+                mode = row.descriptor.mode
+                if mode in GROUP_RENDERERS:
+                    renderer = GROUP_RENDERERS[mode]
+                    renderer(painter, payload, y, row_height, params)
+
     def _draw_row(self, painter: QPainter, node_info: NodeInfo, draw_commands: Dict[SignalHandle, SignalDrawingData], row: int, y: int, row_height: int, params: RenderParams) -> None:
         """Thread-safe version of row drawing."""
         # Determine background color
@@ -1056,16 +1140,9 @@ class WaveformCanvas(QWidget):
         painter.setPen(border_pen)
         painter.drawLine(0, y + row_height - 1, params['width'], y + row_height - 1)
         
-        # Check if this is a virtual group render node by checking the actual node object
-        actual_node = params['visible_nodes'][row] if row < len(params['visible_nodes']) else None
-        if actual_node and hasattr(actual_node, '_group_render_parent'):
-            parent = getattr(actual_node, '_group_render_parent')
-            children = getattr(actual_node, '_group_render_children')
-            # Handle based on the parent's render mode
-            if parent.group_render_mode == GroupRenderMode.OVERLAPPED:
-                draw_overlapped_group(painter, parent.instance_id, children, y, row_height, params)
-            # Future render modes can be added here
-            return
+        # Note: Virtual nodes are no longer supported in the new layout system.
+        # This _draw_row method is only kept for backward compatibility.
+        # New code should use _draw_layout_row instead.
 
         # Draw signal if it has drawing commands
         if node_info['handle'] is not None and node_info['handle'] in draw_commands:

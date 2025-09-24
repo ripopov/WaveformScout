@@ -237,25 +237,26 @@ def test_canvas_collapsed_groups(wave_widget, qtbot):
             break
     
     if group_index and group_node:
-        # Count visible nodes with group expanded
-        expanded_count = len(canvas._visible_nodes)
-        
+        # Count visible rows with group expanded
+        expanded_count = len(canvas._layout.rows)
+
         # Collapse the group
         wave_widget._names_view.collapse(group_index)
         qtbot.wait(50)  # Let updates propagate
-        
-        # Count visible nodes with group collapsed
-        collapsed_count = len(canvas._visible_nodes)
-        
-        # Should have fewer visible nodes when collapsed
-        assert collapsed_count < expanded_count, f"Expected fewer nodes when collapsed: {collapsed_count} >= {expanded_count}"
-        
-        # Children of the group should not be in visible nodes
+
+        # Count visible rows with group collapsed
+        collapsed_count = len(canvas._layout.rows)
+
+        # Should have fewer visible rows when collapsed
+        assert collapsed_count < expanded_count, f"Expected fewer rows when collapsed: {collapsed_count} >= {expanded_count}"
+
+        # Children of the group should not be in visible rows
+        child_sources = [row.source for row in canvas._layout.rows]
         for child in group_node.children:
-            assert child not in canvas._visible_nodes, f"Child {child.name} should not be visible when group is collapsed"
-        
+            assert child not in child_sources, f"Child {child.name} should not be visible when group is collapsed"
+
         # The group itself should still be visible
-        assert group_node in canvas._visible_nodes, "Group should still be visible when collapsed"
+        assert group_node in child_sources, "Group should still be visible when collapsed"
         
         print(f"\nExpanded nodes: {expanded_count}, Collapsed nodes: {collapsed_count}")
 

@@ -69,14 +69,15 @@ def test_overlapped_group_periodic_signals(qtbot):
         assert ch.format.analog_scaling_mode == AnalogScalingMode.SCALE_TO_ALL_DATA
         assert ch.format.color is not None
 
-    # Force canvas to rebuild visible nodes and check for virtual node
+    # Force canvas to rebuild layout and check for group content row
     canvas = widget._canvas
     canvas.updateVisibleNodes()
-    
-    # Check that a virtual node was created for the overlapped group
-    virtual_nodes = [n for n in canvas._visible_nodes if hasattr(n, '_group_render_parent')]
-    assert len(virtual_nodes) == 1, "Virtual node for overlapped rendering not created"
-    assert getattr(virtual_nodes[0], '_group_render_parent') == group, "Virtual node parent mismatch"
+
+    # Check that a group content row was created for the overlapped group
+    group_content_rows = [row for row in canvas._layout.rows if row.kind == 'group_content']
+    assert len(group_content_rows) == 1, "Group content row for overlapped rendering not created"
+    assert group_content_rows[0].descriptor.group == group, "Group content row parent mismatch"
+    assert group_content_rows[0].descriptor.mode == GroupRenderMode.OVERLAPPED, "Wrong render mode"
     
     params = canvas._collect_render_params()
 
@@ -87,10 +88,10 @@ def test_overlapped_group_periodic_signals(qtbot):
     # Test that collapsing the group hides the overlapped rendering
     group.is_expanded = False
     canvas.updateVisibleNodes()
-    
-    # Check that no virtual node exists when group is collapsed
-    virtual_nodes_collapsed = [n for n in canvas._visible_nodes if hasattr(n, '_group_render_parent')]
-    assert len(virtual_nodes_collapsed) == 0, "Virtual node should not exist when group is collapsed"
+
+    # Check that no group content row exists when group is collapsed
+    group_content_rows_collapsed = [row for row in canvas._layout.rows if row.kind == 'group_content']
+    assert len(group_content_rows_collapsed) == 0, "Group content row should not exist when group is collapsed"
 
 
 @pytest.mark.qt
@@ -143,9 +144,9 @@ def test_overlapped_mode_triggers_immediate_rerender(qtbot):
     # Allow Qt events to process model reset/layout updates
     qtbot.wait(50)
 
-    # Now the canvas should have rebuilt visible nodes including a virtual node
+    # Now the canvas should have rebuilt layout including a group content row
     canvas = widget._canvas
-    # Check that a virtual node was created for the overlapped group
-    virtual_nodes = [n for n in canvas._visible_nodes if hasattr(n, '_group_render_parent')]
-    assert len(virtual_nodes) == 1, "Virtual node should be created immediately after mode switch"
-    assert getattr(virtual_nodes[0], '_group_render_parent') == group, "Virtual node parent mismatch"
+    # Check that a group content row was created for the overlapped group
+    group_content_rows = [row for row in canvas._layout.rows if row.kind == 'group_content']
+    assert len(group_content_rows) == 1, "Group content row should be created immediately after mode switch"
+    assert group_content_rows[0].descriptor.group == group, "Group content row parent mismatch"
