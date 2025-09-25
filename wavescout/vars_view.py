@@ -4,7 +4,7 @@ Variables view widget for split mode in DesignTreeView.
 This widget displays variables in a table format with filtering support.
 """
 
-from typing import Optional, List, Dict, Union, TypedDict, Any
+from typing import Optional, List, Dict, Union, TypedDict, Any, TYPE_CHECKING
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableView, QLineEdit,
     QAbstractItemView, QHeaderView
@@ -15,13 +15,16 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QKeySequence
 
+if TYPE_CHECKING:
+    from pyrox import Var
+
 # Type definition for variable data dictionary
 class VariableData(TypedDict):
     name: str
     full_path: str
     var_type: str
     bit_range: str
-    var: Any  # wellen Var object
+    var: "Var"  # pyrox Var object
 
 
 class VarsModel(QAbstractTableModel):

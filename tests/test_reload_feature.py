@@ -11,7 +11,7 @@ from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
 from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat, RenderType, DataFormat
-from .test_utils import get_test_input_path, TestFiles
+from .test_utils import get_test_input_path, TestFiles, MockVar
 
 
 class TestReloadFeature:
@@ -112,6 +112,7 @@ class TestReloadFeature:
                     # Create a SignalNode
                     signal_node = SignalNodeSignal(
                         name=signal_name,
+                        var=MockVar(signal_name.split('.')[-1], 32),
                         handle=handle,
                         format=DisplayFormat(),
                         nickname='',

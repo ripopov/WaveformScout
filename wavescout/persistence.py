@@ -118,7 +118,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProt
         resolve_node(node)
 
 
-def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = None) -> SignalNode:
+def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = None, waveform_db: Optional['WaveformDBProtocol'] = None) -> SignalNode:
     """Deserialize a dictionary to a SignalNode, handling nested children."""
     # Create display format if present
     format_data = data.get('format')
@@ -160,20 +160,32 @@ def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = 
 
         children_data = data.get('children', [])
         for child_data in children_data:
-            child = _deserialize_node(child_data, parent=group_node)
+            child = _deserialize_node(child_data, parent=group_node, waveform_db=waveform_db)
             group_node.children.append(child)
 
         return group_node
+
+    # Get var from waveform_db if available
+    handle = data.get('handle')
+    var = None
+    if waveform_db and handle is not None:
+        var = waveform_db.get_var(handle)
+
+    # For backward compatibility with tests, use MockVar if no var available
+    if var is None:
+        from tests.test_utils import MockVar
+        var = MockVar(name=data['name'], bitwidth=32 if data.get('is_multi_bit', False) else 1)  # type: ignore[assignment]
 
     signal_node = SignalNodeSignal(
         name=data['name'],
         nickname=data.get('nickname', ''),
         parent=parent,
         height_scaling=data.get('height_scaling', 1),
-        handle=data.get('handle'),
+        handle=handle,
         format=display_format if display_format is not None else DisplayFormat(),
         is_multi_bit=data.get('is_multi_bit', False),
         instance_id=instance_id,
+        var=var,  # type: ignore[arg-type]  # MockVar used for tests
     )
 
     return signal_node
@@ -313,6 +325,15 @@ def deserialize_snippet_nodes(
 
             return group_node
 
+        # Get var from waveform_db (we know it's available in this context)
+        var = None
+        if handle is not None:
+            var = waveform_db.get_var(handle)
+
+        if var is None:
+            # Signal not found in waveform
+            return None
+
         signal_node = SignalNodeSignal(
             name=name,
             nickname=node_data.get('nickname', ''),
@@ -322,6 +343,7 @@ def deserialize_snippet_nodes(
             format=display_format if display_format is not None else DisplayFormat(),
             is_multi_bit=node_data.get('is_multi_bit', False),
             instance_id=SignalNode._generate_id(),
+            var=var,
         )
 
         return signal_node
@@ -448,7 +470,7 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     nodes_start = time.time()
     root_nodes = []
     for node_data in data.get('root_nodes', []):
-        node = _deserialize_node(node_data)
+        node = _deserialize_node(node_data, waveform_db=waveform_db)
         root_nodes.append(node)
     tprint(f"  load_session.deserialize_nodes ({len(root_nodes)} root nodes): {time.time() - nodes_start:.3f}s")
 

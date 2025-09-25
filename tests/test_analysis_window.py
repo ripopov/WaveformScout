@@ -16,6 +16,7 @@ from PySide6.QtTest import QTest
 from scout import WaveScoutMainWindow
 from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
 from wavescout.signal_analysis_window import SignalAnalysisWindow
+from .test_utils import MockVar
 from wavescout.waveform_db import WaveformDB
 from wavescout.analysis_engine import (
     compute_signal_statistics,
@@ -91,6 +92,7 @@ def test_analysis_with_analog_signals():
     for handle, name in all_signals[:5]:  # Test with first 5 signals
         signal = SignalNodeSignal(
             name=name,
+            var=MockVar(name.split('.')[-1], 32),  # Use MockVar for tests
             handle=handle,
             format=DisplayFormat()
         )
@@ -99,6 +101,7 @@ def test_analysis_with_analog_signals():
     # Create sampling signal node
     sampling_signal = SignalNodeSignal(
         name=clk_cnt_name,
+        var=MockVar(clk_cnt_name.split('.')[-1], 32),
         handle=clk_cnt_handle,
         format=DisplayFormat()
     )
@@ -185,6 +188,7 @@ def test_analysis_window_integration():
                 if var:
                     signal = SignalNodeSignal(
                         name=var.full_name(waveform_db.hierarchy),
+                        var=var,  # Use the real var object from waveform_db
                         handle=handle,
                         format=DisplayFormat()
                     )

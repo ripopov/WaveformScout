@@ -982,8 +982,7 @@ class WaveformController:
             return
 
         # Get the variable and signal
-        var = db.var_from_handle(node.handle)
-        if not var or not is_valid_clock_signal(var):
+        if not is_valid_clock_signal(node.var):
             return
         
         signal = db.signal_from_handle(node.handle)
@@ -991,7 +990,7 @@ class WaveformController:
             return
         
         # Calculate clock period and phase offset
-        result = calculate_clock_period(signal, var)
+        result = calculate_clock_period(signal, node.var)
         if result is None:
             return
         

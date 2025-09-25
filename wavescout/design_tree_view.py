@@ -167,15 +167,21 @@ class DesignTreeView(QWidget):
         if handle is None:
             return None
         
-        # Determine render type using helper and var_type if available
+        # Get var object if not already available
         var_obj = getattr(node, 'var', None)
-        is_single_bit = self._is_single_bit(var_obj, handle)
-        var_type_str = None
         if var_obj is None and self.waveform_db and handle is not None:
             try:
                 var_obj = self.waveform_db.get_var(handle)
             except Exception:
                 var_obj = None
+
+        # If still no var, we cannot proceed
+        if var_obj is None:
+            return None
+
+        # Determine render type using helper and var_type if available
+        is_single_bit = self._is_single_bit(var_obj, handle)
+        var_type_str = None
         if var_obj is not None:
             try:
                 var_type_str = str(var_obj.var_type())
@@ -191,6 +197,7 @@ class DesignTreeView(QWidget):
         signal_node = SignalNodeSignal(
             name=full_path,
             handle=handle,
+            var=var_obj,  # Pass the var object
             format=format,
             is_multi_bit=not is_single_bit
         )
@@ -489,6 +496,13 @@ class DesignTreeView(QWidget):
         if handle is None:
             return None
         
+        # Ensure we have a var object
+        if var is None and self.waveform_db and handle is not None:
+            var = self.waveform_db.get_var(handle)
+
+        if var is None:
+            return None  # Cannot create signal without var
+
         # Determine render type using the helper and var_type if available
         is_single_bit = self._is_single_bit(var, handle)
         var_type_str = None
@@ -511,6 +525,7 @@ class DesignTreeView(QWidget):
         signal_node = SignalNodeSignal(
             name=full_path,
             handle=handle,
+            var=var,  # Pass the var object
             format=format,
             is_multi_bit=not is_single_bit
         )

@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING, Any
 from enum import Enum
 
-from pyrox import SignalHandle
+from pyrox import SignalHandle, Var
 
 if TYPE_CHECKING:
     from pyrox import Signal
@@ -83,7 +83,7 @@ class DisplayFormat:
     color: Optional[str] = None  # None means use theme default, otherwise user-configured
     analog_scaling_mode: AnalogScalingMode = AnalogScalingMode.SCALE_TO_ALL_DATA
 
-@dataclass(eq=False)
+@dataclass(eq=False, kw_only=True)
 class SignalNode(ABC):
     """Base node in the signal/group tree with shared attributes."""
 
@@ -126,10 +126,11 @@ class SignalNode(ABC):
         return isinstance(self, SignalNodeGroup)
 
 
-@dataclass(eq=False)
+@dataclass(eq=False, kw_only=True)
 class SignalNodeSignal(SignalNode):
     """A signal node containing waveform data handle and formatting."""
 
+    var: Var = field(repr=False, compare=False)  # Non-optional, must be provided
     handle: Optional[SignalHandle] = None
     signal: Optional["Signal"] = field(default=None, repr=False, compare=False)
     format: DisplayFormat = field(default_factory=DisplayFormat)
@@ -158,13 +159,14 @@ class SignalNodeSignal(SignalNode):
             name=self.name,
             nickname=self.nickname,
             height_scaling=self.height_scaling,
+            var=self.var,  # Pass the same var reference
             handle=self.handle,
             format=format_copy,
             is_multi_bit=self.is_multi_bit,
         )
 
 
-@dataclass(eq=False)
+@dataclass(eq=False, kw_only=True)
 class SignalNodeGroup(SignalNode):
     """A group node that can contain child signal or group nodes."""
 

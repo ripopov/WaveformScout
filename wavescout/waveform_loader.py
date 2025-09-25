@@ -48,6 +48,7 @@ def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, hand
     # Create signal node
     node = SignalNodeSignal(
         name=full_name,
+        var=var,  # Pass the var object directly
         handle=handle,
         format=display_format,
         nickname="",

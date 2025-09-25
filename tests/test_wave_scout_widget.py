@@ -331,18 +331,19 @@ def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
     
     # Create two groups with children
     # Group 1: G1 with IF, WB signals
+    from tests.test_utils import MockVar
     g1 = SignalNodeGroup(name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
-    if_signal = SignalNodeSignal(name="IF", handle=0)
-    wb_signal1 = SignalNodeSignal(name="WB", handle=1)
+    if_signal = SignalNodeSignal(name="IF", handle=0, var=MockVar("IF"))
+    wb_signal1 = SignalNodeSignal(name="WB", handle=1, var=MockVar("WB"))
     if_signal.parent = g1
     wb_signal1.parent = g1
     g1.children = [if_signal, wb_signal1]
     
     # Group 2: G2 with EX, MEM, WB signals
     g2 = SignalNodeGroup(name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
-    ex_signal = SignalNodeSignal(name="EX", handle=2)
-    mem_signal = SignalNodeSignal(name="MEM", handle=3)
-    wb_signal2 = SignalNodeSignal(name="WB", handle=4)
+    ex_signal = SignalNodeSignal(name="EX", handle=2, var=MockVar("EX"))
+    mem_signal = SignalNodeSignal(name="MEM", handle=3, var=MockVar("MEM"))
+    wb_signal2 = SignalNodeSignal(name="WB", handle=4, var=MockVar("WB2"))
     ex_signal.parent = g2
     mem_signal.parent = g2
     wb_signal2.parent = g2

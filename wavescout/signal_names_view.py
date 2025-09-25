@@ -315,8 +315,7 @@ class SignalNamesView(BaseColumnView):
             if self._controller.session and self._controller.session.waveform_db:
                 db = self._controller.session.waveform_db
                 if node.handle is not None:
-                    var = db.var_from_handle(node.handle)
-                    if var and is_valid_clock_signal(var):
+                    if is_valid_clock_signal(node.var):
                         menu.addSeparator()
                         
                         # Check if this signal is already the clock
@@ -332,8 +331,7 @@ class SignalNamesView(BaseColumnView):
                     # Add sampling signal options
                     menu.addSeparator()
                     # Get the WVar for this node to check if it's a valid signal
-                    var = self._controller.session.waveform_db.var_from_handle(node.handle)
-                    if var and is_valid_clock_signal(var):
+                    if is_valid_clock_signal(node.var):
                         if self._controller.is_sampling_signal(node):
                             clear_sampling_action = QAction("Clear Sampling Signal", self)
                             clear_sampling_action.triggered.connect(self._controller.clear_sampling_signal)
@@ -740,9 +738,8 @@ class SignalNamesView(BaseColumnView):
             elif isinstance(node, SignalNodeSignal) and node.handle is not None:
                 # Check if handle exists in current DB
                 try:
-                    # Try to get the variable to validate the handle
-                    var = db.var_from_handle(node.handle)
-                    if var:
+                    # Validate the node has a var (it should always have one)
+                    if node.var:
                         validated2.append(node)
                 except Exception:
                     # Skip nodes with invalid handles

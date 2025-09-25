@@ -15,7 +15,7 @@ from wavescout.analysis_engine import (
     compute_signal_statistics,
     generate_sampling_times_signal,
 )
-from tests.test_utils import get_test_input_path, TestFiles
+from tests.test_utils import get_test_input_path, TestFiles, MockVar
 
 
 def test_analysis_with_analog_signals():
@@ -45,6 +45,7 @@ def test_analysis_with_analog_signals():
             name = var.full_name(db.hierarchy)
             signal = SignalNodeSignal(
                 name=name,
+                var=var,  # Use the actual var from waveform_db
                 handle=handle,
                 format=DisplayFormat()
             )

@@ -16,7 +16,7 @@ from wavescout.data_model import (
     AnalysisMode,
     GroupRenderMode,
 )
-from .test_utils import get_test_input_path, TestFiles
+from .test_utils import get_test_input_path, TestFiles, MockVar
 
 
 def create_test_session():
@@ -26,6 +26,7 @@ def create_test_session():
     # Add simple signal
     node1 = SignalNodeSignal(
         name="clk",
+        var=MockVar("clk"),
         handle=1,
         format=DisplayFormat(
             data_format=DataFormat.BIN,
@@ -42,6 +43,7 @@ def create_test_session():
     
     child1 = SignalNodeSignal(
         name="pc[31:0]",
+        var=MockVar("pc", 32),
         handle=2,
         format=DisplayFormat(
             data_format=DataFormat.HEX,
@@ -53,6 +55,7 @@ def create_test_session():
     
     child2 = SignalNodeSignal(
         name="instruction[31:0]",
+        var=MockVar("instruction", 32),
         handle=3,
         format=DisplayFormat(
             data_format=DataFormat.HEX,
@@ -223,8 +226,8 @@ def test_sampling_signal_persistence():
     session = WaveformSession()
     
     # Add signals
-    signal1 = SignalNodeSignal(name='data', handle=1, instance_id=100)
-    signal2 = SignalNodeSignal(name='clock', handle=2, instance_id=200)
+    signal1 = SignalNodeSignal(name='data', var=MockVar('data'), handle=1, instance_id=100)
+    signal2 = SignalNodeSignal(name='clock', var=MockVar('clock'), handle=2, instance_id=200)
     session.root_nodes = [signal1, signal2]
     
     # Set sampling signal
@@ -255,7 +258,7 @@ def test_sampling_signal_in_nested_group():
     
     # Create group with children
     group = SignalNodeGroup(name='GROUP', instance_id=1000)
-    child = SignalNodeSignal(name='child_signal', handle=10, parent=group, instance_id=1001)
+    child = SignalNodeSignal(name='child_signal', var=MockVar('child_signal'), handle=10, parent=group, instance_id=1001)
     group.children = [child]
     
     session.root_nodes = [group]

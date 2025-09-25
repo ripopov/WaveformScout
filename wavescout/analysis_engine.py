@@ -54,7 +54,7 @@ def compute_signal_statistics(
         )
     
     # Get signal bit width for parsing
-    var = waveform_db.var_from_handle(signal_node.handle)
+    var = signal_node.var
     if var:
         if hasattr(var, 'width'):
             bit_width = var.width()
@@ -176,11 +176,11 @@ def generate_sampling_times_signal(
         List of sampling times
     """
     # Get signal information
-    var = waveform_db.var_from_handle(sampling_signal.handle)
-    if not var:
+    if not sampling_signal.var:
         return []
-    
+
     # Get bit width
+    var = sampling_signal.var
     if hasattr(var, 'width'):
         bit_width = var.width()
     elif hasattr(var, 'bitwidth'):
@@ -246,7 +246,7 @@ def sample_signal_value(
             pass
     
     # Get signal bit width for parsing
-    var = waveform_db.var_from_handle(signal_node.handle)
+    var = signal_node.var
     if var:
         if hasattr(var, 'width'):
             bit_width = var.width()

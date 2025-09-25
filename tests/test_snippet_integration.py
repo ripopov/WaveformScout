@@ -7,6 +7,7 @@ from typing import Optional
 import pytest
 from PySide6.QtWidgets import QApplication
 from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal, DisplayFormat, DataFormat, RenderType, WaveformSession
+from .test_utils import MockVar
 from wavescout.snippet_manager import Snippet, SnippetManager
 from wavescout.persistence import serialize_snippet_nodes, deserialize_snippet_nodes
 from wavescout.waveform_db import WaveformDB
@@ -97,6 +98,7 @@ class TestSnippetSaveLoad:
         for signal_name, handle in test_signals:
             node = SignalNodeSignal(
                 name=signal_name,
+                var=MockVar(signal_name.split('.')[-1], 32),  # Assume 32-bit for test signals
                 handle=handle,
                 format=DisplayFormat(data_format=DataFormat.HEX),
                 is_multi_bit=True
@@ -210,7 +212,7 @@ class TestSnippetInstantiation:
         # Create snippet
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNodeSignal(name=signal_name, handle=handle)
+            node = SignalNodeSignal(name=signal_name, var=MockVar(signal_name.split('.')[-1]), handle=handle)
             signal_nodes.append(node)
         
         parent_scope = snippet_manager.find_common_parent(
@@ -314,6 +316,7 @@ class TestSnippetRoundTrip:
         for i, (signal_name, handle) in enumerate(test_signals):
             node = SignalNodeSignal(
                 name=signal_name,
+                var=MockVar(signal_name.split('.')[-1], 32),  # Assume 32-bit for test signals
                 handle=handle,
                 format=DisplayFormat(
                     data_format=DataFormat.HEX if i == 0 else DataFormat.BIN,
@@ -393,7 +396,7 @@ class TestSnippetRoundTrip:
         # Create signal nodes
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNodeSignal(name=signal_name, handle=handle)
+            node = SignalNodeSignal(name=signal_name, var=MockVar(signal_name.split('.')[-1]), handle=handle)
             signal_nodes.append(node)
         
         # Create snippet
@@ -464,6 +467,7 @@ class TestSnippetRoundTrip:
         # First subgroup - expanded, with analog signal
         analog_signal = SignalNodeSignal(
             name=test_signals[0][0],
+            var=MockVar(test_signals[0][0].split('.')[-1], 32),
             handle=test_signals[0][1],
             nickname="Analog Wave",
             format=DisplayFormat(
@@ -476,6 +480,7 @@ class TestSnippetRoundTrip:
         
         digital_signal = SignalNodeSignal(
             name=test_signals[1][0],
+            var=MockVar(test_signals[1][0].split('.')[-1], 1),  # Single bit for clock
             handle=test_signals[1][1],
             nickname="Clock",
             format=DisplayFormat(
@@ -495,6 +500,7 @@ class TestSnippetRoundTrip:
         # Second subgroup - collapsed, with bus signals
         bus_signal1 = SignalNodeSignal(
             name=test_signals[2][0],
+            var=MockVar(test_signals[2][0].split('.')[-1], 32),
             handle=test_signals[2][1],
             nickname="Data Bus",
             format=DisplayFormat(
@@ -507,6 +513,7 @@ class TestSnippetRoundTrip:
         
         bus_signal2 = SignalNodeSignal(
             name=test_signals[3][0],
+            var=MockVar(test_signals[3][0].split('.')[-1], 32),
             handle=test_signals[3][1],
             nickname="Address Bus",
             format=DisplayFormat(
@@ -526,6 +533,7 @@ class TestSnippetRoundTrip:
         # Third subgroup - nested groups
         nested_signal1 = SignalNodeSignal(
             name=test_signals[4][0],
+            var=MockVar(test_signals[4][0].split('.')[-1], 1),  # Single bit for control signal
             handle=test_signals[4][1],
             nickname="Control",
             format=DisplayFormat(
@@ -537,6 +545,7 @@ class TestSnippetRoundTrip:
         
         nested_signal2 = SignalNodeSignal(
             name=test_signals[5][0],
+            var=MockVar(test_signals[5][0].split('.')[-1], 32),  # 32-bit for status bus
             handle=test_signals[5][1],
             nickname="Status",
             format=DisplayFormat(
@@ -724,16 +733,16 @@ class TestSnippetRoundTrip:
         subgroup1 = SignalNodeGroup(
             name="Subgroup 1",
             children=[
-                SignalNodeSignal(name=test_signals[0][0], handle=test_signals[0][1]),
-                SignalNodeSignal(name=test_signals[1][0], handle=test_signals[1][1])
+                SignalNodeSignal(name=test_signals[0][0], var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1]),
+                SignalNodeSignal(name=test_signals[1][0], var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1])
             ]
         )
         
         subgroup2 = SignalNodeGroup(
             name="Subgroup 2",
             children=[
-                SignalNodeSignal(name=test_signals[2][0], handle=test_signals[2][1]),
-                SignalNodeSignal(name=test_signals[3][0], handle=test_signals[3][1])
+                SignalNodeSignal(name=test_signals[2][0], var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1]),
+                SignalNodeSignal(name=test_signals[3][0], var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1])
             ]
         )
         
@@ -778,9 +787,9 @@ class TestSnippetBugRegressions:
         signals to disappear from the canvas.
         """
         # Create signal nodes with specific handles (simulating loaded signals)
-        signal1 = SignalNodeSignal(name="TOP.module.sig1", handle=42)
-        signal2 = SignalNodeSignal(name="TOP.module.sig2", handle=84)
-        signal3 = SignalNodeSignal(name="TOP.module.sig3", handle=126)
+        signal1 = SignalNodeSignal(name="TOP.module.sig1", var=MockVar("sig1"), handle=42)
+        signal2 = SignalNodeSignal(name="TOP.module.sig2", var=MockVar("sig2"), handle=84)
+        signal3 = SignalNodeSignal(name="TOP.module.sig3", var=MockVar("sig3"), handle=126)
         
         # Create a group as would be in a session
         group = SignalNodeGroup(
@@ -902,23 +911,23 @@ class TestSnippetBugRegressions:
         from wavescout.snippet_dialogs import InstantiateSnippetDialog
         
         # Test case 1: Simple signal
-        signal = SignalNodeSignal(name="signal1", handle=-1)
+        signal = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=-1)
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.module")
         assert result.name == "TOP.module.signal1"
         
         # Test case 2: Nested path
-        signal = SignalNodeSignal(name="sub.module.signal", handle=-1)
+        signal = SignalNodeSignal(name="sub.module.signal", var=MockVar("signal"), handle=-1)
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.parent")
         assert result.name == "TOP.parent.sub.module.signal"
         
         # Test case 3: Empty parent scope
-        signal = SignalNodeSignal(name="signal", handle=-1)
+        signal = SignalNodeSignal(name="signal", var=MockVar("signal"), handle=-1)
         result = InstantiateSnippetDialog.build_full_paths(signal, "")
         assert result.name == "signal"  # Should keep as-is
         
         # Test case 4: Group with children
-        child1 = SignalNodeSignal(name="sig1", handle=-1)
-        child2 = SignalNodeSignal(name="sig2", handle=-1)
+        child1 = SignalNodeSignal(name="sig1", var=MockVar("sig1"), handle=-1)
+        child2 = SignalNodeSignal(name="sig2", var=MockVar("sig2"), handle=-1)
         group = SignalNodeGroup(
             name="MyGroup",
             children=[child1, child2]
@@ -945,10 +954,10 @@ class TestSnippetBugRegressions:
         This verifies the complex nested group handling works correctly.
         """
         # Create a complex nested structure
-        leaf1 = SignalNodeSignal(name="signal1", handle=10)
-        leaf2 = SignalNodeSignal(name="signal2", handle=20)
-        leaf3 = SignalNodeSignal(name="signal3", handle=30)
-        leaf4 = SignalNodeSignal(name="signal4", handle=40)
+        leaf1 = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=10)
+        leaf2 = SignalNodeSignal(name="signal2", var=MockVar("signal2"), handle=20)
+        leaf3 = SignalNodeSignal(name="signal3", var=MockVar("signal3"), handle=30)
+        leaf4 = SignalNodeSignal(name="signal4", var=MockVar("signal4"), handle=40)
         
         inner_group1 = SignalNodeGroup(
             name="Inner1",
@@ -1020,7 +1029,7 @@ class TestSnippetBugRegressions:
         real_signal_path, _ = test_signals[0]
         
         # Test case 1: Valid signal
-        valid_node = SignalNodeSignal(name=real_signal_path, handle=-1)
+        valid_node = SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1)
         
         validated = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [valid_node], waveform_db
@@ -1031,7 +1040,7 @@ class TestSnippetBugRegressions:
         assert validated[0].handle != -1  # Handle should be resolved
         
         # Test case 2: Invalid signal should raise ValueError
-        invalid_node = SignalNodeSignal(name="TOP.does.not.exist", handle=-1)
+        invalid_node = SignalNodeSignal(name="TOP.does.not.exist", var=MockVar("exist"), handle=-1)
         
         with pytest.raises(ValueError) as exc_info:
             InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1042,7 +1051,7 @@ class TestSnippetBugRegressions:
         # Test case 3: Group with valid child
         group_node = SignalNodeGroup(
             name="TestGroup",
-            children=[SignalNodeSignal(name=real_signal_path, handle=-1)]
+            children=[SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1)]
         )
         
         validated = InstantiateSnippetDialog.validate_and_resolve_nodes(

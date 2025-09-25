@@ -28,7 +28,7 @@ from PySide6.QtCore import Qt, QPointF
 from pyrox import SignalHandle
 
 if TYPE_CHECKING:
-    from pyrox import Signal
+    from pyrox import Signal, Var
     from .canvas_layout import CanvasLayout, GroupContentDescriptor
 
 from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat, GroupRenderMode
@@ -546,7 +546,7 @@ def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[T
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None) -> Tuple[float, float]:
+def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None, var: Optional["Var"] = None) -> Tuple[float, float]:
     """Estimate global min/max from the waveform database.
 
     Rationale
@@ -584,13 +584,20 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBPro
         
         # Get the signal's bit width for correct signed/unsigned interpretation
         bit_width = 32  # Default bit width
-        if waveform_db.hierarchy:
-            # Find the variable corresponding to this handle to get its bit width
-            for var in waveform_db.hierarchy.all_vars():
-                var_handle = waveform_db.find_handle_by_path(var.full_name(waveform_db.hierarchy))
+        if var:
+            # Use the provided var object directly
+            try:
+                detected_width = var.bitwidth()
+                bit_width = detected_width if detected_width is not None else 32
+            except:
+                bit_width = 32  # Fallback to 32-bit if bitwidth() fails
+        elif waveform_db.hierarchy:
+            # Fallback: Find the variable corresponding to this handle to get its bit width
+            for v in waveform_db.hierarchy.all_vars():
+                var_handle = waveform_db.find_handle_by_path(v.full_name(waveform_db.hierarchy))
                 if var_handle == handle:
                     try:
-                        detected_width = var.bitwidth()
+                        detected_width = v.bitwidth()
                         bit_width = detected_width if detected_width is not None else 32
                     except:
                         bit_width = 32  # Fallback to 32-bit if bitwidth() fails
@@ -681,7 +688,8 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         if cache.min == float('inf'):
             # Compute and cache global range from database
             if waveform_db and handle is not None:
-                min_val, max_val = compute_global_signal_range(handle, waveform_db, data_format, signal_obj)
+                # Note: var is not available in this context, would need to be passed as parameter
+                min_val, max_val = compute_global_signal_range(handle, waveform_db, data_format, signal_obj, None)
             else:
                 # Fallback to viewport data if db not available
                 min_val, max_val = compute_signal_range(drawing_data)

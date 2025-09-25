@@ -4,6 +4,33 @@ from pathlib import Path
 from typing import Optional
 
 
+class MockVar:
+    """Mock Var object for tests that don't have a real waveform_db."""
+
+    def __init__(self, name: str = "test_signal", bitwidth: int = 1, var_type: str = "Wire"):
+        self._name = name
+        self._bitwidth = bitwidth
+        self._var_type = var_type
+
+    def name(self, hier=None) -> str:
+        return self._name
+
+    def full_name(self, hier=None) -> str:
+        return self._name
+
+    def bitwidth(self) -> int:
+        return self._bitwidth
+
+    def var_type(self) -> str:
+        return self._var_type
+
+    def is_1bit(self) -> bool:
+        return self._bitwidth == 1
+
+    def signal_handle(self) -> int:
+        return -1  # Invalid handle for test purposes
+
+
 def get_repo_root() -> Path:
     """Get the repository root directory.
     

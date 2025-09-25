@@ -26,7 +26,7 @@ from wavescout.persistence import save_session, load_session
 import tempfile
 
 # Import test utilities for proper file path handling
-from .test_utils import get_test_input_path, TestFiles
+from .test_utils import get_test_input_path, TestFiles, MockVar
 
 
 class TestClockUtils:
@@ -200,6 +200,7 @@ class TestWaveformController:
         # Create a signal node
         node = SignalNodeSignal(
             name="clk",
+            var=MockVar("clk"),
             handle=1,
             format=DisplayFormat()
         )
@@ -232,7 +233,7 @@ class TestWaveformController:
         session = WaveformSession()
         
         # Set a clock signal
-        node = SignalNodeSignal(name="clk", handle=1, format=DisplayFormat())
+        node = SignalNodeSignal(name="clk", var=MockVar("clk"), handle=1, format=DisplayFormat())
         session.clock_signal = (100, 0, node)  # period, phase, node
         controller.set_session(session)
         
@@ -248,8 +249,8 @@ class TestWaveformController:
         session = WaveformSession()
         
         # Create two nodes
-        clock_node = SignalNodeSignal(name="clk", handle=1, format=DisplayFormat())
-        other_node = SignalNodeSignal(name="data", handle=2, format=DisplayFormat())
+        clock_node = SignalNodeSignal(name="clk", var=MockVar("clk"), handle=1, format=DisplayFormat())
+        other_node = SignalNodeSignal(name="data", var=MockVar("data"), handle=2, format=DisplayFormat())
         
         # Set clock signal
         session.clock_signal = (100, 0, clock_node)  # period, phase, node
@@ -329,6 +330,7 @@ class TestSessionPersistence:
         session = WaveformSession()
         clock_node = SignalNodeSignal(
             name="clk",
+            var=MockVar("clk"),
             handle=1,
             format=DisplayFormat()
         )
@@ -360,7 +362,7 @@ class TestSessionPersistence:
         # Create session without clock signal
         session = WaveformSession()
         session.root_nodes = [
-            SignalNodeSignal(name="data", handle=1, format=DisplayFormat())
+            SignalNodeSignal(name="data", var=MockVar("data"), handle=1, format=DisplayFormat())
         ]
         
         # Save to temporary file
@@ -442,6 +444,7 @@ class TestRealWaveform:
         # Create a signal node for the clock
         clock_node = SignalNodeSignal(
             name="apb_testbench.pclk",
+            var=MockVar("pclk"),
             handle=clock_handle,
             format=DisplayFormat()
         )

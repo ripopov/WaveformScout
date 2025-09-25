@@ -626,7 +626,7 @@ class WaveformCanvas(QWidget):
                 raw_value = query.value
 
                 # Determine bit width
-                bit_width = db.get_var_bitwidth(signal_node.handle)
+                bit_width = signal_node.var.bitwidth() or 32
 
                 # Format value using same logic as Values panel
                 value_str, _, _ = parse_signal_value(raw_value, signal_node.format.data_format, bit_width)
@@ -826,7 +826,7 @@ class WaveformCanvas(QWidget):
                                     continue
                                 if waveform_db is not None:
                                     from .signal_renderer import compute_global_signal_range
-                                    cmin, cmax = compute_global_signal_range(child.handle, waveform_db, child.format.data_format, child.signal)
+                                    cmin, cmax = compute_global_signal_range(child.handle, waveform_db, child.format.data_format, child.signal, child.var)
                                 else:
                                     # Fallback to viewport samples
                                     dd = draw_commands.draw_commands.get(child.handle)

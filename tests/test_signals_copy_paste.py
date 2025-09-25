@@ -14,10 +14,11 @@ from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
 from wavescout.wave_scout_widget import WaveScoutWidget
-from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
+from wavescout.data_model import SignalNodeGroup, SignalNodeSignal, DisplayFormat, RenderType
 from wavescout.signal_names_view import SignalNamesView
 from wavescout.persistence import save_session, load_session
 from .test_split_mode_helpers import add_signals_from_split_mode, add_signals_by_double_click_vars
+from .test_utils import MockVar
 
 # Get the absolute path to the test inputs directory
 TEST_DIR = Path(__file__).parent
@@ -643,6 +644,7 @@ def test_copy_paste_recursion_regression(qtbot):
     for i, parent in enumerate([root, level1, level2, level3]):
         signal = SignalNodeSignal(
             name=f"{parent.name}_signal",
+            var=MockVar(f"{parent.name}_signal"),
             handle=i,
             format=DisplayFormat(render_type=RenderType.BOOL)
         )

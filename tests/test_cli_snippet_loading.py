@@ -13,6 +13,7 @@ import pytest
 from PySide6.QtCore import QStandardPaths
 from wavescout.snippet_manager import Snippet
 from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
+from test_utils import MockVar
 
 
 @pytest.fixture
@@ -160,8 +161,8 @@ def test_validate_and_resolve_nodes():
     
     # Create test nodes
     nodes = [
-        SignalNodeSignal(name="apb_testbench.pclk", handle=-1),
-        SignalNodeSignal(name="apb_testbench.paddr", handle=-1)
+        SignalNodeSignal(name="apb_testbench.pclk", var=MockVar("pclk"), handle=-1),
+        SignalNodeSignal(name="apb_testbench.paddr", var=MockVar("paddr", 32), handle=-1)
     ]
     
     # Test successful validation
@@ -172,7 +173,7 @@ def test_validate_and_resolve_nodes():
     
     # Test validation failure for non-existent signal
     bad_nodes = [
-        SignalNodeSignal(name="non_existent.signal", handle=-1)
+        SignalNodeSignal(name="non_existent.signal", var=MockVar("signal"), handle=-1)
     ]
     
     with pytest.raises(ValueError) as exc_info:
@@ -226,8 +227,8 @@ def test_snippet_node_hierarchy():
     group_node = SignalNodeGroup(
         name="group1",
         children=[
-            SignalNodeSignal(name="apb_testbench.group1.sig1", handle=-1),
-            SignalNodeSignal(name="apb_testbench.group1.sig2", handle=-1)
+            SignalNodeSignal(name="apb_testbench.group1.sig1", var=MockVar("sig1"), handle=-1),
+            SignalNodeSignal(name="apb_testbench.group1.sig2", var=MockVar("sig2"), handle=-1)
         ]
     )
     

@@ -214,7 +214,7 @@ class WaveformItemModel(QAbstractItemModel):
             raw_value = query.value
 
             # Determine bit width similar to rendering logic
-            bit_width = db.get_var_bitwidth(signal_node.handle)
+            bit_width = signal_node.var.bitwidth() or 32
             
             # Use the same parser as waveform_canvas to get formatted string
             value_str, _, _ = parse_signal_value(raw_value, signal_node.format.data_format, bit_width)
