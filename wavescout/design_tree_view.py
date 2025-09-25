@@ -212,35 +212,9 @@ class DesignTreeView(QWidget):
     
     def add_selected_signals(self) -> None:
         """Add currently selected signals to waveform (called by 'I' shortcut)"""
-        signal_nodes: List[SignalNode] = []
-        
-        # Get selected variables from VarsView
         if self.vars_view:
             selected_vars = self.vars_view.get_selected_variables()
-            for var_data in selected_vars:
-                signal_node = self._create_signal_node_from_var(var_data)
-                if signal_node:
-                    signal_nodes.append(signal_node)
-        
-        if signal_nodes:
-            # Show progress dialog for batch operations
-            if len(signal_nodes) > 10:
-                progress = QProgressDialog(
-                    "Adding signals...", "Cancel", 0, len(signal_nodes), self
-                )
-                progress.setWindowModality(Qt.WindowModality.WindowModal)
-                progress.show()
-                
-                for i, signal_node in enumerate(signal_nodes):
-                    if progress.wasCanceled():
-                        break
-                    progress.setValue(i)
-                    QApplication.processEvents()
-                
-                progress.setValue(len(signal_nodes))
-            
-            self.signals_selected.emit(signal_nodes)
-            self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
+            self._emit_signal_nodes_from_variables(selected_vars, show_progress=True)
     
     def navigate_to_scope(self, scope_path: str, signal_name: str = '') -> bool:
         """Navigate to the specified scope and optionally select a variable.
@@ -434,13 +408,38 @@ class DesignTreeView(QWidget):
     
     def _on_variables_selected(self, var_data_list: List[VariableData]) -> None:
         """Handle variables selected from VarsView."""
+        self._emit_signal_nodes_from_variables(var_data_list, show_progress=False)
+
+    def _emit_signal_nodes_from_variables(self, var_data_list: List[VariableData], show_progress: bool = False) -> None:
+        """Convert variables to signal nodes and emit them for waveform display.
+
+        Args:
+            var_data_list: List of variable data to convert
+            show_progress: Whether to show progress dialog for large batches
+        """
         signal_nodes = []
         for var_data in var_data_list:
             signal_node = self._create_signal_node_from_var(var_data)
             if signal_node:
                 signal_nodes.append(signal_node)
-        
+
         if signal_nodes:
+            # Show progress dialog for batch operations when requested
+            if show_progress and len(signal_nodes) > 10:
+                progress = QProgressDialog(
+                    "Adding signals...", "Cancel", 0, len(signal_nodes), self
+                )
+                progress.setWindowModality(Qt.WindowModality.WindowModal)
+                progress.show()
+
+                for i, signal_node in enumerate(signal_nodes):
+                    if progress.wasCanceled():
+                        break
+                    progress.setValue(i)
+                    QApplication.processEvents()
+
+                progress.setValue(len(signal_nodes))
+
             self.signals_selected.emit(signal_nodes)
             self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
     
