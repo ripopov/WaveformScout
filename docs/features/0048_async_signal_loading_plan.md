@@ -1,259 +1,104 @@
 # Async Signal Loading Implementation Plan
 
-## 1. Use Cases and Requirements Analysis
+## Executive Summary
+WaveScout currently blocks the UI on every signal addition because `WaveformDB.get_signal()` performs synchronous I/O on the GUI thread. Pyrox now exposes an event-driven `load_signals_async()` API backed by background workers; this plan captures the application-side refactor needed to consume that API. We will wire WaveScout to fire-and-forget signal requests, hydrate `SignalNodeSignal` instances once the backend delivers `SignalLoaded` events, and keep the UI responsive while signals materialize.
 
-### Core Functionality
-Refactor Scout to use the async signal loading API (`load_signals_async`) instead of synchronous loading to prevent UI blocking during signal data retrieval.
+## 1. Goals and Usage Scenarios
 
-### Specific Requirements from User Prompt
-1. **Signal Loading Entry Points** (must all be converted to async):
-   - VarsView double-click on a signal
-   - VarsView multi-select + i/I shortcut
-   - Session restoration from JSON file (persistence)
-   - Copy-paste operations from SignalNames panel
-   - Snippet instantiation
+### 1.1 Product Objectives
+- Prevent any GUI stalls when users double-click a variable, paste nodes, restore sessions, or instantiate snippets.
+- Present signal nodes instantly in the tree while marking their rows as "Loading" until data arrives.
+- Re-render affected rows the moment the backend publishes `SignalLoaded` without forcing a full tree rebuild.
+- Preserve deterministic behaviour for tests by offering a blocking helper that drains the async queue during assertions.
 
-2. **SignalNodeSignal Creation Algorithm**:
-   - Check if signal is already cached in `waveform_db`
-   - If cached: create SignalNodeSignal using cached signal
-   - If not cached: create SignalNodeSignal with `None`/empty `Optional[Signal]` and start background loading
+### 1.2 Entry Points To Convert
+All code paths that currently call `WaveformDB.get_signal()` proactively must migrate to the async flow:
+- `DesignTreeView._create_signal_node()` and `_emit_signal_nodes_from_variables()` (`wavescout/design_tree_view.py`) for double-click, multi-select, and keyboard shortcuts.
+- Session restoration in `_deserialize_node()` and `_resolve_signal_handles()` (`wavescout/persistence.py`).
+- Clipboard paste inside `SignalNamesView._validate_nodes()` (`wavescout/signal_names_view.py`).
+- Snippet expansion in `SnippetManager.apply_snippet()` / related dialogs.
+- Any helper in `waveform_loader.py` or `WaveformSession` constructors that populates `SignalNodeSignal.signal` eagerly.
 
-3. **Event Management**:
-   - WaveformSession manages `SignalLoaded` events from pyrox
-   - Update signals in design tree when loaded
-   - Display `SignalStartLoad`/`SignalLoaded` events in status bar
+## 2. Current Behaviour and Pain Points
 
-4. **Loading State Tracking**:
-   - Maintain list of signals not yet loaded
-   - Prevent duplicate `load_signals_async` requests (e.g., double-clicking twice)
+### 2.1 UI Thread Blocking
+- `DesignTreeView._create_signal_node()` calls `waveform_db.get_signal(handle)` immediately after constructing the node, forcing disk access during double-clicks (`wavescout/design_tree_view.py:207`).
+- `scout.py` still routes uncached handles through `_load_signals_async()` which uses a `QThreadPool` runnable but blocks until the worker finishes before inserting nodes (`scout.py:1347`).
+- Status feedback depends on a modal `QProgressDialog`, making UX clumsy for small loads.
 
-5. **UI Behavior**:
-   - Display SignalNodes instantly in SignalNamesView
-   - Show "Loading..." in WaveformCanvas rows for nodes with empty signal Optional
-   - Cannot render waveform values until signals are loaded
+### 2.2 Persistence and Clipboard
+- `_resolve_signal_handles()` re-fetches every signal synchronously when a session is loaded (`wavescout/persistence.py:92`), delaying restoration.
+- `SignalNamesView._validate_nodes()` populates `node.signal` with `waveform_db.get_signal()` for pasted content (`wavescout/signal_names_view.py:733`).
 
-6. **Canvas Re-rendering**:
-   - `SignalLoaded` event triggers re-rendering via WaveformController
+### 2.3 Testing Limitations
+- Tests assume that after an action the `SignalNodeSignal.signal` field is non-`None` (e.g., clipboard and persistence suites).
+- There is no helper to wait for async events, making race-free assertions impossible today.
 
-7. **Legacy Test Support**:
-   - Provide synchronous wait mechanism for tests that rely on signals being loaded
+## 3. Target Architecture
 
-## 2. Codebase Research
+### 3.1 Pyrox Integration Recap
+Pyrox already provides `set_async_callback(Callable[[AsyncEvent], None])` and emits `SignalStartLoad` / `SignalLoaded` events via worker threads (`pyrox/pyrox.pyi`). WaveScout must register one callback per `WaveformDB` instance and translate events into application signals.
 
-### Async Loading API (pyrox.pyi)
-- **Events**: `SignalStartLoadEvent`, `SignalLoadedEvent` with handles and signal objects
-- **Callback**: `AsyncCallback = Callable[[AsyncEvent], None]`
-- **Methods**: `set_async_callback()`, `load_signals_async(handles: List[SignalHandle])`
-- **Event Data**: `SignalLoadedEvent` contains `List[Tuple[SignalHandle, Signal]]`
+### 3.2 Application Event Model
+Add new dataclasses in `wavescout/application/events.py`:
+- `SignalLoadingStartedEvent(handles: list[SignalHandle])` – broadcast when a new batch dispatches.
+- `SignalLoadedEvent(pairs: list[tuple[SignalHandle, Signal]])` – payload contains the actual `pyrox.Signal` objects.
+- `SignalLoadingFailedEvent(handles: list[SignalHandle], error: str)` – optional failure channel for UI messaging.
+These events flow through `EventBus.publish()` so the controller, status bar, and views remain loosely coupled.
 
-### Current Signal Loading Implementation
-1. **scout.py:1226-1424**: Main signal loading logic
-   - `_on_signals_selected()`: Entry point from design tree
-   - `_load_signals_async()`: Existing async loader with QProgressDialog
-   - `_add_node_to_session()`: Adds nodes after loading
+### 3.3 WaveformDB Responsibilities (`wavescout/waveform_db.py`)
+- Register the async callback in `open()` and clear it in `close()`.
+- Maintain `_loading_handles: set[SignalHandle]` to deduplicate requests and guard cache queries.
+- Provide `load_signals_async(handles: Sequence[SignalHandle])` that filters out cached or in-flight handles before delegating to `waveform.load_signals_async()`.
+- Update the Python cache inside the async callback (`SignalLoadedEvent`) before publishing the application event.
+- Expose helpers for higher layers:
+  - `is_signal_loading(handle: SignalHandle) -> bool`
+  - `pending_signal_count() -> int`
+  - `wait_for_signals(handles: Iterable[SignalHandle], timeout: float = 5.0) -> bool` for tests (loops with `time.sleep(0.01)` and `QApplication.processEvents()`).
 
-2. **waveform_db.py:196-249**:
-   - `get_signal()`: Synchronous signal retrieval with Python-side cache
-   - `are_signals_cached()`: Checks if signals are in cache
-   - `preload_signals()`: Batch signal loading (synchronous)
+### 3.4 Session Model and Controller
+- Extend `WaveformSession` with `loading_handles: set[SignalHandle]` and convenience queries (e.g., `is_loading(handle)`).
+- Update `WaveformController.__init__` to subscribe to `SignalLoadingStartedEvent` / `SignalLoadedEvent`:
+  - `SignalLoadingStartedEvent` → add handles to the session's loading set, call status callbacks, and request a canvas repaint for placeholders.
+  - `SignalLoadedEvent` → update all `SignalNodeSignal` instances sharing a handle, clear the loading flag, and trigger layout/model notifications.
+- Provide controller hooks for the status bar (`scout.py`) to display progress like "Loading 3 signals..." and "Signals ready" once events arrive.
 
-3. **data_model.py:129-149**:
-   - `SignalNodeSignal`: Currently has `signal: Optional[Signal]` field
-   - `var: Var` field is non-optional (recently added)
+### 3.5 SignalNode Construction
+- `create_signal_node_from_var()` returns nodes with `signal=None` by default; callers request loads for uncached handles (`wavescout/waveform_loader.py`).
+- `DesignTreeView` and `SignalNamesView` insert nodes immediately. If `waveform_db.are_signals_cached()` is true, they fill `node.signal` from cache; otherwise they leave it empty and schedule async loading.
+- `scout.py` groups all new handles per action and calls `session.waveform_db.load_signals_async()` once.
+- `SnippetManager` and persistence flows follow the same pattern: instantiate nodes, stash handles needing data, then fire a single async call at the end of the batch.
 
-4. **waveform_loader.py:11-58**:
-   - `create_signal_node_from_var()`: Creates SignalNodeSignal instances
-   - Currently doesn't populate the signal field
+### 3.6 UI Feedback
+- Waveform tree models should include a lightweight `node.is_loading` property derived from `session.loading_handles` so views repaint without mutating every node.
+- `WaveformCanvas` shows a textual placeholder (e.g., "Loading...") when `node.signal is None` during paint (`wavescout/waveform_canvas.py`).
+- Tooltips or value inspectors skip missing signals instead of raising errors.
 
-5. **design_tree_view.py:200-209**:
-   - Creates SignalNodeSignal and immediately loads signal synchronously
+### 3.7 Legacy Compatibility Layer
+- Provide `WaveformDB.load_signals_blocking(handles)` used only by legacy tests or scripts; internally call `load_signals_async()` followed by `wait_for_signals(handles)`.
+- Deprecate `_load_signals_async()` and the `QThreadPool` runnable once all call sites use the new API.
 
-### Event System (application/)
-- **EventBus**: Publish-subscribe pattern for application events
-- **Event base class**: All events inherit from `Event` with timestamp
-- No existing signal loading events defined
+## 4. Rollout Plan
+1. **Infrastructure**: Implement WaveformDB async plumbing, new events, and session/controller tracking without switching call sites yet.
+2. **Design Tree & Clipboard**: Convert `DesignTreeView` and `SignalNamesView`, verify UI placeholders render correctly.
+3. **Persistence & Snippets**: Update session restore and snippet insertion paths, ensuring handles resolve prior to scheduling loads.
+4. **Status & Canvas Polish**: Replace the progress dialog with status bar updates and loading overlays; delete the old `_load_signals_async()` implementation.
+5. **Tests & Cleanup**: Add async-aware fixtures, update assertions to tolerate `signal=None` during load, and remove obsolete synchronous helpers.
 
-### Current Async Pattern (scout.py)
-- Uses `QThreadPool` with `LoaderRunnable` for background loading
-- Shows `QProgressDialog` during loading
-- Stores pending nodes in `_loading_state`
+## 5. Testing & Validation
+- **Unit Tests**: Extend `tests/test_async_loading.py` to simulate Python-side subscribers and verify cache updates plus duplicate suppression.
+- **Qt/Integration**: Update clipboard (`tests/test_signal_names_view.py`), persistence (`tests/test_persistence.py`), and session restore suites to call `wait_for_signals()` before checking waveforms.
+- **Regression**: Run `QT_QPA_PLATFORM=offscreen poetry run pytest tests/` and `make typecheck` to ensure typing changes (new events, session fields) remain strict.
+- **Manual QA**: Launch `make dev`, load large VCD/FST files, double-click fast, and confirm the UI never freezes while signals populate row-by-row.
 
-## 3. Implementation Planning
+## 6. Risks and Mitigations
+- **Event Ordering**: Pyrox may emit multiple `SignalLoaded` batches per request; handle accumulated updates idempotently by iterating returned pairs.
+- **Handle Aliases**: Multiple UI nodes may share a handle; always fan out loaded signals to every matching node.
+- **Backends Without Async**: Guard `load_signals_async` calls with feature detection and fall back to the existing synchronous loader (logging a warning) when running against legacy backends.
+- **Testing Flakiness**: Rely on the new `wait_for_signals()` helper in tests to avoid timing races; keep timeouts generous on CI.
+- **UI State Drift**: Ensure controllers clear loading flags if a failure event arrives or when sessions close to avoid stuck "Loading" indicators.
 
-### New Event Classes
-
-**File**: `wavescout/application/events.py`
-- Add `SignalLoadingStartedEvent`: Contains list of handles being loaded
-- Add `SignalLoadedEvent`: Contains list of (handle, Signal) tuples
-- Add `SignalLoadingFailedEvent`: Contains handles that failed and error message
-
-### WaveformDB Changes
-
-**File**: `wavescout/waveform_db.py`
-
-**New Fields**:
-- `_loading_handles: Set[SignalHandle]` - Track handles currently being loaded
-- `_async_callback_set: bool` - Track if callback is registered
-
-**Modified Methods**:
-- `open()`: Register async callback with pyrox.Waveform
-- `get_signal()`: Return None if signal is being loaded (check `_loading_handles`)
-- `close()`: Clear loading state and unregister callback
-
-**New Methods**:
-- `_on_async_event(event)`: Handle pyrox async events, publish to EventBus
-- `load_signals_async(handles)`: Filter out cached/loading signals, call pyrox API
-- `is_signal_loading(handle)`: Check if handle is in `_loading_handles`
-- `wait_for_all_signals(timeout)`: Synchronous wait for tests
-
-### WaveformSession Changes
-
-**File**: `wavescout/data_model.py`
-
-**New Fields**:
-- `loading_signals: Set[SignalHandle]` - Track loading state at session level
-
-**New Methods**:
-- `update_signal_for_handle(handle, signal)`: Update all nodes with this handle
-- `get_loading_count()`: Return number of signals currently loading
-
-### WaveformController Changes
-
-**File**: `wavescout/waveform_controller.py`
-
-**New Methods**:
-- `_on_signal_loaded(event)`: Handle SignalLoadedEvent
-  - Update session nodes
-  - Trigger canvas redraw via callbacks
-- `_on_signal_loading_started(event)`: Update loading state
-- Subscribe to events in `__init__`
-
-### Signal Loading Entry Points
-
-**File**: `scout.py`
-
-**Modified Methods**:
-- `_on_signals_selected()`:
-  - Create nodes with `signal=None` for uncached signals
-  - Add nodes immediately to session
-  - Trigger async loading for uncached handles
-  - Remove progress dialog logic
-
-- `_add_node_to_session()`:
-  - Accept nodes with `signal=None`
-  - No longer wait for signals to be loaded
-
-**File**: `wavescout/design_tree_view.py`
-
-**Modified Methods**:
-- `_create_signal_node()`:
-  - Don't call `get_signal()` synchronously
-  - Check if cached, set signal field accordingly
-  - Return node with or without signal
-
-**File**: `wavescout/persistence.py`
-
-**Modified Methods**:
-- Session loading:
-  - Create nodes without signals first
-  - Collect all handles needing loading
-  - Trigger single async load for all handles
-  - Don't block on signal loading
-
-### UI Updates
-
-**File**: `wavescout/waveform_canvas.py`
-
-**Modified Methods**:
-- `paintEvent()` or signal rendering:
-  - Check if `node.signal is None`
-  - Display "Loading..." text for loading signals
-  - Skip waveform rendering for loading signals
-
-**File**: `wavescout/signal_names_view.py`
-- No changes needed - names display immediately
-
-**File**: `scout.py`
-
-**Status Bar Updates**:
-- Subscribe to `SignalLoadingStartedEvent` and `SignalLoadedEvent`
-- Update status bar with loading progress
-
-### Copy-Paste Support
-
-**File**: `wavescout/signal_names_view.py`
-
-**Modified Methods**:
-- `_paste_signals()`:
-  - Create nodes without waiting for signals
-  - Trigger async loading for uncached signals
-
-### Snippet Support
-
-**File**: `wavescout/snippet_window.py` (if exists)
-- Apply same pattern: create nodes first, load async
-
-### Test Support
-
-**File**: `wavescout/waveform_db.py`
-
-**New Method**:
-```python
-def wait_for_all_signals(self, timeout: float = 5.0) -> bool:
-    """Wait for all pending signals to load. For testing only."""
-    start = time.time()
-    while self._loading_handles:
-        if time.time() - start > timeout:
-            return False
-        time.sleep(0.01)
-        QApplication.processEvents()
-    return True
-```
-
-**File**: `tests/conftest.py` or test files
-- Add fixture or helper that calls `wait_for_all_signals()` after operations
-
-### Algorithm: Async Signal Loading Flow
-
-1. **User triggers signal addition** (double-click, paste, etc.)
-2. **Create SignalNodeSignal**:
-   ```
-   handle = var.signal_handle()
-   if waveform_db.are_signals_cached([handle]):
-       signal = waveform_db.get_signal(handle)
-   else:
-       signal = None
-       handles_to_load.append(handle)
-   node = SignalNodeSignal(..., signal=signal)
-   ```
-3. **Add node to session immediately**
-4. **Trigger async loading if needed**:
-   ```
-   if handles_to_load:
-       waveform_db.load_signals_async(handles_to_load)
-   ```
-5. **WaveformDB processes async events**:
-   - Receives `SignalLoadedEvent` from pyrox
-   - Updates cache
-   - Publishes application event via EventBus
-6. **WaveformController handles event**:
-   - Updates session nodes with loaded signals
-   - Triggers canvas redraw
-7. **Canvas repaints**:
-   - Nodes with signals render normally
-   - Nodes without signals show "Loading..."
-
-### Performance Considerations
-
-1. **Batch Loading**: Collect multiple signal requests and load in batches
-2. **Duplicate Prevention**: Track loading handles to prevent duplicate requests
-3. **Cache Management**: Existing Python-side cache remains for fast access
-4. **Event Throttling**: Consider throttling canvas redraws during bulk loading
-
-### Migration Strategy
-
-1. **Phase 1**: Implement infrastructure (events, async callback)
-2. **Phase 2**: Convert one entry point (e.g., design tree double-click)
-3. **Phase 3**: Convert remaining entry points
-4. **Phase 4**: Add test support and update tests
-5. **Phase 5**: Remove old synchronous loading code
+## 7. Success Criteria
+- UI responds instantly to signal additions; progress appears in the status bar instead of a modal dialog.
+- `SignalNodeSignal.signal` fields remain `None` until the async event arrives, but tests stay stable thanks to the blocking helper.
+- Legacy workflows (clipboard, snippets, persistence) continue to function with zero manual refreshes, and no duplicate loads appear in backend logs.
