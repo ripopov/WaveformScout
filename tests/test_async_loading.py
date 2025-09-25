@@ -12,6 +12,9 @@ try:
 except ImportError:
     pytest.skip("pyrox module not available", allow_module_level=True)
 
+# Get absolute path to test_inputs directory
+TEST_INPUTS_DIR = Path(__file__).parent.parent / "test_inputs"
+
 
 class AsyncEventCollector:
     """Helper class to collect async events"""
@@ -70,7 +73,7 @@ class TestAsyncLoading:
 
     def test_full_async_loading_from_empty(self):
         """Test loading everything asynchronously from empty state"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
 
         # Create waveform without loading anything
         wf = pyrox.Waveform(test_file, load_header=False, load_body=False)
@@ -103,7 +106,7 @@ class TestAsyncLoading:
 
     def test_basic_async_loading_flow(self):
         """Test basic async loading flow: header → body → signals"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
 
         # Create waveform without loading body
         wf = pyrox.Waveform(test_file, load_header=True, load_body=False)
@@ -129,7 +132,7 @@ class TestAsyncLoading:
 
     def test_callback_registration_and_unregistration(self):
         """Test callback registration and unregistration"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=False)
 
         # Test with callback
@@ -150,7 +153,7 @@ class TestAsyncLoading:
 
     def test_callback_execution_for_all_events(self):
         """Test callback execution for all event types"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
 
         # Create waveform without loading anything initially
         wf = pyrox.Waveform(test_file, load_body=False)
@@ -188,7 +191,7 @@ class TestAsyncLoading:
 
     def test_changing_callbacks_mid_operation(self):
         """Test changing callbacks during async operations"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=False)
 
         collector1 = AsyncEventCollector()
@@ -216,7 +219,7 @@ class TestAsyncLoading:
 
     def test_cache_behavior_skip_cached_signals(self):
         """Test that signals can be loaded multiple times (no Rust cache)"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
 
         collector = AsyncEventCollector()
@@ -252,7 +255,7 @@ class TestAsyncLoading:
 
     def test_queue_coalescing(self):
         """Test that multiple signal requests are coalesced"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
 
         collector = AsyncEventCollector()
@@ -281,7 +284,7 @@ class TestAsyncLoading:
 
     def test_state_consistency(self):
         """Test that header_loaded and body_loaded states are consistent"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
 
         # Test 1: Load with body
         wf1 = pyrox.Waveform(test_file, load_header=True, load_body=True)
@@ -302,7 +305,7 @@ class TestAsyncLoading:
 
     def test_operation_without_callback(self):
         """Test that operations work without crashes when no callback is set"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=False)
 
         # No callback set - operations should work silently
@@ -325,7 +328,7 @@ class TestAsyncLoading:
 
     def test_thread_safety_concurrent_requests(self):
         """Test thread safety with concurrent requests"""
-        test_file = "test_inputs/swerv1.vcd"
+        test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
 
         collector = AsyncEventCollector()

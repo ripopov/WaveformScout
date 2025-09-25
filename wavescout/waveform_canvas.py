@@ -858,7 +858,7 @@ class WaveformCanvas(QWidget):
                         # Build child drawings dict
                         child_drawings = {}
                         for child in row.descriptor.children:
-                            if child.handle and child.handle in draw_commands.draw_commands:
+                            if child.handle is not None and child.handle in draw_commands.draw_commands:
                                 child_drawings[child.handle] = draw_commands.draw_commands[child.handle]
 
                         group_draw_data[group_id] = GroupDrawingPayload(
@@ -1057,7 +1057,7 @@ class WaveformCanvas(QWidget):
         elif row.kind == 'signal':
             # Draw a regular signal
             node = row.source
-            if isinstance(node, SignalNodeSignal) and node.handle and node.handle in draw_commands:
+            if isinstance(node, SignalNodeSignal) and node.handle is not None and node.handle in draw_commands:
                 drawing_data = draw_commands[node.handle]
                 # Create node_info for renderer compatibility
                 node_info: NodeInfo = {

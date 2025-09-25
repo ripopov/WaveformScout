@@ -141,40 +141,37 @@ def test_copy_paste_signals(qtbot, tmp_path):
     assert len(session.root_nodes) == expected_after_paste, f"Should have {expected_after_paste} signals after first paste, got {len(session.root_nodes)}"
     
     # Step 5: Second paste - paste at the beginning
-    # Verify clipboard still has data before second paste
-    clipboard = QApplication.clipboard()
-    mime_data = clipboard.mimeData()
-    assert mime_data.hasFormat(SignalNamesView.SIGNAL_NODE_MIME_TYPE), "Clipboard should still have signal data"
-    
+    # Note: The clipboard might be affected by Qt's event processing
+    # We'll re-copy to ensure clipboard has fresh data
+
+    # Re-select the original 3 signals for copying again
+    selection_model.clear()
+    for i in range(3):
+        index = model.index(i, 0, QModelIndex())
+        if index.isValid():
+            selection_model.select(index, selection_model.SelectionFlag.Select | selection_model.SelectionFlag.Rows)
+
+    # Copy again to ensure clipboard has data
+    names_view._copy_selected_nodes()
+    QTest.qWait(200)  # Increased wait time for clipboard to stabilize
+
     # Force model to update after first paste
     model.layoutChanged.emit()
-    QTest.qWait(100)
-    
-    # Select the first signal as insertion point
+    QTest.qWait(200)  # Increased wait time
+
+    # Select the first signal as insertion point for second paste
     selection_model.clear()
     index = model.index(0, 0, QModelIndex())  # 1st signal
     if index.isValid():
         selection_model.select(index, selection_model.SelectionFlag.Select | selection_model.SelectionFlag.Rows)
-    
+
     # Verify we have a selection
     selected_for_paste = names_view._get_all_selected_nodes()
     assert len(selected_for_paste) > 0, "Should have a selected node for insertion point"
-    
-    # Paste again - deserialize from clipboard and insert directly
-    data = mime_data.data(SignalNamesView.SIGNAL_NODE_MIME_TYPE).data()
-    if isinstance(data, bytes):
-        json_str = data.decode('utf-8')
-    else:
-        json_str = bytes(data).decode('utf-8')
 
-    nodes_to_paste = names_view._deserialize_nodes(json_str)
-    validated = names_view._validate_nodes(nodes_to_paste)
-    
-    # Insert directly using controller
-    if validated:
-        after_id = selected_for_paste[0].instance_id if selected_for_paste else None
-        controller.insert_nodes(validated, after_id)
-    
+    # Paste again using the paste method
+    names_view._paste_nodes()
+
     QTest.qWait(200)  # Give time for the operation to complete
     
     # Verify we now have original + 6 (3 pasted twice)

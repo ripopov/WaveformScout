@@ -179,10 +179,17 @@ def generate_signal_draw_commands(
         signal_obj = signal.signal if getattr(signal, 'signal', None) is not None else waveform_db.get_signal(signal.handle)
         if not signal_obj:
             return None
-        
+
         # Get signal bit width for data format conversion
         # We need to get it from the variable, not the signal object
-        bit_width = signal.var.bitwidth() or 32
+        # Check if var exists and is not None
+        if hasattr(signal, 'var') and signal.var is not None:
+            bit_width = signal.var.bitwidth() or 32
+        else:
+            # Fallback: try to get bit width from waveform_db
+            bit_width = waveform_db.get_var_bitwidth(signal.handle) if signal.handle is not None else 32
+            if bit_width is None:
+                bit_width = 32
         
         drawing_data = SignalDrawingData(samples=[])
         time_per_pixel = (end_time - start_time) / canvas_width if canvas_width > 0 else 1

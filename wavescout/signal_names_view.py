@@ -683,15 +683,20 @@ class SignalNamesView(BaseColumnView):
             data = json.loads(json_str)
             if not isinstance(data, dict) or 'nodes' not in data:
                 return []
-            
+
+            # Get waveform_db if available for proper deserialization
+            waveform_db = None
+            if self._controller.session and self._controller.session.waveform_db:
+                waveform_db = self._controller.session.waveform_db
+
             nodes = []
             for node_data in data.get('nodes', []):
-                # Deserialize the node
-                node = _deserialize_node(node_data)
+                # Deserialize the node with waveform_db for proper var population
+                node = _deserialize_node(node_data, waveform_db=waveform_db)
                 # Create a deep copy to ensure new instance IDs
                 node_copy = node.deep_copy()
                 nodes.append(node_copy)
-            
+
             return nodes
         except Exception:
             return []
@@ -736,10 +741,15 @@ class SignalNamesView(BaseColumnView):
                 node.children = self._validate_nodes(node.children)
                 validated2.append(node)
             elif isinstance(node, SignalNodeSignal) and node.handle is not None:
-                # Check if handle exists in current DB
+                # Check if handle exists in current DB and populate var
                 try:
-                    # Validate the node has a var (it should always have one)
-                    if node.var:
+                    var = db.get_var(node.handle)
+                    if var:
+                        # Populate the var field which may be None after deserialization
+                        node.var = var
+                        # Also ensure signal is populated
+                        if not node.signal:
+                            node.signal = db.get_signal(node.handle)
                         validated2.append(node)
                 except Exception:
                     # Skip nodes with invalid handles

@@ -151,7 +151,8 @@ def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3
                         # Create signal node
                         signal_node = SignalNodeSignal(
                             name=var.name(waveform_db.hierarchy),
-                            handle=handle
+                            handle=handle,
+                            var=var
                         )
 
                         # Check if already added

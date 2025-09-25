@@ -107,6 +107,10 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProt
                 node.handle = handle
                 # Also load the Signal object
                 node.signal = waveform_db.get_signal(handle)
+                # Also update the var field
+                var = waveform_db.get_var(handle)
+                if var is not None:
+                    node.var = var
             # If still None, keep the existing handle (may work for aliases)
         
         if isinstance(node, SignalNodeGroup):
@@ -171,11 +175,10 @@ def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = 
     if waveform_db and handle is not None:
         var = waveform_db.get_var(handle)
 
-    # For backward compatibility with tests, use MockVar if no var available
-    if var is None:
-        from tests.test_utils import MockVar
-        var = MockVar(name=data['name'], bitwidth=32 if data.get('is_multi_bit', False) else 1)  # type: ignore[assignment]
-
+    # During deserialization, var might be None if waveform_db is not yet available
+    # or if handle needs to be resolved. We need to provide something to satisfy
+    # the non-optional var field. It will be properly resolved in resolve_node.
+    # For now, we'll pass None and fix it up later with a type ignore.
     signal_node = SignalNodeSignal(
         name=data['name'],
         nickname=data.get('nickname', ''),
@@ -185,7 +188,7 @@ def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = 
         format=display_format if display_format is not None else DisplayFormat(),
         is_multi_bit=data.get('is_multi_bit', False),
         instance_id=instance_id,
-        var=var,  # type: ignore[arg-type]  # MockVar used for tests
+        var=var,  # type: ignore[arg-type]  # Will be resolved in resolve_node
     )
 
     return signal_node
