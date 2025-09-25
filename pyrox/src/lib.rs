@@ -31,7 +31,7 @@ enum AsyncEvent {
     BodyStartLoad,
     BodyLoaded,
     SignalStartLoad(Vec<SignalHandle>),
-    SignalLoaded(Vec<SignalHandle>),
+    SignalLoaded(Vec<(SignalHandle, Arc<wellen::Signal>)>),
     Error(String),
 }
 
@@ -573,7 +573,7 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                     let hierarchy = shared_state.hierarchy.lock().unwrap().clone();
 
                     if has_source && hierarchy.is_some() {
-                        let mut loaded_handles = Vec::new();
+                        let mut loaded_signals = Vec::new();
 
                         // Load signals one by one
                         for handle in handles.iter() {
@@ -587,17 +587,17 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                                 if let Some(hier) = &hierarchy {
                                     let signals =
                                         source.load_signals(&[signal_ref], hier, true);
-                                    if let Some((_ref, _sig)) = signals.into_iter().next() {
-                                        // No caching in Rust anymore
-                                        loaded_handles.push(*handle);
+                                    if let Some((_ref, sig)) = signals.into_iter().next() {
+                                        // Store both handle and signal
+                                        loaded_signals.push((*handle, Arc::new(sig)));
                                     }
                                 }
                             }
                         }
 
-                        // Emit loaded event with actual loaded handles
-                        if !loaded_handles.is_empty() {
-                            emit_event(&shared_state, AsyncEvent::SignalLoaded(loaded_handles));
+                        // Emit loaded event with actual loaded signals
+                        if !loaded_signals.is_empty() {
+                            emit_event(&shared_state, AsyncEvent::SignalLoaded(loaded_signals));
                         }
                     } else {
                         emit_event(
@@ -643,10 +643,35 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                     dict.set_item("handles", handles.clone()).ok();
                     dict
                 }
-                AsyncEvent::SignalLoaded(handles) => {
+                AsyncEvent::SignalLoaded(signals) => {
                     let dict = pyo3::types::PyDict::new(py);
                     dict.set_item("type", "SignalLoaded").ok();
-                    dict.set_item("handles", handles.clone()).ok();
+
+                    // Get the time table from shared state
+                    let time_table = shared_state.time_table.lock().unwrap().clone();
+
+                    if let Some(tt) = time_table {
+                        // Create a list of (handle, Signal) tuples
+                        let py_list = pyo3::types::PyList::empty(py);
+                        for (handle, signal_arc) in signals.iter() {
+                            // Create Python Signal object
+                            if let Ok(py_signal) = Bound::new(
+                                py,
+                                Signal {
+                                    signal: signal_arc.clone(),
+                                    all_times: TimeTable(tt.clone()),
+                                },
+                            ) {
+                                let tuple = pyo3::types::PyTuple::new(py, &[handle.to_object(py), py_signal.to_object(py)]).unwrap();
+                                py_list.append(tuple).ok();
+                            }
+                        }
+                        dict.set_item("signals", py_list).ok();
+                    } else {
+                        // If no time table, just return the handles as before for backward compatibility
+                        let handles: Vec<SignalHandle> = signals.iter().map(|(h, _)| *h).collect();
+                        dict.set_item("handles", handles).ok();
+                    }
                     dict
                 }
                 AsyncEvent::Error(msg) => {

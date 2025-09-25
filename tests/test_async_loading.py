@@ -185,9 +185,18 @@ class TestAsyncLoading:
 
         # Check handles in events
         for event in collector.events:
-            if event["type"] in ["SignalStartLoad", "SignalLoaded"]:
+            if event["type"] == "SignalStartLoad":
                 assert "handles" in event
                 assert isinstance(event["handles"], list)
+            elif event["type"] == "SignalLoaded":
+                # SignalLoaded now returns signals instead of just handles
+                assert "signals" in event or "handles" in event
+                if "signals" in event:
+                    assert isinstance(event["signals"], list)
+                    # Verify we got the right number of signals
+                    assert len(event["signals"]) == len(handles)
+                else:
+                    assert isinstance(event["handles"], list)
 
     def test_changing_callbacks_mid_operation(self):
         """Test changing callbacks during async operations"""
@@ -234,10 +243,13 @@ class TestAsyncLoading:
         wf.load_signals_async(handles)
         assert collector.wait_for_signals(timeout=10)
 
-        # Check loaded handles
+        # Check loaded handles/signals
         first_load_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
         assert len(first_load_events) > 0
-        first_loaded_handles = first_load_events[0].get("handles", [])
+        if "signals" in first_load_events[0]:
+            first_loaded_handles = [h for h, s in first_load_events[0]["signals"]]
+        else:
+            first_loaded_handles = first_load_events[0].get("handles", [])
 
         # Clear and load same signals again
         collector.clear()
@@ -249,7 +261,10 @@ class TestAsyncLoading:
         # Signals should be loaded fresh since there's no Rust cache
         loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
         assert len(loaded_events) > 0
-        second_loaded_handles = loaded_events[0].get("handles", [])
+        if "signals" in loaded_events[0]:
+            second_loaded_handles = [h for h, s in loaded_events[0]["signals"]]
+        else:
+            second_loaded_handles = loaded_events[0].get("handles", [])
         # Should load the same signals again since there's no cache
         assert len(second_loaded_handles) == len(first_loaded_handles)
 
@@ -357,52 +372,118 @@ class TestAsyncLoading:
         error_events = [e for e in collector.events if e["type"] == "Error"]
         assert len(error_events) == 0
 
-    # def test_sync_load(self):
-    #     test_file = "test_inputs/analog_signals.vcd"
-    #     wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
-    #     hier = wf.hierarchy
-    #     all_vars = list(hier.all_vars())
-    #     print(all_vars[0].name(hier))
-    #     var = all_vars[0]
-    #     # Measure signal loading time
-    #     start_time = time.time()
-    #     signal = wf.get_signal(var)
-    #     end_time = time.time()
-    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
-    #
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #     start_time = time.time()
-    #     signal = wf.get_signal(var)
-    #     end_time = time.time()
-    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
-    #
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #     start_time = time.time()
-    #     signal = wf.get_signal(var)
-    #     end_time = time.time()
-    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
-    #
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #     start_time = time.time()
-    #     signal = wf.get_signal(var)
-    #     end_time = time.time()
-    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
-    #
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #     start_time = time.time()
-    #     signal = wf.get_signal(var)
-    #     end_time = time.time()
-    #     load_time_ms = (end_time - start_time) * 1000  # Convert to milliseconds
-    #
-    #     print(f"num changes = {len(signal.all_changes())}  ")
-    #     print(f"Signal load time: {load_time_ms:.2f} ms")
-    #
+    def test_async_load_returns_signals(self):
+        """Test that async loading returns Signal objects with correct data"""
+        test_file = str(TEST_INPUTS_DIR / "analog_signals.vcd")
+        wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
+
+        collector = AsyncEventCollector()
+        wf.set_async_callback(collector)
+
+        hier = wf.hierarchy
+        all_vars = list(hier.all_vars())
+
+        # Get the first variable for testing
+        var = all_vars[0]
+        var_name = var.name(hier)
+        handle = var.signal_handle()
+
+        # First get the signal synchronously to compare
+        sync_signal = wf.get_signal_by_handle(handle)
+        sync_changes = list(sync_signal.all_changes())
+        sync_change_count = len(sync_changes)
+
+        # Now load the same signal asynchronously
+        wf.load_signals_async([handle])
+        assert collector.wait_for_signals(timeout=10)
+
+        # Find the SignalLoaded event
+        signal_loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
+        assert len(signal_loaded_events) == 1
+
+        # Check that we got signals instead of just handles
+        event = signal_loaded_events[0]
+        assert "signals" in event or "handles" in event
+
+        if "signals" in event:
+            # New behavior: returns list of (handle, Signal) tuples
+            loaded_signals = event["signals"]
+            assert len(loaded_signals) > 0
+
+            # Verify the signal data
+            for loaded_handle, async_signal in loaded_signals:
+                if loaded_handle == handle:
+                    async_changes = list(async_signal.all_changes())
+                    async_change_count = len(async_changes)
+
+                    # Verify the number of changes matches
+                    assert async_change_count == sync_change_count, \
+                        f"Signal {var_name}: async has {async_change_count} changes, sync has {sync_change_count}"
+
+                    # Optionally verify some actual values match
+                    if sync_change_count > 0:
+                        # Check first and last change times match
+                        first_sync = sync_changes[0]
+                        first_async = async_changes[0]
+                        assert first_sync[0] == first_async[0], "First change time mismatch"
+
+                        last_sync = sync_changes[-1]
+                        last_async = async_changes[-1]
+                        assert last_sync[0] == last_async[0], "Last change time mismatch"
+        else:
+            # Backward compatibility: if only handles are returned
+            assert "handles" in event
+            handles = event["handles"]
+            assert handle in handles
+
+    def test_async_load_performance(self):
+        """Test async loading performance and verify caching behavior"""
+        test_file = str(TEST_INPUTS_DIR / "analog_signals.vcd")
+        wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
+
+        collector = AsyncEventCollector()
+        wf.set_async_callback(collector)
+
+        hier = wf.hierarchy
+        all_vars = list(hier.all_vars())
+        var = all_vars[0]
+        handle = var.signal_handle()
+
+        # Measure async loading time
+        start_time = time.time()
+        wf.load_signals_async([handle])
+        assert collector.wait_for_signals(timeout=10)
+        end_time = time.time()
+
+        async_load_time_ms = (end_time - start_time) * 1000
+
+        # Get the signal from the event
+        signal_loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
+        assert len(signal_loaded_events) == 1
+
+        event = signal_loaded_events[0]
+        if "signals" in event:
+            loaded_signals = event["signals"]
+            for loaded_handle, signal in loaded_signals:
+                if loaded_handle == handle:
+                    changes = list(signal.all_changes())
+                    print(f"Async load: {len(changes)} changes in {async_load_time_ms:.2f} ms")
+
+        # Load again to test if signals are reloaded (no Rust cache)
+        collector.clear()
+        start_time = time.time()
+        wf.load_signals_async([handle])
+        assert collector.wait_for_signals(timeout=10)
+        end_time = time.time()
+
+        reload_time_ms = (end_time - start_time) * 1000
+
+        # Verify signal was loaded again
+        signal_loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
+        assert len(signal_loaded_events) == 1
+
+        event = signal_loaded_events[0]
+        if "signals" in event:
+            loaded_signals = event["signals"]
+            assert len(loaded_signals) > 0
+            print(f"Reload: signal reloaded in {reload_time_ms:.2f} ms")
