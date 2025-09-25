@@ -650,9 +650,9 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                     // Get the time table from shared state
                     let time_table = shared_state.time_table.lock().unwrap().clone();
 
+                    // Always return signals list matching pyi spec
+                    let py_list = pyo3::types::PyList::empty(py);
                     if let Some(tt) = time_table {
-                        // Create a list of (handle, Signal) tuples
-                        let py_list = pyo3::types::PyList::empty(py);
                         for (handle, signal_arc) in signals.iter() {
                             // Create Python Signal object
                             if let Ok(py_signal) = Bound::new(
@@ -666,18 +666,14 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                                 py_list.append(tuple).ok();
                             }
                         }
-                        dict.set_item("signals", py_list).ok();
-                    } else {
-                        // If no time table, just return the handles as before for backward compatibility
-                        let handles: Vec<SignalHandle> = signals.iter().map(|(h, _)| *h).collect();
-                        dict.set_item("handles", handles).ok();
                     }
+                    dict.set_item("signals", py_list).ok();
                     dict
                 }
                 AsyncEvent::Error(msg) => {
                     let dict = pyo3::types::PyDict::new(py);
                     dict.set_item("type", "Error").ok();
-                    dict.set_item("message", msg.clone()).ok();
+                    dict.set_item("error", msg.clone()).ok();
                     dict
                 }
             };

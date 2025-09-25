@@ -1,13 +1,60 @@
 """Type stubs for pyrox - PyO3 bindings for Wellen waveform library."""
 
-from typing import Optional, Iterator, List, Tuple, Union, Literal, Dict, Any, Callable
-from typing_extensions import Self
+from typing import Optional, Iterator, List, Tuple, Union, Literal, Dict, Any, Callable, TypedDict
+from typing_extensions import Self, NotRequired
 
 # Type aliases for clarity
 Time = int
 SignalValue = Union[int, str, float]
 SignalHandle = int
-AsyncCallback = Callable[[Dict[str, Any]], None]
+
+# Async event types
+class HeaderStartLoadEvent(TypedDict):
+    """Event emitted when header loading starts."""
+    type: Literal["HeaderStartLoad"]
+
+class HeaderLoadedEvent(TypedDict):
+    """Event emitted when header is fully loaded."""
+    type: Literal["HeaderLoaded"]
+    hierarchy: NotRequired[Hierarchy]
+
+class BodyStartLoadEvent(TypedDict):
+    """Event emitted when body loading starts."""
+    type: Literal["BodyStartLoad"]
+
+class BodyLoadedEvent(TypedDict):
+    """Event emitted when body is fully loaded."""
+    type: Literal["BodyLoaded"]
+    time_table: NotRequired[TimeTable]
+
+class SignalStartLoadEvent(TypedDict):
+    """Event emitted when signal loading starts."""
+    type: Literal["SignalStartLoad"]
+    handles: List[SignalHandle]
+
+class SignalLoadedEvent(TypedDict):
+    """Event emitted when signals are loaded."""
+    type: Literal["SignalLoaded"]
+    signals: List[Tuple[SignalHandle, Signal]]
+
+class AsyncErrorEvent(TypedDict):
+    """Event emitted when an error occurs during async loading."""
+    type: Literal["Error"]
+    error: str
+
+# Union of all async event types
+AsyncEvent = Union[
+    HeaderStartLoadEvent,
+    HeaderLoadedEvent,
+    BodyStartLoadEvent,
+    BodyLoadedEvent,
+    SignalStartLoadEvent,
+    SignalLoadedEvent,
+    AsyncErrorEvent,
+]
+
+# Callback type for async events
+AsyncCallback = Callable[[AsyncEvent], None]
 
 class VarIndex:
     """Variable bit range index."""

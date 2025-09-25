@@ -3,7 +3,7 @@
 import pytest
 import time
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, cast, TYPE_CHECKING, Any
 from threading import Event
 
 # Import the Pyrox module (will be built from Rust)
@@ -12,34 +12,62 @@ try:
 except ImportError:
     pytest.skip("pyrox module not available", allow_module_level=True)
 
+# Type-only imports for static checking
+if TYPE_CHECKING:
+    from pyrox import (
+        AsyncEvent,
+        HeaderStartLoadEvent,
+        HeaderLoadedEvent,
+        BodyStartLoadEvent,
+        BodyLoadedEvent,
+        SignalStartLoadEvent,
+        SignalLoadedEvent,
+        AsyncErrorEvent,
+    )
+
 # Get absolute path to test_inputs directory
 TEST_INPUTS_DIR = Path(__file__).parent.parent / "test_inputs"
 
 
 class AsyncEventCollector:
-    """Helper class to collect async events"""
+    """Helper class to collect async events with type checking"""
 
     def __init__(self):
-        self.events: List[Dict[str, Any]] = []
+        if TYPE_CHECKING:
+            self.events: List[AsyncEvent] = []
+        else:
+            self.events: List[Any] = []
         self.header_loaded = Event()
         self.body_loaded = Event()
         self.signals_loaded = Event()
         self.error_event = Event()
-        self.error_message = None
+        self.error_message: str | None = None
 
-    def __call__(self, event: Dict[str, Any]):
-        """Callback function for async events"""
+    def __call__(self, event: Any):
+        """Callback function for async events with type checking"""
         self.events.append(event)
 
         event_type = event.get("type")
         if event_type == "HeaderLoaded":
             self.header_loaded.set()
+            # Runtime validation
+            assert event["type"] == "HeaderLoaded"
+            # hierarchy field is optional (NotRequired)
         elif event_type == "BodyLoaded":
             self.body_loaded.set()
+            # Runtime validation
+            assert event["type"] == "BodyLoaded"
+            # time_table field is optional (NotRequired)
         elif event_type == "SignalLoaded":
             self.signals_loaded.set()
+            # Runtime validation
+            assert event["type"] == "SignalLoaded"
+            assert "signals" in event
         elif event_type == "Error":
-            self.error_message = event.get("message")
+            # Runtime validation
+            assert event["type"] == "Error"
+            assert "error" in event
+            self.error_message = event["error"]
             self.error_event.set()
 
     def wait_for_header(self, timeout=5):
@@ -152,7 +180,7 @@ class TestAsyncLoading:
         assert len(collector.events) == 0
 
     def test_callback_execution_for_all_events(self):
-        """Test callback execution for all event types"""
+        """Test callback execution for all event types with type checking"""
         test_file = str(TEST_INPUTS_DIR / "swerv1.vcd")
 
         # Create waveform without loading anything initially
@@ -178,25 +206,32 @@ class TestAsyncLoading:
         wf.load_signals_async(handles)
         assert collector.wait_for_signals(timeout=10)
 
-        # Check signal events
+        # Check signal events with type assertions
         event_types = [e["type"] for e in collector.events]
         assert "SignalStartLoad" in event_types
         assert "SignalLoaded" in event_types
 
-        # Check handles in events
+        # Check handles in events with proper typing
         for event in collector.events:
-            if event["type"] == "SignalStartLoad":
+            event_type = event["type"]
+
+            if event_type == "SignalStartLoad":
+                # Runtime validation for SignalStartLoadEvent
                 assert "handles" in event
                 assert isinstance(event["handles"], list)
-            elif event["type"] == "SignalLoaded":
-                # SignalLoaded now returns signals instead of just handles
-                assert "signals" in event or "handles" in event
-                if "signals" in event:
-                    assert isinstance(event["signals"], list)
-                    # Verify we got the right number of signals
-                    assert len(event["signals"]) == len(handles)
-                else:
-                    assert isinstance(event["handles"], list)
+                handles_list: List[int] = event["handles"]
+                assert all(isinstance(h, int) for h in handles_list)
+
+            elif event_type == "SignalLoaded":
+                # Runtime validation for SignalLoadedEvent
+                assert "signals" in event
+                assert isinstance(event["signals"], list)
+                # Verify we got the right number of signals
+                assert len(event["signals"]) == len(handles)
+                signals_list = event["signals"]
+                for handle, signal in signals_list:
+                    assert isinstance(handle, int)
+                    assert hasattr(signal, "all_changes")
 
     def test_changing_callbacks_mid_operation(self):
         """Test changing callbacks during async operations"""
@@ -246,10 +281,8 @@ class TestAsyncLoading:
         # Check loaded handles/signals
         first_load_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
         assert len(first_load_events) > 0
-        if "signals" in first_load_events[0]:
-            first_loaded_handles = [h for h, s in first_load_events[0]["signals"]]
-        else:
-            first_loaded_handles = first_load_events[0].get("handles", [])
+        assert "signals" in first_load_events[0]
+        first_loaded_handles = [h for h, s in first_load_events[0]["signals"]]
 
         # Clear and load same signals again
         collector.clear()
@@ -261,10 +294,8 @@ class TestAsyncLoading:
         # Signals should be loaded fresh since there's no Rust cache
         loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
         assert len(loaded_events) > 0
-        if "signals" in loaded_events[0]:
-            second_loaded_handles = [h for h, s in loaded_events[0]["signals"]]
-        else:
-            second_loaded_handles = loaded_events[0].get("handles", [])
+        assert "signals" in loaded_events[0]
+        second_loaded_handles = [h for h, s in loaded_events[0]["signals"]]
         # Should load the same signals again since there's no cache
         assert len(second_loaded_handles) == len(first_loaded_handles)
 
@@ -401,40 +432,34 @@ class TestAsyncLoading:
         signal_loaded_events = [e for e in collector.events if e["type"] == "SignalLoaded"]
         assert len(signal_loaded_events) == 1
 
-        # Check that we got signals instead of just handles
+        # Check that we got signals
         event = signal_loaded_events[0]
-        assert "signals" in event or "handles" in event
+        assert "signals" in event
 
-        if "signals" in event:
-            # New behavior: returns list of (handle, Signal) tuples
-            loaded_signals = event["signals"]
-            assert len(loaded_signals) > 0
+        # Returns list of (handle, Signal) tuples
+        loaded_signals = event["signals"]
+        assert len(loaded_signals) > 0
 
-            # Verify the signal data
-            for loaded_handle, async_signal in loaded_signals:
-                if loaded_handle == handle:
-                    async_changes = list(async_signal.all_changes())
-                    async_change_count = len(async_changes)
+        # Verify the signal data
+        for loaded_handle, async_signal in loaded_signals:
+            if loaded_handle == handle:
+                async_changes = list(async_signal.all_changes())
+                async_change_count = len(async_changes)
 
-                    # Verify the number of changes matches
-                    assert async_change_count == sync_change_count, \
-                        f"Signal {var_name}: async has {async_change_count} changes, sync has {sync_change_count}"
+                # Verify the number of changes matches
+                assert async_change_count == sync_change_count, \
+                    f"Signal {var_name}: async has {async_change_count} changes, sync has {sync_change_count}"
 
-                    # Optionally verify some actual values match
-                    if sync_change_count > 0:
-                        # Check first and last change times match
-                        first_sync = sync_changes[0]
-                        first_async = async_changes[0]
-                        assert first_sync[0] == first_async[0], "First change time mismatch"
+                # Optionally verify some actual values match
+                if sync_change_count > 0:
+                    # Check first and last change times match
+                    first_sync = sync_changes[0]
+                    first_async = async_changes[0]
+                    assert first_sync[0] == first_async[0], "First change time mismatch"
 
-                        last_sync = sync_changes[-1]
-                        last_async = async_changes[-1]
-                        assert last_sync[0] == last_async[0], "Last change time mismatch"
-        else:
-            # Backward compatibility: if only handles are returned
-            assert "handles" in event
-            handles = event["handles"]
-            assert handle in handles
+                    last_sync = sync_changes[-1]
+                    last_async = async_changes[-1]
+                    assert last_sync[0] == last_async[0], "Last change time mismatch"
 
     def test_async_load_performance(self):
         """Test async loading performance and verify caching behavior"""
@@ -462,12 +487,12 @@ class TestAsyncLoading:
         assert len(signal_loaded_events) == 1
 
         event = signal_loaded_events[0]
-        if "signals" in event:
-            loaded_signals = event["signals"]
-            for loaded_handle, signal in loaded_signals:
-                if loaded_handle == handle:
-                    changes = list(signal.all_changes())
-                    print(f"Async load: {len(changes)} changes in {async_load_time_ms:.2f} ms")
+        assert "signals" in event
+        loaded_signals = event["signals"]
+        for loaded_handle, signal in loaded_signals:
+            if loaded_handle == handle:
+                changes = list(signal.all_changes())
+                print(f"Async load: {len(changes)} changes in {async_load_time_ms:.2f} ms")
 
         # Load again to test if signals are reloaded (no Rust cache)
         collector.clear()
@@ -483,7 +508,7 @@ class TestAsyncLoading:
         assert len(signal_loaded_events) == 1
 
         event = signal_loaded_events[0]
-        if "signals" in event:
-            loaded_signals = event["signals"]
-            assert len(loaded_signals) > 0
-            print(f"Reload: signal reloaded in {reload_time_ms:.2f} ms")
+        assert "signals" in event
+        loaded_signals = event["signals"]
+        assert len(loaded_signals) > 0
+        print(f"Reload: signal reloaded in {reload_time_ms:.2f} ms")
