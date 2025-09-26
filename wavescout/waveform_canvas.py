@@ -1057,29 +1057,38 @@ class WaveformCanvas(QWidget):
         elif row.kind == 'signal':
             # Draw a regular signal
             node = row.source
-            if isinstance(node, SignalNodeSignal) and node.handle is not None and node.handle in draw_commands:
-                drawing_data = draw_commands[node.handle]
-                # Create node_info for renderer compatibility
-                node_info: NodeInfo = {
-                    'name': node.name,
-                    'handle': node.handle,
-                    'is_group': False,
-                    'format': node.format,
-                    'render_type': node.format.render_type,
-                    'height_scaling': node.height_scaling,
-                    'instance_id': node.instance_id,
-                    'is_selected': is_selected,
-                    'signal': node.signal,
-                }
-                render_type = node.format.render_type
-                if render_type == RenderType.BOOL:
-                    draw_digital_signal(painter, node_info, drawing_data, y, row_height, params)
-                elif render_type == RenderType.BUS:
-                    draw_bus_signal(painter, node_info, drawing_data, y, row_height, params)
-                elif render_type == RenderType.ANALOG:
-                    draw_analog_signal(painter, node_info, drawing_data, y, row_height, params)
-                elif render_type == RenderType.EVENT:
-                    draw_event_signal(painter, node_info, drawing_data, y, row_height, params)
+            if isinstance(node, SignalNodeSignal) and node.handle is not None:
+                # Check if signal is loading
+                if node.signal is None:
+                    # Draw loading placeholder
+                    painter.setPen(QPen(QColor(128, 128, 128)))  # Gray color for loading text
+                    painter.setFont(QFont("Arial", 9))
+                    loading_text = "Loading..."
+                    text_rect = QRectF(10, y + row_height // 2 - 10, params['width'] - 20, 20)
+                    painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, loading_text)
+                elif node.handle in draw_commands:
+                    drawing_data = draw_commands[node.handle]
+                    # Create node_info for renderer compatibility
+                    node_info: NodeInfo = {
+                        'name': node.name,
+                        'handle': node.handle,
+                        'is_group': False,
+                        'format': node.format,
+                        'render_type': node.format.render_type,
+                        'height_scaling': node.height_scaling,
+                        'instance_id': node.instance_id,
+                        'is_selected': is_selected,
+                        'signal': node.signal,
+                    }
+                    render_type = node.format.render_type
+                    if render_type == RenderType.BOOL:
+                        draw_digital_signal(painter, node_info, drawing_data, y, row_height, params)
+                    elif render_type == RenderType.BUS:
+                        draw_bus_signal(painter, node_info, drawing_data, y, row_height, params)
+                    elif render_type == RenderType.ANALOG:
+                        draw_analog_signal(painter, node_info, drawing_data, y, row_height, params)
+                    elif render_type == RenderType.EVENT:
+                        draw_event_signal(painter, node_info, drawing_data, y, row_height, params)
         elif row.kind == 'group_content' and row.descriptor:
             # Draw group content using the registry
             group_id = row.descriptor.cache_key

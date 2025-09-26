@@ -1,6 +1,9 @@
 """WaveformDB implementation with backend-agnostic design."""
 
-from typing import List, Tuple, Optional, Dict, TYPE_CHECKING
+from typing import List, Tuple, Optional, Dict, TYPE_CHECKING, Sequence, Iterable, Any, Union, Tuple
+import time as time_module
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QObject, Signal, QThread
 
 if TYPE_CHECKING:
     from pyrox import Scope
@@ -10,17 +13,59 @@ import pyrox
 from pyrox import SignalHandle
 
 from .data_model import Time, Timescale, TimeUnit
+from .application.event_bus import EventBus
+from .application.events import SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
+
+
+class AsyncEventBridge(QObject):
+    """Bridge to safely pass async events from worker threads to main Qt thread."""
+
+    loading_started = Signal(list)  # List of handles
+    loaded = Signal(list)  # List of (handle, signal) pairs
+    loading_failed = Signal(list, str)  # List of handles, error message
+
+    def __init__(self, event_bus: Optional[EventBus] = None):
+        super().__init__()
+        self._event_bus = event_bus
+
+        # Connect signals to event bus on main thread
+        if self._event_bus:
+            self.loading_started.connect(self._emit_loading_started)
+            self.loaded.connect(self._emit_loaded)
+            self.loading_failed.connect(self._emit_loading_failed)
+
+    def _emit_loading_started(self, handles: List[Any]) -> None:
+        """Emit loading started event on main thread."""
+        if self._event_bus:
+            self._event_bus.publish(SignalLoadingStartedEvent(handles=handles))
+
+    def _emit_loaded(self, pairs: List[Tuple[Any, Any]]) -> None:
+        """Emit loaded event on main thread."""
+        if self._event_bus:
+            self._event_bus.publish(SignalLoadedEvent(pairs=pairs))
+
+    def _emit_loading_failed(self, handles: List[Any], error: str) -> None:
+        """Emit loading failed event on main thread."""
+        if self._event_bus:
+            self._event_bus.publish(SignalLoadingFailedEvent(handles=handles, error=error))
 
 
 class WaveformDB:
     """Waveform database with backend-agnostic design for reading VCD/FST files."""
 
-    def __init__(self) -> None:
+    def __init__(self, event_bus: Optional[EventBus] = None) -> None:
         self.waveform: Optional[pyrox.Waveform] = None
         self.hierarchy: Optional[pyrox.Hierarchy] = None
         self.uri: Optional[str] = None
         self._timescale: Optional[Timescale] = None  # Store parsed timescale
         self._signal_cache: Dict[SignalHandle, pyrox.Signal] = {}  # Python-side cache
+        self._loading_handles: set[SignalHandle] = set()  # Track handles being loaded
+        self._event_bus = event_bus  # Event bus for async notifications
+        self._event_bridge: Optional[AsyncEventBridge] = None  # Qt signal bridge for thread safety
+
+        # Create event bridge if event bus is provided
+        if self._event_bus:
+            self._event_bridge = AsyncEventBridge(self._event_bus)
 
     @property
     def file_path(self) -> Optional[str]:
@@ -35,8 +80,9 @@ class WaveformDB:
 
         start_time = time.time()
         self.uri = uri
-        # Clear the signal cache when opening a new file
+        # Clear the signal cache and loading state when opening a new file
         self._signal_cache.clear()
+        self._loading_handles.clear()
 
         # Get file size for reporting
         file_size = os.path.getsize(uri)
@@ -52,6 +98,10 @@ class WaveformDB:
         load_end = time.time()
 
         print(f"  - Waveform loaded in {load_end - load_start:.2f} seconds")
+
+        # Register async callback if event bus is available
+        if self._event_bus and self.waveform:
+            self.waveform.set_async_callback(self._on_async_event)
 
         # Extract and store timescale
         self._extract_timescale()
@@ -121,9 +171,14 @@ class WaveformDB:
 
     def close(self) -> None:
         """Close the waveform file."""
+        # Clear async callback before closing
+        if self.waveform:
+            self.waveform.set_async_callback(None)
+
         self.waveform = None
         self.hierarchy = None
-        # Caches are now maintained in Rust, nothing to clear here
+        self._signal_cache.clear()
+        self._loading_handles.clear()
         self._timescale = None
 
     def _extract_timescale(self) -> None:
@@ -457,3 +512,137 @@ class WaveformDB:
             if width is not None:
                 return int(width)
         return 32  # Default bit width
+
+    # Async loading methods
+
+    def _on_async_event(self, event: Any) -> None:
+        """Handle async events from pyrox backend.
+
+        This callback is invoked from worker threads, so we need to be
+        thread-safe and post events to the Qt thread when updating UI.
+        """
+        if not self._event_bridge:
+            return
+
+        event_type = event.get("type")
+
+        if event_type == "SignalStartLoad":
+            # Track handles being loaded
+            handles = event.get("handles", [])
+            self._loading_handles.update(handles)
+            # Emit via Qt signal (thread-safe)
+            self._event_bridge.loading_started.emit(handles)
+
+        elif event_type == "SignalLoaded":
+            # Process loaded signals
+            signals_data = event.get("signals", [])
+            loaded_pairs = []
+
+            for handle, signal in signals_data:
+                # Update Python cache
+                self._signal_cache[handle] = signal
+                # Remove from loading set
+                self._loading_handles.discard(handle)
+                loaded_pairs.append((handle, signal))
+
+            # Emit via Qt signal (thread-safe)
+            if loaded_pairs:
+                self._event_bridge.loaded.emit(loaded_pairs)
+
+        elif event_type == "Error":
+            # Handle loading errors
+            error_msg = event.get("error", "Unknown error")
+            # Clear all loading handles on error
+            failed_handles = list(self._loading_handles)
+            self._loading_handles.clear()
+
+            if failed_handles:
+                self._event_bridge.loading_failed.emit(failed_handles, error_msg)
+
+    def load_signals_async(self, handles: Sequence[SignalHandle]) -> None:
+        """Load signals asynchronously using pyrox backend.
+
+        Args:
+            handles: Sequence of signal handles to load
+        """
+        if not self.waveform:
+            return
+
+        # Filter out already cached and currently loading signals
+        handles_to_load = [
+            h for h in handles
+            if h not in self._signal_cache and h not in self._loading_handles
+        ]
+
+        if not handles_to_load:
+            # All signals are either cached or being loaded
+            return
+
+        # Mark handles as loading
+        self._loading_handles.update(handles_to_load)
+
+        # Trigger async load via pyrox
+        self.waveform.load_signals_async(list(handles_to_load))
+
+    def is_signal_loading(self, handle: SignalHandle) -> bool:
+        """Check if a signal is currently being loaded.
+
+        Args:
+            handle: Signal handle to check
+
+        Returns:
+            True if signal is being loaded, False otherwise
+        """
+        return handle in self._loading_handles
+
+    def pending_signal_count(self) -> int:
+        """Get count of signals currently being loaded.
+
+        Returns:
+            Number of signals in loading state
+        """
+        return len(self._loading_handles)
+
+    def wait_for_signals(self, handles: Iterable[SignalHandle], timeout: float = 5.0) -> bool:
+        """Wait for specific signals to finish loading (for testing).
+
+        Args:
+            handles: Handles to wait for
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if all signals loaded, False if timeout reached
+        """
+        start_time = time_module.perf_counter()
+        handles_set = set(handles)
+
+        while time_module.perf_counter() - start_time < timeout:
+            # Check if all requested handles are loaded
+            if all(h in self._signal_cache or h not in self._loading_handles
+                   for h in handles_set):
+                return True
+
+            # Process Qt events to allow async callbacks
+            if QApplication.instance():
+                QApplication.processEvents()
+
+            # Small sleep to avoid busy waiting
+            time_module.sleep(0.01)
+
+        return False
+
+    def load_signals_blocking(self, handles: Sequence[SignalHandle]) -> None:
+        """Load signals synchronously (compatibility layer).
+
+        This method is primarily for testing and legacy code paths.
+        It uses the async API but blocks until completion.
+
+        Args:
+            handles: Handles to load
+        """
+        # Trigger async load
+        self.load_signals_async(handles)
+
+        # Wait for completion
+        if not self.wait_for_signals(handles, timeout=10.0):
+            raise TimeoutError(f"Timeout loading signals: {handles}")

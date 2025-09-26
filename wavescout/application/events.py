@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, TypedDict
 import time
 
+from pyrox import SignalHandle, Signal
 from wavescout.data_model import Time, SignalNodeID
 
 
@@ -95,3 +96,22 @@ class SessionLoadedEvent(Event):
 class SessionClosedEvent(Event):
     """Emitted when the current session is closed."""
     pass
+
+
+@dataclass(frozen=True, kw_only=True)
+class SignalLoadingStartedEvent(Event):
+    """Emitted when signal loading begins."""
+    handles: list[SignalHandle]
+
+
+@dataclass(frozen=True, kw_only=True)
+class SignalLoadedEvent(Event):
+    """Emitted when signals are loaded from the backend."""
+    pairs: list[tuple[SignalHandle, Signal]]
+
+
+@dataclass(frozen=True, kw_only=True)
+class SignalLoadingFailedEvent(Event):
+    """Emitted when signal loading fails."""
+    handles: list[SignalHandle]
+    error: str

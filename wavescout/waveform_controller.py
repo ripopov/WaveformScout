@@ -9,7 +9,10 @@ these callbacks and update their views accordingly.
 """
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Iterable, Set
+from typing import Callable, Dict, List, Optional, Iterable, Set, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pyrox import Signal
 
 from .data_model import (
     WaveformSession,
@@ -33,8 +36,10 @@ from .application.event_bus import EventBus
 from .application.events import (
     Event, StructureChangedEvent, FormatChangedEvent, ViewportChangedEvent,
     CursorMovedEvent, SelectionChangedEvent, MarkerAddedEvent, MarkerRemovedEvent,
-    MarkerMovedEvent, SessionLoadedEvent, SessionClosedEvent, FormatChanges
+    MarkerMovedEvent, SessionLoadedEvent, SessionClosedEvent, FormatChanges,
+    SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
 )
+from pyrox import SignalHandle
 
 
 Callback = Callable[[], None]
@@ -68,7 +73,15 @@ class WaveformController:
         "selection_changed": [],
         "cursor_changed": [],
         "markers_changed": [],
+        "signals_loading": [],
+        "signals_loaded": [],
     })
+
+    def __post_init__(self) -> None:
+        """Subscribe to async loading events."""
+        self.event_bus.subscribe(SignalLoadingStartedEvent, self._on_signal_loading_started)
+        self.event_bus.subscribe(SignalLoadedEvent, self._on_signal_loaded)
+        self.event_bus.subscribe(SignalLoadingFailedEvent, self._on_signal_loading_failed)
 
     # ---- Subscription API ----
     def on(self, event_name: str, callback: Callback) -> None:
@@ -1143,10 +1156,84 @@ class WaveformController:
     
     def get_clock_info(self) -> Optional[tuple[Time, Time, SignalNode]]:
         """Get the current clock signal information.
-        
+
         Returns:
             Tuple of (period, phase_offset, node) if clock is set, None otherwise
         """
         if not self.session or not self.session.clock_signal:
             return None
         return self.session.clock_signal
+
+    # ---- Async Signal Loading Event Handlers ----
+
+    def _on_signal_loading_started(self, event: SignalLoadingStartedEvent) -> None:
+        """Handle signal loading started event."""
+        if not self.session:
+            return
+
+        # Add handles to session loading state
+        self.session.loading_handles.update(event.handles)
+
+        # Emit callback for UI updates
+        self._emit("signals_loading")
+
+    def _on_signal_loaded(self, event: SignalLoadedEvent) -> None:
+        """Handle signal loaded event."""
+        if not self.session:
+            return
+
+        # Update all nodes with loaded signal data
+        for handle, signal in event.pairs:
+            # Remove from loading state
+            self.session.loading_handles.discard(handle)
+
+            # Find and update all nodes with this handle
+            self._update_nodes_with_signal(handle, signal)
+
+        # Emit callback for UI updates
+        self._emit("signals_loaded")
+        self._emit("session_changed")
+
+    def _on_signal_loading_failed(self, event: SignalLoadingFailedEvent) -> None:
+        """Handle signal loading failed event."""
+        if not self.session:
+            return
+
+        # Clear loading state for failed handles
+        for handle in event.handles:
+            self.session.loading_handles.discard(handle)
+
+        # Emit callback for UI updates
+        self._emit("signals_loaded")  # Still emit to update UI
+
+        # Log error
+        print(f"Signal loading failed: {event.error}")
+
+    def _update_nodes_with_signal(self, handle: SignalHandle, signal: "Signal") -> None:
+        """Update all SignalNodeSignal instances with the given handle."""
+        if not self.session:
+            return
+
+        def update_in_tree(nodes: List[SignalNode]) -> None:
+            for node in nodes:
+                if isinstance(node, SignalNodeSignal) and node.handle == handle:
+                    # Update the signal field
+                    node.signal = signal
+                elif isinstance(node, SignalNodeGroup):
+                    # Recurse into group
+                    update_in_tree(node.children)
+
+        # Update all nodes in the tree
+        update_in_tree(self.session.root_nodes)
+
+    def load_signals_async(self, handles: List[SignalHandle]) -> None:
+        """Request async loading of signals.
+
+        Args:
+            handles: List of signal handles to load
+        """
+        if not self.session or not self.session.waveform_db:
+            return
+
+        # Delegate to WaveformDB
+        self.session.waveform_db.load_signals_async(handles)

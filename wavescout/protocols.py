@@ -1,6 +1,6 @@
 """Protocol definitions for decoupling UI from WaveformDB implementation."""
 
-from typing import Protocol, Optional, Iterable, Dict
+from typing import Protocol, Optional, Iterable, Dict, Sequence, List
 from collections.abc import Iterable as ABCIterable
 
 import pyrox
@@ -163,4 +163,44 @@ class WaveformDBProtocol(Protocol):
             Pyrox Signal object if available, None otherwise
         """
         ...
+
+    # Async loading methods (optional, for implementations that support it)
+
+    def are_signals_cached(self, handles: List[SignalHandle]) -> bool:
+        """Check if all specified signals are already cached.
+
+        Args:
+            handles: List of signal handles to check
+
+        Returns:
+            True if all signals are cached, False otherwise
+        """
+        return False
+
+    def load_signals_async(self, handles: Sequence[SignalHandle]) -> None:
+        """Load signals asynchronously using backend.
+
+        Args:
+            handles: Sequence of signal handles to load
+        """
+        pass
+
+    def is_signal_loading(self, handle: SignalHandle) -> bool:
+        """Check if a signal is currently being loaded.
+
+        Args:
+            handle: Signal handle to check
+
+        Returns:
+            True if signal is being loaded, False otherwise
+        """
+        return False
+
+    def pending_signal_count(self) -> int:
+        """Get count of signals currently being loaded.
+
+        Returns:
+            Number of signals in loading state
+        """
+        return 0
     

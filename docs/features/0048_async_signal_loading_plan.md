@@ -79,11 +79,16 @@ These events flow through `EventBus.publish()` so the controller, status bar, an
 - Deprecate `_load_signals_async()` and the `QThreadPool` runnable once all call sites use the new API.
 
 ## 4. Rollout Plan
+
+### Phase 1 (Infrastructure + Initial UI)
 1. **Infrastructure**: Implement WaveformDB async plumbing, new events, and session/controller tracking without switching call sites yet.
 2. **Design Tree & Clipboard**: Convert `DesignTreeView` and `SignalNamesView`, verify UI placeholders render correctly.
-3. **Persistence & Snippets**: Update session restore and snippet insertion paths, ensuring handles resolve prior to scheduling loads.
-4. **Status & Canvas Polish**: Replace the progress dialog with status bar updates and loading overlays; delete the old `_load_signals_async()` implementation.
-5. **Tests & Cleanup**: Add async-aware fixtures, update assertions to tolerate `signal=None` during load, and remove obsolete synchronous helpers.
+3. **PoC Application**: Create a proof-of-concept application demonstrating the refactored WaveformDB with DesignTreeView/SignalNamesView integration.
+
+### Phase 2 (Complete Migration)
+4. **Persistence & Snippets**: Update session restore and snippet insertion paths, ensuring handles resolve prior to scheduling loads.
+5. **Status & Canvas Polish**: Replace the progress dialog with status bar updates and loading overlays; delete the old `_load_signals_async()` implementation.
+6. **Tests & Cleanup**: Add async-aware fixtures, update assertions to tolerate `signal=None` during load, and remove obsolete synchronous helpers.
 
 ## 5. Testing & Validation
 - **Unit Tests**: Extend `tests/test_async_loading.py` to simulate Python-side subscribers and verify cache updates plus duplicate suppression.

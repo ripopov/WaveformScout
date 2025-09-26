@@ -202,9 +202,11 @@ class DesignTreeView(QWidget):
             is_multi_bit=not is_single_bit
         )
 
-        # Load Signal object if handle exists
+        # Check if signal is cached and populate if so
         if handle is not None and self.waveform_db:
-            signal_node.signal = self.waveform_db.get_signal(handle)
+            if self.waveform_db.are_signals_cached([handle]):
+                signal_node.signal = self.waveform_db.get_signal(handle)
+            # Otherwise leave signal=None for async loading
 
         return signal_node
 
@@ -425,10 +427,16 @@ class DesignTreeView(QWidget):
             show_progress: Whether to show progress dialog for large batches
         """
         signal_nodes = []
+        handles_to_load = []
+
         for var_data in var_data_list:
             signal_node = self._create_signal_node_from_var(var_data)
             if signal_node:
                 signal_nodes.append(signal_node)
+                # Collect uncached handles for async loading
+                if isinstance(signal_node, SignalNodeSignal) and signal_node.handle is not None:
+                    if signal_node.signal is None:  # Not cached
+                        handles_to_load.append(signal_node.handle)
 
         if signal_nodes:
             # Show progress dialog for batch operations when requested
@@ -447,8 +455,15 @@ class DesignTreeView(QWidget):
 
                 progress.setValue(len(signal_nodes))
 
+            # Emit nodes immediately (with signal=None for uncached)
             self.signals_selected.emit(signal_nodes)
-            self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
+
+            # Trigger async loading for uncached handles
+            if handles_to_load and self.waveform_db:
+                self.waveform_db.load_signals_async(handles_to_load)
+                self.status_message.emit(f"Added {len(signal_nodes)} signal(s), loading {len(handles_to_load)} in background")
+            else:
+                self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
     
     def _is_single_bit(self, var_obj: Optional[Var], handle: Optional[SignalHandle]) -> bool:
         """Determine if a variable/signal is single-bit using wellen API.
@@ -530,8 +545,10 @@ class DesignTreeView(QWidget):
             is_multi_bit=not is_single_bit
         )
 
-        # Load Signal object if handle exists
+        # Check if signal is cached and populate if so
         if handle is not None and self.waveform_db:
-            signal_node.signal = self.waveform_db.get_signal(handle)
+            if self.waveform_db.are_signals_cached([handle]):
+                signal_node.signal = self.waveform_db.get_signal(handle)
+            # Otherwise leave signal=None for async loading
 
         return signal_node

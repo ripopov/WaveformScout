@@ -6,6 +6,7 @@ from PySide6.QtGui import QAction, QActionGroup, QKeyEvent, QColor, QKeySequence
 from typing import List, Optional, Callable, Union, TYPE_CHECKING, Dict, Any
 from PySide6.QtCore import QPersistentModelIndex
 import json
+from pyrox import SignalHandle
 from .data_model import SignalNode, SignalNodeSignal, SignalNodeGroup, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
 from .config import RENDERING, UI
 from .clock_utils import is_valid_clock_signal
@@ -734,7 +735,8 @@ class SignalNamesView(BaseColumnView):
 
         db = self._controller.session.waveform_db
         validated2: List[SignalNode] = []
-        
+        handles_to_load: List[SignalHandle] = []
+
         for node in nodes:
             if isinstance(node, SignalNodeGroup):
                 # Always keep groups, but validate their children
@@ -747,13 +749,21 @@ class SignalNamesView(BaseColumnView):
                     if var:
                         # Populate the var field which may be None after deserialization
                         node.var = var
-                        # Also ensure signal is populated
+                        # Check if signal is cached
                         if not node.signal:
-                            node.signal = db.get_signal(node.handle)
+                            if db.are_signals_cached([node.handle]):
+                                node.signal = db.get_signal(node.handle)
+                            else:
+                                # Mark for async loading
+                                handles_to_load.append(node.handle)
                         validated2.append(node)
                 except Exception:
                     # Skip nodes with invalid handles
                     pass
             # Note: Nodes without handles are skipped
+
+        # Trigger async loading for uncached signals
+        if handles_to_load:
+            db.load_signals_async(handles_to_load)
 
         return validated2
