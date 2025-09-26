@@ -25,18 +25,22 @@ def test_validate_and_resolve_nodes_simple():
         "test.signal2": 2,
         "test.group.signal3": 3
     }.get(path, None))
-    
-    # Test successful validation
+    # Add mock methods for async support
+    mock_db.are_signals_cached = Mock(return_value=True)
+    mock_db.get_signal = Mock(side_effect=lambda h: f"signal_{h}")
+
+    # Test successful validation - now returns a tuple
     nodes = [
         SignalNodeSignal(name="test.signal1", var=MockVar("signal1"), handle=-1),
         SignalNodeSignal(name="test.signal2", var=MockVar("signal2"), handle=-1)
     ]
-    
-    validated = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, mock_db)
+
+    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, mock_db)
     assert len(validated) == 2
     assert validated[0].handle == 1
     assert validated[1].handle == 2
-    
+    assert len(handles_to_load) == 0  # All signals are cached
+
     # Test validation with group
     group_node = SignalNodeGroup(
         name="mygroup",
@@ -44,12 +48,13 @@ def test_validate_and_resolve_nodes_simple():
             SignalNodeSignal(name="test.group.signal3", var=MockVar("signal3"), handle=-1)
         ]
     )
-    
-    validated = InstantiateSnippetDialog.validate_and_resolve_nodes([group_node], mock_db)
+
+    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes([group_node], mock_db)
     assert len(validated) == 1
     assert validated[0].is_group
     assert len(validated[0].children) == 1
     assert validated[0].children[0].handle == 3
+    assert len(handles_to_load) == 0  # All signals are cached
     
     # Test validation failure
     bad_nodes = [SignalNodeSignal(name="bad.signal", var=MockVar("signal"), handle=-1)]

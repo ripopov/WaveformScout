@@ -167,25 +167,41 @@ def test_save_session_with_waveform_db():
     # Create session from VCD file
     vcd_path = get_test_input_path(TestFiles.SWERV1_VCD)
     session = create_sample_session(str(vcd_path))
-    
+
     # Save to temporary file
     with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
         temp_path = pathlib.Path(f.name)
-    
+
     try:
         # Save session
         save_session(session, temp_path)
-        
+
         # Load session
         loaded_session = load_session(temp_path)
-        
+
         # Verify waveform database is reconnected
         assert loaded_session.waveform_db is not None
         assert loaded_session.waveform_db.file_path == str(vcd_path)
-        
+
         # Verify signals are preserved
         assert len(loaded_session.root_nodes) == len(session.root_nodes)
-        
+
+        # Wait for any async signal loading to complete
+        if loaded_session.waveform_db and hasattr(loaded_session.waveform_db, 'wait_for_signals'):
+            # Collect all handles from loaded session
+            handles = []
+            def collect_handles(nodes):
+                for node in nodes:
+                    if isinstance(node, SignalNodeSignal) and node.handle is not None:
+                        handles.append(node.handle)
+                    if isinstance(node, SignalNodeGroup):
+                        collect_handles(node.children)
+            collect_handles(loaded_session.root_nodes)
+
+            # Wait for signals to load
+            if handles:
+                loaded_session.waveform_db.wait_for_signals(handles, timeout=5.0)
+
     finally:
         # Clean up
         temp_path.unlink(missing_ok=True)

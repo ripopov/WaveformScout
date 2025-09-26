@@ -230,11 +230,16 @@ class TestSnippetInstantiation:
         serialized = serialize_snippet_nodes(snippet.nodes, parent_scope)
         
         # Deserialize back with same scope
-        remapped = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
-        
-        assert remapped is not None, "Deserialization failed"
+        result = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
+
+        assert result is not None, "Deserialization failed"
+        remapped, handles_to_load = result
         assert len(remapped) == len(signal_nodes)
-        
+
+        # Wait for any async signal loading if needed
+        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+
         # Verify handles were resolved
         for node in remapped:
             assert node.handle != -1, f"Handle not resolved for {node.name}"
@@ -265,14 +270,19 @@ class TestSnippetInstantiation:
         
         # The core_clk signal exists at TOP.core_clk in swerv1.vcd
         # Test remapping it to the TOP scope
-        remapped = deserialize_snippet_nodes(snippet_data, "TOP", waveform_db)
-        
+        result = deserialize_snippet_nodes(snippet_data, "TOP", waveform_db)
+
         # Should successfully remap
-        assert remapped is not None, "Failed to remap core_clk to TOP scope"
+        assert result is not None, "Failed to remap core_clk to TOP scope"
+        remapped, handles_to_load = result
         assert len(remapped) == 1
         assert remapped[0].handle != -1
         assert remapped[0].name == "TOP.core_clk"
-        
+
+        # Wait for any async signal loading if needed
+        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+
         # Also test that remapping to a different scope where core_clk doesn't exist fails
         remapped_fail = deserialize_snippet_nodes(snippet_data, "TOP.rvtop", waveform_db)
         assert remapped_fail is None, "Should fail when signal doesn't exist in target scope"
@@ -295,10 +305,10 @@ class TestSnippetInstantiation:
         ]
         
         # Try to instantiate in TOP scope
-        remapped = deserialize_snippet_nodes(snippet_data, "TOP", waveform_db)
-        
+        result = deserialize_snippet_nodes(snippet_data, "TOP", waveform_db)
+
         # Should return None when signal doesn't exist
-        assert remapped is None
+        assert result is None
 
 
 class TestSnippetRoundTrip:
@@ -367,10 +377,15 @@ class TestSnippetRoundTrip:
         serialized = serialize_snippet_nodes(loaded_snippet.nodes, parent_scope)
         
         # Deserialize with same scope (as would happen in instantiation)
-        remapped = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
-        
-        assert remapped is not None
+        result = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
+
+        assert result is not None
+        remapped, handles_to_load = result
         assert len(remapped) == len(signal_nodes)
+
+        # Wait for any async signal loading if needed
+        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
         
         # Verify all properties preserved
         for original, restored in zip(signal_nodes, remapped):
@@ -431,9 +446,14 @@ class TestSnippetRoundTrip:
         # Serialize and deserialize
         from wavescout.persistence import serialize_snippet_nodes
         serialized = serialize_snippet_nodes(snippet.nodes, parent_scope)
-        remapped = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
-        
-        assert remapped is not None
+        result = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
+
+        assert result is not None
+        remapped, handles_to_load = result
+
+        # Wait for any async signal loading if needed
+        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
         
         # Wrap in group with custom name as would happen in the UI
         group_node = SignalNodeGroup(
@@ -655,9 +675,14 @@ class TestSnippetRoundTrip:
         serialized = serialize_snippet_nodes(loaded_snippet.nodes, parent_scope)
         
         # First instantiation
-        remapped1 = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
-        assert remapped1 is not None
+        result1 = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
+        assert result1 is not None
+        remapped1, handles_to_load1 = result1
         assert len(remapped1) == 1
+
+        # Wait for any async signal loading if needed
+        if handles_to_load1 and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load1, timeout=5.0)
         
         # Wrap in group with custom name
         group1 = SignalNodeGroup(
@@ -684,9 +709,14 @@ class TestSnippetRoundTrip:
         assert inst1_analog.handle != -1  # Handle should be resolved
         
         # SECOND INSTANCE - instantiate the same snippet again
-        remapped2 = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
-        assert remapped2 is not None
+        result2 = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
+        assert result2 is not None
+        remapped2, handles_to_load2 = result2
         assert len(remapped2) == 1
+
+        # Wait for any async signal loading if needed
+        if handles_to_load2 and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load2, timeout=5.0)
         
         # Wrap in group with different custom name
         group2 = SignalNodeGroup(
@@ -1031,10 +1061,14 @@ class TestSnippetBugRegressions:
         # Test case 1: Valid signal
         valid_node = SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1)
         
-        validated = InstantiateSnippetDialog.validate_and_resolve_nodes(
+        validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [valid_node], waveform_db
         )
-        
+
+        # Wait for any async signal loading if needed
+        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+
         assert len(validated) == 1
         assert validated[0].name == real_signal_path
         assert validated[0].handle != -1  # Handle should be resolved
@@ -1054,10 +1088,14 @@ class TestSnippetBugRegressions:
             children=[SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1)]
         )
         
-        validated = InstantiateSnippetDialog.validate_and_resolve_nodes(
+        validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [group_node], waveform_db
         )
-        
+
+        # Wait for any async signal loading if needed
+        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
+            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+
         assert len(validated) == 1
         assert validated[0].is_group == True
         assert len(validated[0].children) == 1

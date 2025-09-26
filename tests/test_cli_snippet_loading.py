@@ -13,7 +13,7 @@ import pytest
 from PySide6.QtCore import QStandardPaths
 from wavescout.snippet_manager import Snippet
 from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
-from test_utils import MockVar
+from .test_utils import MockVar
 
 
 @pytest.fixture
@@ -156,20 +156,29 @@ def test_validate_and_resolve_nodes():
             elif path == "apb_testbench.paddr":
                 return 2
             return None
-    
+
+        def are_signals_cached(self, handles):
+            # Mock implementation - signals are always cached
+            return True
+
+        def get_signal(self, handle):
+            # Mock implementation
+            return f"signal_{handle}"
+
     db = MockWaveformDB()
-    
+
     # Create test nodes
     nodes = [
         SignalNodeSignal(name="apb_testbench.pclk", var=MockVar("pclk"), handle=-1),
         SignalNodeSignal(name="apb_testbench.paddr", var=MockVar("paddr", 32), handle=-1)
     ]
-    
-    # Test successful validation
-    validated = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, db)
+
+    # Test successful validation - now returns a tuple
+    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, db)
     assert len(validated) == 2
     assert validated[0].handle == 1
     assert validated[1].handle == 2
+    assert len(handles_to_load) == 0  # All signals are cached
     
     # Test validation failure for non-existent signal
     bad_nodes = [
@@ -177,6 +186,7 @@ def test_validate_and_resolve_nodes():
     ]
     
     with pytest.raises(ValueError) as exc_info:
+        # This will still raise, we just ignore the return type
         InstantiateSnippetDialog.validate_and_resolve_nodes(bad_nodes, db)
     assert "Signal 'non_existent.signal' not found" in str(exc_info.value)
 
@@ -220,9 +230,17 @@ def test_snippet_node_hierarchy():
             if path in ["apb_testbench.group1.sig1", "apb_testbench.group1.sig2"]:
                 return len(path)  # Just return something unique
             return None
-    
+
+        def are_signals_cached(self, handles):
+            # Mock implementation - signals are always cached
+            return True
+
+        def get_signal(self, handle):
+            # Mock implementation
+            return f"signal_{handle}"
+
     db = MockWaveformDB()
-    
+
     # Create hierarchical nodes
     group_node = SignalNodeGroup(
         name="group1",
@@ -231,18 +249,19 @@ def test_snippet_node_hierarchy():
             SignalNodeSignal(name="apb_testbench.group1.sig2", var=MockVar("sig2"), handle=-1)
         ]
     )
-    
+
     # Set parent references
     for child in group_node.children:
         child.parent = group_node
-    
-    # Test validation with hierarchy
-    validated = InstantiateSnippetDialog.validate_and_resolve_nodes([group_node], db)
+
+    # Test validation with hierarchy - now returns a tuple
+    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes([group_node], db)
     assert len(validated) == 1
     assert validated[0].is_group
     assert len(validated[0].children) == 2
     assert validated[0].children[0].handle != -1
     assert validated[0].children[1].handle != -1
+    assert len(handles_to_load) == 0  # All signals are cached
 
 
 def test_exit_codes_simulation():

@@ -3,7 +3,7 @@
 from PySide6.QtWidgets import QWidget, QScrollBar
 from PySide6.QtCore import Qt, Signal, QModelIndex, QTimer, QRectF, QRect
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics, QImage, QResizeEvent, QPaintEvent, QShowEvent, QMouseEvent, QCloseEvent, QKeyEvent, QBrush
-from typing import List, Tuple, Dict, Optional, Union, Set
+from typing import List, Tuple, Dict, Optional, Union, Set, Any
 from .waveform_item_model import WaveformItemModel
 from dataclasses import dataclass, field
 from pyrox import SignalHandle
@@ -165,7 +165,7 @@ class WaveformCanvas(QWidget):
         """Set the shared vertical scrollbar."""
         self._shared_scrollbar = scrollbar
         if scrollbar:
-            scrollbar.valueChanged.connect(self.update)
+            scrollbar.valueChanged.connect(lambda _: self.update())
 
     def setHeaderHeight(self, height: int) -> None:
         """Set the header height to match the tree view's header."""
@@ -379,6 +379,7 @@ class WaveformCanvas(QWidget):
         if self._pending_update:
             self._pending_update = False
             self.update()
+
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """Paint the waveforms with caching."""
@@ -618,10 +619,11 @@ class WaveformCanvas(QWidget):
                 
             try:
                 db = self._model._session.waveform_db
-                # Get raw value via query_signal
-                signal_obj = db.get_signal(signal_node.handle)
-                if not signal_obj:
+                # Skip if signal not loaded yet (avoid blocking)
+                if not signal_node.signal:
                     continue
+                # Use already loaded signal object
+                signal_obj = signal_node.signal
                 query = signal_obj.query_signal(max(0, self._cursor_time))
                 raw_value = query.value
 
@@ -939,15 +941,11 @@ class WaveformCanvas(QWidget):
         group_draw_data = params.get('group_draw_data', {})
         layout = params.get('layout')
 
-        if not draw_commands and not group_draw_data:
-            # Show loading message
+        if not layout:
+            # No layout means no rows to render
             painter.setPen(QColor(config.COLORS.TEXT_MUTED))
             painter.setFont(QFont("Arial", RENDERING.FONT_SIZE_LARGE))
-            painter.drawText(params['width'] // 2 - 50, params['height'] // 2, "Loading waveforms...")
-            return
-
-        if not layout:
-            # Fallback to legacy rendering if no layout
+            painter.drawText(params['width'] // 2 - 50, params['height'] // 2, "No signals to display")
             return
 
         # Waveforms need to be offset by header height
@@ -1058,7 +1056,7 @@ class WaveformCanvas(QWidget):
             # Draw a regular signal
             node = row.source
             if isinstance(node, SignalNodeSignal) and node.handle is not None:
-                # Check if signal is loading
+                # Check if signal is loading (signal is None)
                 if node.signal is None:
                     # Draw loading placeholder
                     painter.setPen(QPen(QColor(128, 128, 128)))  # Gray color for loading text
@@ -1066,6 +1064,7 @@ class WaveformCanvas(QWidget):
                     loading_text = "Loading..."
                     text_rect = QRectF(10, y + row_height // 2 - 10, params['width'] - 20, 20)
                     painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, loading_text)
+                # Check if we have draw commands for this signal
                 elif node.handle in draw_commands:
                     drawing_data = draw_commands[node.handle]
                     # Create node_info for renderer compatibility
@@ -1089,6 +1088,7 @@ class WaveformCanvas(QWidget):
                         draw_analog_signal(painter, node_info, drawing_data, y, row_height, params)
                     elif render_type == RenderType.EVENT:
                         draw_event_signal(painter, node_info, drawing_data, y, row_height, params)
+                # else: Signal not loaded and no draw commands - show nothing (shouldn't happen)
         elif row.kind == 'group_content' and row.descriptor:
             # Draw group content using the registry
             group_id = row.descriptor.cache_key

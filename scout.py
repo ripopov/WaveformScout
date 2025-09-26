@@ -1250,8 +1250,13 @@ class WaveScoutMainWindow(FramelessWindow):
             for node in signal_nodes:
                 self._add_node_to_session(node)
         else:
-            # Need to load signals asynchronously
-            self._load_signals_async(signal_nodes, handles)
+            # Need to load signals asynchronously using new system
+            # Add nodes immediately with signal=None
+            for node in signal_nodes:
+                self._add_node_to_session(node)
+            # Trigger async loading
+            if self.wave_widget.session.waveform_db and hasattr(self.wave_widget.session.waveform_db, 'load_signals_async'):
+                self.wave_widget.session.waveform_db.load_signals_async(handles)
     
     def _extract_session_handles(self, session):
         """Extract all signal handles from a session.
@@ -1344,47 +1349,32 @@ class WaveScoutMainWindow(FramelessWindow):
             tprint(f"Scheduling design tree update via QTimer (10ms delay)")
             QTimer.singleShot(10, update_design_tree)
     
+    # Legacy async loading - replaced by new event-driven async system
+    # This method is kept for backward compatibility but should not be used
     def _load_signals_async(self, signal_nodes, handles):
-        """Load signals asynchronously with progress dialog.
-        
+        """[DEPRECATED] Load signals asynchronously with progress dialog.
+
+        This method has been replaced by the new event-driven async loading system.
+        The new system uses WaveformDB.load_signals_async() and event bus for
+        proper thread-safe signal loading.
+
         Args:
             signal_nodes: List of SignalNode objects to add after loading
             handles: List of signal handles to preload
         """
+        # For backward compatibility, just add nodes immediately
+        # The new async system will handle the actual loading
         waveform_db = self.wave_widget.session.waveform_db
         if not waveform_db:
             return
-        
-        # Create progress dialog
-        num_signals = len(handles)
-        self.signal_loading_dialog = QProgressDialog(
-            f"Loading {num_signals} signal{'s' if num_signals != 1 else ''}...",
-            None,  # No cancel button
-            0,
-            0,  # Indeterminate progress
-            self
-        )
-        self.signal_loading_dialog.setWindowTitle("Loading Signals")
-        self.signal_loading_dialog.setWindowModality(Qt.WindowModal)
-        self.signal_loading_dialog.setMinimumDuration(0)  # Show immediately
-        self.signal_loading_dialog.show()
-        
-        # Process events to ensure dialog is rendered
-        QApplication.processEvents()
-        
-        # Store nodes for later addition
-        self._loading_state.pending_signal_nodes = signal_nodes
-        
-        loader = LoaderRunnable(
-            waveform_db.preload_signals,
-            handles
-        )
-        loader.signals.finished.connect(self._on_signals_loaded)
-        loader.signals.error.connect(self._on_signal_load_error)
-        
-        # Start loading after a brief delay to ensure dialog is visible
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(10, lambda: self.thread_pool.start(loader))
+
+        # Just add the nodes - signals will load asynchronously via new system
+        for node in signal_nodes:
+            self._add_node_to_session(node)
+
+        # Trigger async loading through new system if available
+        if hasattr(waveform_db, 'load_signals_async'):
+            waveform_db.load_signals_async(handles)
     
     def _on_signals_loaded(self, result=None):
         """Handle successful signal loading.
@@ -1800,9 +1790,12 @@ class WaveScoutMainWindow(FramelessWindow):
             
             # Validate and resolve handles
             try:
-                validated_nodes = InstantiateSnippetDialog.validate_and_resolve_nodes(
+                validated_nodes, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
                     full_path_nodes, waveform_db
                 )
+                # Schedule async loading if needed
+                if handles_to_load and hasattr(waveform_db, 'load_signals_async'):
+                    waveform_db.load_signals_async(handles_to_load)
             except ValueError as e:
                 # Enhance error message to include snippet name
                 print(f"Error in snippet '{name}': {e}", file=sys.stderr)

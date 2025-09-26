@@ -62,6 +62,9 @@ class WaveScoutWidget(QWidget):
         self.controller.on("viewport_changed", self._update_canvas_time_range)
         self.controller.on("cursor_changed", self._on_controller_cursor_changed)
         self.controller.on("markers_changed", self._on_controller_markers_changed)
+        # Connect async signal loading callbacks
+        self.controller.on("signals_loaded", self._on_controller_signals_loaded)
+        self.controller.on("signals_loading", self._on_controller_signals_loading)
 
         # Connect to theme changes to update signal colors
         from .theme import theme_manager
@@ -135,7 +138,6 @@ class WaveScoutWidget(QWidget):
         
         # Canvas will use the scrollbar for painting
         self._canvas.setSharedScrollBar(self._shared_scrollbar)
-        self._shared_scrollbar.valueChanged.connect(self._canvas.update)
         
     def setSession(self, session: WaveformSession) -> None:
         """Set the waveform session and create the model."""
@@ -479,6 +481,41 @@ class WaveScoutWidget(QWidget):
     def _on_controller_markers_changed(self) -> None:
         """Handle markers change from controller."""
         if self._canvas:
+            self._canvas.update()
+
+    def _on_controller_signals_loaded(self) -> None:
+        """Handle signals loaded event from controller.
+
+        This is called when async signal loading completes and we need to
+        update the canvas to show the newly loaded signals.
+        """
+        print(f"[WAVE_SCOUT_WIDGET] _on_controller_signals_loaded called")
+        if self._canvas:
+            # Force canvas to repaint now that signals are loaded
+            print(f"[WAVE_SCOUT_WIDGET] Updating canvas")
+            self._canvas.update()
+
+        # Also trigger model update to refresh the values column
+        if self.model:
+            row_count = self.model.rowCount()
+            if row_count > 0:
+                print(f"[WAVE_SCOUT_WIDGET] Emitting dataChanged for {row_count} rows")
+                # Emit dataChanged for all rows to update values
+                self.model.dataChanged.emit(
+                    self.model.index(0, 0),
+                    self.model.index(row_count - 1, self.model.columnCount() - 1)
+                )
+
+    def _on_controller_signals_loading(self) -> None:
+        """Handle signals loading event from controller.
+
+        This is called when async signal loading starts. We could use this
+        to show loading indicators if needed.
+        """
+        print(f"[WAVE_SCOUT_WIDGET] _on_controller_signals_loading called")
+        # For now, just ensure canvas updates to show "Loading..." placeholders
+        if self._canvas:
+            print(f"[WAVE_SCOUT_WIDGET] Updating canvas for loading state")
             self._canvas.update()
     
     def _on_theme_changed(self) -> None:

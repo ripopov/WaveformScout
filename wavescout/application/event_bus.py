@@ -18,8 +18,10 @@ class EventBus:
     
     def subscribe(self, event_type: Type[T], handler: Callable[[T], None]) -> None:
         """Subscribe to events of specific type."""
+        print(f"[EVENT_BUS] Subscribing {handler.__name__ if hasattr(handler, '__name__') else handler} to {event_type.__name__}")
         # Cast is safe because we ensure type consistency
         self._subscribers[event_type].append(handler)  # type: ignore[arg-type]
+        print(f"[EVENT_BUS] Now {len(self._subscribers[event_type])} subscribers for {event_type.__name__}")
     
     def unsubscribe(self, event_type: Type[T], handler: Callable[[T], None]) -> None:
         """Unsubscribe from events."""
@@ -31,13 +33,21 @@ class EventBus:
                 
     def publish(self, event: Event) -> None:
         """Publish event to all subscribers."""
+        import threading
         event_type = type(event)
         handlers = self._subscribers.get(event_type, [])
-        
+
+        print(f"[EVENT_BUS] Publishing {event_type.__name__} on thread {threading.current_thread().name}")
+        print(f"[EVENT_BUS] Found {len(handlers)} subscribers")
+
         for handler in handlers:
             try:
+                handler_name = handler.__name__ if hasattr(handler, '__name__') else str(handler)
+                print(f"[EVENT_BUS] Calling handler {handler_name}")
                 handler(event)
+                print(f"[EVENT_BUS] Handler {handler_name} completed")
             except Exception as e:
+                print(f"[EVENT_BUS] Handler {handler_name} raised exception: {e}")
                 self._logger.error(f"Handler error for {event_type.__name__}: {e}")
                 if __debug__:
                     raise

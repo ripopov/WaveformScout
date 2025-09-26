@@ -175,9 +175,10 @@ def generate_signal_draw_commands(
         if signal.handle is None:
             return None
 
-        # Prefer already-attached Signal object to avoid redundant loads
-        signal_obj = signal.signal if getattr(signal, 'signal', None) is not None else waveform_db.get_signal(signal.handle)
+        # Only use already-attached Signal object to avoid blocking loads
+        signal_obj = signal.signal if hasattr(signal, 'signal') else None
         if not signal_obj:
+            # Signal not loaded yet - return None to skip rendering
             return None
 
         # Get signal bit width for data format conversion

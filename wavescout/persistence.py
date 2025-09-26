@@ -77,22 +77,27 @@ def _serialize_node(node: SignalNode) -> Dict[str, Any]:
     return data
 
 
-def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProtocol) -> None:
+def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProtocol) -> List[int]:
     """Resolve signal handles for all nodes to ensure they're correct for the current backend.
-    
+
     This is crucial when loading sessions across different backends (pylibfst vs pyrox)
     since they may have different handle assignments and signal name formats.
+
+    Returns:
+        List of handles that need to be loaded asynchronously
     """
     if not waveform_db:
-        return
-    
+        return []
+
+    handles_to_load: List[int] = []
+
     # Recursively resolve handles using the current backend's find_handle_by_path
     def resolve_node(node: SignalNode) -> None:
         if isinstance(node, SignalNodeSignal):
             # Always try to resolve the handle by name to ensure it's correct for this backend
             # First try with the exact name
             handle = waveform_db.find_handle_by_path(node.name)
-            
+
             # If not found and name has trailing spaces, try without spaces
             # (handles the case where pylibfst adds trailing spaces but pyrox doesn't)
             if handle is None and node.name.endswith(' '):
@@ -101,25 +106,33 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProt
                 if handle is not None:
                     # Update the node name to match what this backend expects
                     node.name = trimmed_name
-            
+
             # Update the handle if we found it
             if handle is not None:
                 node.handle = handle
-                # Also load the Signal object
-                node.signal = waveform_db.get_signal(handle)
+                # Check if signal is cached
+                if hasattr(waveform_db, 'are_signals_cached') and waveform_db.are_signals_cached([handle]):
+                    # Load synchronously if cached
+                    node.signal = waveform_db.get_signal(handle)
+                else:
+                    # Leave signal as None and mark for async loading
+                    node.signal = None
+                    handles_to_load.append(handle)
                 # Also update the var field
                 var = waveform_db.get_var(handle)
                 if var is not None:
                     node.var = var
             # If still None, keep the existing handle (may work for aliases)
-        
+
         if isinstance(node, SignalNodeGroup):
             for child in node.children:
                 resolve_node(child)
-    
+
     # Process all root nodes
     for node in nodes:
         resolve_node(node)
+
+    return handles_to_load
 
 
 def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = None, waveform_db: Optional['WaveformDBProtocol'] = None) -> SignalNode:
@@ -248,10 +261,10 @@ def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[
 
 
 def deserialize_snippet_nodes(
-    data: List[Dict[str, Any]], 
+    data: List[Dict[str, Any]],
     parent_scope: str,
     waveform_db: Optional[WaveformDBProtocol]
-) -> Optional[List[SignalNode]]:
+) -> Optional[tuple[List[SignalNode], List[int]]]:
     """
     Deserialize snippet nodes with scope remapping and handle resolution.
     
@@ -261,8 +274,8 @@ def deserialize_snippet_nodes(
         waveform_db: WaveformDB instance to resolve handles from
     
     Returns:
-        List of SignalNode objects with remapped names and resolved handles,
-        or None if any signal cannot be found in the waveform
+        Tuple of (List of SignalNode objects with remapped names and resolved handles,
+        List of handles that need async loading), or None if any signal cannot be found
     """
     if not waveform_db:
         return None
@@ -353,13 +366,31 @@ def deserialize_snippet_nodes(
     
     # Deserialize all root nodes
     result_nodes = []
+    handles_to_load = []
+
+    def collect_handles(node: SignalNode) -> None:
+        """Collect handles that need async loading."""
+        if isinstance(node, SignalNodeSignal) and node.handle is not None:
+            # Check if signal needs to be loaded
+            if hasattr(waveform_db, 'are_signals_cached'):
+                if not waveform_db.are_signals_cached([node.handle]):
+                    handles_to_load.append(node.handle)
+                    node.signal = None  # Will be loaded asynchronously
+                else:
+                    # Load cached signal synchronously
+                    node.signal = waveform_db.get_signal(node.handle)
+        if isinstance(node, SignalNodeGroup):
+            for child in node.children:
+                collect_handles(child)
+
     for node_data in data:
         node = deserialize_snippet_node(node_data)
         if node is None:
             return None  # At least one signal not found
+        collect_handles(node)
         result_nodes.append(node)
-    
-    return result_nodes
+
+    return result_nodes, handles_to_load
 
 
 def save_session(session: WaveformSession, path: pathlib.Path) -> None:
@@ -507,22 +538,18 @@ def load_session(path: pathlib.Path) -> WaveformSession:
             session.timescale = timescale
     
     # Resolve signal handles if waveform_db is available
+    handles_to_load: List[int] = []
     if waveform_db:
-        _resolve_signal_handles(session.root_nodes, cast(WaveformDBProtocol, waveform_db))
-        
-        # Preload all signals used in the session while we're still in the loading thread
-        # This avoids cross-thread signal corruption issues
-        handles_to_preload: List[int] = []
-        def collect_handles(nodes: List[SignalNode]) -> None:
-            for node in nodes:
-                if isinstance(node, SignalNodeSignal) and node.handle is not None:
-                    handles_to_preload.append(node.handle)
-                if isinstance(node, SignalNodeGroup):
-                    collect_handles(node.children)
-        collect_handles(session.root_nodes)
-        
-        if handles_to_preload:
-            waveform_db.preload_signals(handles_to_preload)
+        handles_to_load = _resolve_signal_handles(session.root_nodes, cast(WaveformDBProtocol, waveform_db))
+
+        # Trigger async loading if we have the async API available
+        if handles_to_load and hasattr(waveform_db, 'load_signals_async'):
+            waveform_db.load_signals_async(handles_to_load)
+        elif handles_to_load:
+            # Fallback to synchronous loading for older backends
+            # Preload all signals used in the session while we're still in the loading thread
+            # This avoids cross-thread signal corruption issues
+            waveform_db.preload_signals(handles_to_load)
 
         # Update viewport total_duration from the waveform's time table
         time_table = waveform_db.get_time_table()

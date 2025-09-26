@@ -417,6 +417,10 @@ class DesignTreeView(QWidget):
     
     def _on_variables_selected(self, var_data_list: List[VariableData]) -> None:
         """Handle variables selected from VarsView."""
+        print(f"[DESIGN_TREE] _on_variables_selected: {len(var_data_list)} variables")
+        for var_data in var_data_list[:3]:  # Show first 3
+            if isinstance(var_data, dict):
+                print(f"[DESIGN_TREE]   Variable: {var_data.get('full_path', var_data.get('name', 'unknown'))}")
         self._emit_signal_nodes_from_variables(var_data_list, show_progress=False)
 
     def _emit_signal_nodes_from_variables(self, var_data_list: List[VariableData], show_progress: bool = False) -> None:
@@ -426,6 +430,7 @@ class DesignTreeView(QWidget):
             var_data_list: List of variable data to convert
             show_progress: Whether to show progress dialog for large batches
         """
+        print(f"[DESIGN_TREE] _emit_signal_nodes_from_variables: {len(var_data_list)} variables")
         signal_nodes = []
         handles_to_load = []
 
@@ -456,13 +461,16 @@ class DesignTreeView(QWidget):
                 progress.setValue(len(signal_nodes))
 
             # Emit nodes immediately (with signal=None for uncached)
+            print(f"[DESIGN_TREE] Emitting {len(signal_nodes)} signal nodes")
             self.signals_selected.emit(signal_nodes)
 
             # Trigger async loading for uncached handles
             if handles_to_load and self.waveform_db:
+                print(f"[DESIGN_TREE] Triggering async load for {len(handles_to_load)} handles: {handles_to_load[:5]}...")
                 self.waveform_db.load_signals_async(handles_to_load)
                 self.status_message.emit(f"Added {len(signal_nodes)} signal(s), loading {len(handles_to_load)} in background")
             else:
+                print(f"[DESIGN_TREE] All {len(signal_nodes)} signals are cached")
                 self.status_message.emit(f"Added {len(signal_nodes)} signal(s)")
     
     def _is_single_bit(self, var_obj: Optional[Var], handle: Optional[SignalHandle]) -> bool:

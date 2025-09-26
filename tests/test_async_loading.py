@@ -405,7 +405,7 @@ class TestAsyncLoading:
 
     def test_async_load_returns_signals(self):
         """Test that async loading returns Signal objects with correct data"""
-        test_file = str(TEST_INPUTS_DIR / "analog_signals.vcd")
+        test_file = str(TEST_INPUTS_DIR / "analog_signals_short.fst")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
 
         collector = AsyncEventCollector()
@@ -463,7 +463,7 @@ class TestAsyncLoading:
 
     def test_async_load_performance(self):
         """Test async loading performance and verify caching behavior"""
-        test_file = str(TEST_INPUTS_DIR / "analog_signals.vcd")
+        test_file = str(TEST_INPUTS_DIR / "analog_signals_short.fst")
         wf = pyrox.Waveform(test_file, load_header=True, load_body=True)
 
         collector = AsyncEventCollector()
