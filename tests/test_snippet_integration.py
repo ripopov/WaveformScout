@@ -1100,3 +1100,178 @@ class TestSnippetBugRegressions:
         assert validated[0].is_group == True
         assert len(validated[0].children) == 1
         assert validated[0].children[0].handle != -1
+
+
+class TestSnippetAPBScenario:
+    """Test comprehensive APB scenario including single-signal group parent scope fix."""
+
+    @pytest.fixture
+    def apb_waveform_db(self):
+        """Load apb_sim.vcd file for testing."""
+        db = WaveformDB()
+        test_vcd = Path("test_inputs/apb_sim.vcd")
+        if not test_vcd.exists():
+            pytest.skip(f"Test VCD file not found: {test_vcd}")
+        db.open(str(test_vcd))
+        return db
+
+    def test_apb_addr_snippet_scenario(self, apb_waveform_db, snippet_manager, qapp):
+        """Test complete APB_ADDR snippet scenario."""
+        from wavescout.waveform_loader import create_signal_node_from_var
+        from PySide6.QtWidgets import QInputDialog
+
+        db = apb_waveform_db
+        session = WaveformSession()
+
+        # Step 1: Find and add apb_testbench.paddr signal to canvas
+        apb_addr_node = None
+        target_signal = "apb_testbench.paddr"
+
+        for handle, vars_list in db.iter_handles_and_vars():
+            for var in vars_list:
+                full_name = var.full_name(db.hierarchy)
+                if full_name == target_signal:
+                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                    apb_addr_node.name = full_name
+                    session.root_nodes.append(apb_addr_node)
+                    break
+            if apb_addr_node:
+                break
+
+        assert apb_addr_node is not None, f"Signal {target_signal} not found in waveform"
+        assert len(session.root_nodes) == 1
+        assert session.root_nodes[0].name == target_signal
+
+        # Step 2: Select the signal and create group APB_ADDR
+        session.selected_nodes = [apb_addr_node]
+
+        # Create a group containing just this signal (simulating UI interaction)
+        group_node = SignalNodeGroup(
+            name="APB_ADDR",
+            children=[apb_addr_node]
+        )
+
+        # Update session to replace the signal with the group
+        session.root_nodes = [group_node]
+        apb_addr_node.parent = group_node
+
+        assert len(session.root_nodes) == 1
+        assert session.root_nodes[0].is_group
+        assert session.root_nodes[0].name == "APB_ADDR"
+        assert len(session.root_nodes[0].children) == 1
+        assert session.root_nodes[0].children[0].name == target_signal
+
+        # Step 3: Save group APB_ADDR as snippet
+        parent_scope = snippet_manager.find_common_parent(group_node)
+        assert parent_scope == "apb_testbench", f"Expected parent scope 'apb_testbench', got '{parent_scope}'"
+
+        # Create a copy with relative name for the snippet
+        signal_copy = group_node.children[0].deep_copy()
+        # Convert full name to relative name by removing parent scope prefix
+        relative_name = signal_copy.name
+        if parent_scope and signal_copy.name.startswith(f"{parent_scope}."):
+            relative_name = signal_copy.name[len(parent_scope) + 1:]  # +1 for the dot
+        signal_copy.name = relative_name
+
+        snippet = Snippet(
+            name="APB_ADDR",
+            parent_name=parent_scope,
+            num_nodes=1,
+            nodes=[signal_copy],  # Save children with relative names
+            description="APB read address signal"
+        )
+
+        assert snippet_manager.save_snippet(snippet)
+        assert snippet_manager.snippet_exists("APB_ADDR")
+
+        # Step 4: Instantiate APB_ADDR snippet first time
+        loaded_snippet = snippet_manager.get_snippet("APB_ADDR")
+        assert loaded_snippet is not None
+
+        # Build full paths and validate
+        full_path_nodes = []
+        for node in loaded_snippet.nodes:
+            full_path_node = InstantiateSnippetDialog.build_full_paths(node, loaded_snippet.parent_name)
+            full_path_nodes.append(full_path_node)
+
+        validated_nodes1, handles_to_load1 = InstantiateSnippetDialog.validate_and_resolve_nodes(
+            full_path_nodes, db
+        )
+
+        # Wait for async loading if needed
+        if handles_to_load1 and hasattr(db, 'wait_for_signals'):
+            db.wait_for_signals(handles_to_load1, timeout=5.0)
+
+        # Create first instantiation group
+        first_instance = SignalNodeGroup(
+            name="APB_ADDR_1",
+            children=validated_nodes1
+        )
+
+        for child in validated_nodes1:
+            child.parent = first_instance
+
+        session.root_nodes.append(first_instance)
+
+        # Step 5: Instantiate APB_ADDR snippet second time
+        validated_nodes2, handles_to_load2 = InstantiateSnippetDialog.validate_and_resolve_nodes(
+            full_path_nodes, db
+        )
+
+        # Wait for async loading if needed
+        if handles_to_load2 and hasattr(db, 'wait_for_signals'):
+            db.wait_for_signals(handles_to_load2, timeout=5.0)
+
+        # Create second instantiation group
+        second_instance = SignalNodeGroup(
+            name="APB_ADDR_2",
+            children=validated_nodes2
+        )
+
+        for child in validated_nodes2:
+            child.parent = second_instance
+
+        session.root_nodes.append(second_instance)
+
+        # Step 6: Verify canvas now has 3 groups with same signal
+        assert len(session.root_nodes) == 3
+
+        # Original group
+        original_group = session.root_nodes[0]
+        assert original_group.name == "APB_ADDR"
+        assert len(original_group.children) == 1
+        assert original_group.children[0].name == target_signal
+
+        # First instantiation
+        first_group = session.root_nodes[1]
+        assert first_group.name == "APB_ADDR_1"
+        assert len(first_group.children) == 1
+        assert first_group.children[0].name == target_signal
+
+        # Second instantiation
+        second_group = session.root_nodes[2]
+        assert second_group.name == "APB_ADDR_2"
+        assert len(second_group.children) == 1
+        assert second_group.children[0].name == target_signal
+
+        # Verify all have different handles but same signal name
+        original_handle = original_group.children[0].handle
+        first_handle = first_group.children[0].handle
+        second_handle = second_group.children[0].handle
+
+        # All should have the same handle (pointing to same physical signal)
+        assert original_handle == first_handle == second_handle
+        assert original_handle is not None
+
+        # Step 7: Remove APB_ADDR snippet
+        assert snippet_manager.delete_snippet("APB_ADDR")
+        assert not snippet_manager.snippet_exists("APB_ADDR")
+
+        # Verify snippet file was removed
+        snippet_file = snippet_manager._snippets_dir / "APB_ADDR.json"
+        assert not snippet_file.exists()
+
+        # Verify that session state is still intact after snippet deletion
+        assert len(session.root_nodes) == 3
+
+        print("APB_ADDR snippet scenario test completed successfully!")

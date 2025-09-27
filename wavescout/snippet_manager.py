@@ -216,32 +216,43 @@ class SnippetManager(QObject):
     def find_common_parent(self, group_node: SignalNode) -> str:
         """Find common parent scope for all signals in a group."""
         all_paths: list[str] = []
-        
+
         def collect_paths(node: SignalNode) -> None:
             if not node.is_group:
                 all_paths.append(node.name)
             elif isinstance(node, SignalNodeGroup):
                 for child in node.children:
                     collect_paths(child)
-        
+
         collect_paths(group_node)
-        
+
         if not all_paths:
             return ""
-        
-        # Split all paths by '.'
-        split_paths = [path.split('.') for path in all_paths]
-        
-        # Find common prefix
+
+        # Split all paths by '.' and exclude the signal name (last component)
+        parent_paths = []
+        for path in all_paths:
+            parts = path.split('.')
+            if len(parts) > 1:
+                # Keep everything except the signal name (last part)
+                parent_paths.append(parts[:-1])
+            else:
+                # If there's only one component, there's no parent scope
+                parent_paths.append([])
+
+        if not parent_paths or not parent_paths[0]:
+            return ""
+
+        # Find common prefix among parent paths
         common: list[str] = []
-        min_len = min(len(p) for p in split_paths)
-        
+        min_len = min(len(p) for p in parent_paths)
+
         for i in range(min_len):
-            if all(p[i] == split_paths[0][i] for p in split_paths):
-                common.append(split_paths[0][i])
+            if all(p[i] == parent_paths[0][i] for p in parent_paths):
+                common.append(parent_paths[0][i])
             else:
                 break
-        
+
         return '.'.join(common)
     
     def _walk_nodes(self, nodes: list[SignalNode]) -> list[SignalNode]:
