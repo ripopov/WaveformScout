@@ -139,14 +139,6 @@ class SignalNodeSignal(SignalNode):
     format: DisplayFormat = field(default_factory=DisplayFormat)
     is_multi_bit: bool = False
 
-    def __post_init__(self) -> None:
-        """Initialize with AsyncLoadedSignal if not provided."""
-        if not hasattr(self, 'signal') or self.signal is None:
-            # Create placeholder AsyncLoadedSignal
-            from wavescout.waveform_db import AsyncLoadedSignal
-            if self.handle is not None:
-                self.signal = AsyncLoadedSignal.placeholder(self.handle)
-
     def _comparison_state(self) -> Tuple[Any, ...]:
         return (
             self.name,

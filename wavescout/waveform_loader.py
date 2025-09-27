@@ -1,14 +1,14 @@
 """Helper functions to load waveforms and create signal nodes."""
 
-from typing import cast
+from typing import cast, Optional
 import pyrox
 from pyrox import SignalHandle
 
 from .data_model import SignalNode, SignalNodeSignal, DisplayFormat, DataFormat, WaveformSession, RenderType
-from .waveform_db import WaveformDB
+from .waveform_db import WaveformDB, AsyncLoadedSignal
 
 
-def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, handle: SignalHandle) -> SignalNode:
+def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, handle: SignalHandle, waveform_db: WaveformDB) -> SignalNode:
     """Create a SignalNode from a backend variable."""
     # Get variable info
     full_name = var.full_name(hierarchy)
@@ -45,13 +45,13 @@ def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, hand
         # Default to unsigned
         display_format.data_format = DataFormat.UNSIGNED
     
-    # Create signal node
-    from wavescout.waveform_db import AsyncLoadedSignal
+    async_signal = AsyncLoadedSignal(handle, waveform_db)
+
     node = SignalNodeSignal(
         name=full_name,
         var=var,  # Pass the var object directly
         handle=handle,
-        signal=AsyncLoadedSignal.placeholder(handle),
+        signal=async_signal,  # type: ignore
         format=display_format,
         nickname="",
         is_multi_bit=not is_single_bit  # Multi-bit if NOT 1-bit
