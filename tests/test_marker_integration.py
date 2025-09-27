@@ -146,7 +146,7 @@ class MarkerTestHelper:
         return None
 
 
-def test_marker_integration():
+def test_marker_integration(qtbot):
     """
     Test marker functionality: placement, navigation, and persistence.
 
@@ -208,7 +208,9 @@ def test_marker_integration():
         assert test_vcd.exists(), f"Test VCD not found: {test_vcd}"
 
         window = WaveScoutMainWindow()
+        qtbot.addWidget(window)
         window.show()
+        qtbot.waitExposed(window)
 
         # Load the VCD file
         window.load_file(str(test_vcd))
@@ -249,7 +251,7 @@ def test_marker_integration():
                 # Find first variable in hierarchy
                 for scope in waveform_db.hierarchy.top_scopes():
                     for var in scope.vars(waveform_db.hierarchy):
-                        handle = waveform_db.get_handle_for_var(var)
+                        handle = var.signal_handle()
                         if handle is not None:
                             signal_node = SignalNodeSignal(
                                 name=var.name(waveform_db.hierarchy),
@@ -382,13 +384,24 @@ def test_marker_integration():
         raise
 
     finally:
-        # Cleanup
+        # Window cleanup
+        if 'window' in locals():
+            # Wait for any pending operations to complete
+            if hasattr(window, 'thread_pool'):
+                window.thread_pool.waitForDone(5000)
+            window.close()
+
+        # Cleanup temporary file
         print(f"\nCleaned up temporary file: {temp_session_path}")
         if os.path.exists(temp_session_path):
             os.remove(temp_session_path)
 
 
 if __name__ == "__main__":
-    # Run as standalone script
-    test_marker_integration()
+    # Run as standalone script - create a mock qtbot for standalone execution
+    class MockQtBot:
+        def addWidget(self, widget): pass
+        def waitExposed(self, widget): pass
+
+    test_marker_integration(MockQtBot())
     sys.exit(0)

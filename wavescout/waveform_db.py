@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 import pyrox
 
 from pyrox import SignalHandle
-
+import threading
 from .data_model import Time, Timescale, TimeUnit
 from .application.event_bus import EventBus
 from .application.events import SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
@@ -21,50 +21,35 @@ from .timing_utils import tprint
 class AsyncEventBridge(QObject):
     """Bridge to safely pass async events from worker threads to main Qt thread."""
 
-    loading_started = Signal(list)  # List of handles
-    loaded = Signal(list)  # List of (handle, signal) pairs
-    loading_failed = Signal(list, str)  # List of handles, error message
+    loading_started = Signal(List[SignalHandle])  # List of handles
+    loaded = Signal(List[Tuple[SignalHandle, Signal]])  # List of (handle, signal) pairs 
+    loading_failed = Signal(List[SignalHandle], str)  # List of handles, error message
 
-    def __init__(self, event_bus: Optional[EventBus] = None):
+    def __init__(self, event_bus: EventBus):
         super().__init__()
         self._event_bus = event_bus
 
         # Connect signals to event bus on main thread
-        if self._event_bus:
-            self.loading_started.connect(self._emit_loading_started)
-            self.loaded.connect(self._emit_loaded)
-            self.loading_failed.connect(self._emit_loading_failed)
+        self.loading_started.connect(self._emit_loading_started)
+        self.loaded.connect(self._emit_loaded)
+        self.loading_failed.connect(self._emit_loading_failed)
 
-    def _emit_loading_started(self, handles: List[Any]) -> None:
+    def _emit_loading_started(self, handles: List[SignalHandle]) -> None:
         """Emit loading started event on main thread."""
-        import threading
-        tprint(f"[ASYNC_BRIDGE] _emit_loading_started on thread {threading.current_thread().name} with {len(handles)} handles")
-        if self._event_bus:
-            tprint("[ASYNC_BRIDGE] Publishing SignalLoadingStartedEvent")
-            self._event_bus.publish(SignalLoadingStartedEvent(handles=handles))
-        else:
-            tprint("[ASYNC_BRIDGE] No event bus to publish to")
+        tprint(
+            f"[ASYNC_BRIDGE] _emit_loading_started on thread {threading.current_thread().name} with {len(handles)} handles")
+        self._event_bus.publish(SignalLoadingStartedEvent(handles=handles))
 
-    def _emit_loaded(self, pairs: List[Tuple[Any, Any]]) -> None:
+    def _emit_loaded(self, pairs: List[Tuple[SignalHandle, pyrox.Signal]]) -> None:
         """Emit loaded event on main thread."""
-        import threading
         tprint(f"[ASYNC_BRIDGE] _emit_loaded on thread {threading.current_thread().name} with {len(pairs)} pairs")
-        if self._event_bus:
-            tprint("[ASYNC_BRIDGE] Publishing SignalLoadedEvent")
-            self._event_bus.publish(SignalLoadedEvent(pairs=pairs))
-        else:
-            tprint("[ASYNC_BRIDGE] No event bus to publish to")
+        self._event_bus.publish(SignalLoadedEvent(pairs=pairs))
 
-    def _emit_loading_failed(self, handles: List[Any], error: str) -> None:
+    def _emit_loading_failed(self, handles: List[SignalHandle], error: str) -> None:
         """Emit loading failed event on main thread."""
-        import threading
-        tprint(f"[ASYNC_BRIDGE] _emit_loading_failed on thread {threading.current_thread().name} with {len(handles)} handles, error: {error}")
-        if self._event_bus:
-            tprint("[ASYNC_BRIDGE] Publishing SignalLoadingFailedEvent")
-            self._event_bus.publish(SignalLoadingFailedEvent(handles=handles, error=error))
-        else:
-            tprint("[ASYNC_BRIDGE] No event bus to publish to")
-
+        tprint(
+            f"[ASYNC_BRIDGE] _emit_loading_failed on thread {threading.current_thread().name} with {len(handles)} handles, error: {error}")
+        self._event_bus.publish(SignalLoadingFailedEvent(handles=handles, error=error))
 
 class WaveformDB:
     """Waveform database with backend-agnostic design for reading VCD/FST files."""
@@ -164,27 +149,6 @@ class WaveformDB:
 
         return transitions
 
-
-    def sample_with_next_change(self, handle: SignalHandle, t: Time) -> Tuple[str, Optional[Time]]:
-        """Get signal value at specific time and the time of next change.
-
-        Returns:
-            Tuple of (value_string, next_change_time)
-            next_change_time is None if there are no more changes
-        """
-        signal = self.get_signal(handle)
-        if not signal:
-            return ("", None)
-
-        # Use query_signal for efficient lookup
-        query_result = signal.query_signal(max(0, t))
-
-        value_str = ""
-        if query_result.value is not None:
-            value_str = str(query_result.value)
-
-        return (value_str, query_result.next_time)
-
     def close(self) -> None:
         """Close the waveform file."""
         # Clear async callback before closing
@@ -269,7 +233,6 @@ class WaveformDB:
 
         This method uses Python-side caching for efficient signal loading.
         """
-        import threading
         thread_name = threading.current_thread().name
 
         if self.waveform is None:
@@ -412,17 +375,6 @@ class WaveformDB:
             refs.add(var.signal_handle())
         return list(refs)
 
-    def get_handle_for_var(self, var: pyrox.Var) -> Optional[SignalHandle]:
-        """Get handle for a specific variable object.
-
-        Args:
-            var: Pyrox variable object
-
-        Returns:
-            Handle ID if found, None otherwise
-        """
-        # SignalHandle is just the signal_handle() value
-        return var.signal_handle()
 
     def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
         """Find handle by variable name.
@@ -440,19 +392,6 @@ class WaveformDB:
         if var:
             return var.signal_handle()  # type: ignore[no-any-return]
         return None
-
-    def get_var_to_handle_mapping(self) -> Dict[pyrox.Var, int]:
-        """Get complete variable-to-handle mapping.
-
-        Returns:
-            Dictionary mapping pyrox variable objects to handle IDs
-        """
-        if not self.hierarchy:
-            return {}
-        var_to_handle = {}
-        for var in self.hierarchy.all_vars():
-            var_to_handle[var] = var.signal_handle()
-        return var_to_handle
 
     def get_next_available_handle(self) -> int:
         """Get the next available handle ID."""
@@ -548,7 +487,6 @@ class WaveformDB:
         This callback is invoked from worker threads, so we need to be
         thread-safe and post events to the Qt thread when updating UI.
         """
-        import threading
         tprint(f"[WAVEFORM_DB] _on_async_event called from thread {threading.current_thread().name}")
         tprint(f"[WAVEFORM_DB] Event: {event}")
 
@@ -676,19 +614,3 @@ class WaveformDB:
             time_module.sleep(0.01)
 
         return False
-
-    def load_signals_blocking(self, handles: Sequence[SignalHandle]) -> None:
-        """Load signals synchronously (compatibility layer).
-
-        This method is primarily for testing and legacy code paths.
-        It uses the async API but blocks until completion.
-
-        Args:
-            handles: Handles to load
-        """
-        # Trigger async load
-        self.load_signals_async(handles)
-
-        # Wait for completion
-        if not self.wait_for_signals(handles, timeout=10.0):
-            raise TimeoutError(f"Timeout loading signals: {handles}")

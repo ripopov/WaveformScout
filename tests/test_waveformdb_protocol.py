@@ -18,7 +18,6 @@ def test_waveformdb_has_required_methods():
     # Check all methods exist
     assert hasattr(db, 'find_handle_by_path')
     assert hasattr(db, 'find_handle_by_name')
-    assert hasattr(db, 'get_handle_for_var')
     assert hasattr(db, 'get_var')
     assert hasattr(db, 'iter_handles_and_vars')
     assert hasattr(db, 'get_var_bitwidth')

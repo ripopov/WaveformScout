@@ -146,7 +146,7 @@ def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3
                     if signal_count >= max_count:
                         break
 
-                    handle = waveform_db.get_handle_for_var(var)
+                    handle = var.signal_handle()
                     if handle is not None:
                         # Create signal node
                         signal_node = SignalNodeSignal(
