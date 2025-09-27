@@ -186,6 +186,7 @@ class InstantiateSnippetDialog(QDialog):
         self.snippet = snippet
         self.waveform_db = waveform_db
         self.remapped_nodes: Optional[list[SignalNode]] = None
+        self.handles_to_load: list[int] = []
         self.group_name: str = snippet.name  # Default to snippet name
         
         self.setWindowTitle(f"Instantiate Snippet: {snippet.name}")
@@ -308,17 +309,17 @@ class InstantiateSnippetDialog(QDialog):
         
         # Try to remap and validate
         try:
-            self.remapped_nodes = self._remap_and_validate(target_scope)
-            
+            self.remapped_nodes, self.handles_to_load = self._remap_and_validate(target_scope)
+
             # Update preview
             preview_lines = []
             for node in self._get_all_signals(self.remapped_nodes):
                 preview_lines.append(f"  {node.name}")
-            
+
             self.preview_text.setPlainText("\n".join(preview_lines[:20]))  # Limit preview
             if len(preview_lines) > 20:
                 self.preview_text.append(f"\n  ... and {len(preview_lines) - 20} more")
-            
+
             self.validation_label.setText("✓ All signals found in target scope")
             self.validation_label.setStyleSheet("QLabel { color: green; }")
             self.ok_button.setEnabled(True)
@@ -329,6 +330,7 @@ class InstantiateSnippetDialog(QDialog):
             self.preview_text.clear()
             self.ok_button.setEnabled(False)
             self.remapped_nodes = None
+            self.handles_to_load = []
     
     @staticmethod
     def build_full_paths(node: SignalNode, parent_scope: str) -> SignalNode:
@@ -349,8 +351,12 @@ class InstantiateSnippetDialog(QDialog):
 
         return new_node
     
-    def _remap_and_validate(self, new_parent_scope: str) -> list[SignalNode]:
-        """Build full paths from relative names and validate they exist."""
+    def _remap_and_validate(self, new_parent_scope: str) -> tuple[list[SignalNode], list[int]]:
+        """Build full paths from relative names and validate they exist.
+
+        Returns:
+            Tuple of (validated nodes, handles that need async loading)
+        """
         if not self.waveform_db:
             raise ValueError("No waveform database available")
 
@@ -362,11 +368,10 @@ class InstantiateSnippetDialog(QDialog):
         # Then validate and resolve handles
         validated_nodes, handles_to_load = self.validate_and_resolve_nodes(full_path_nodes, self.waveform_db)
 
-        # Schedule async loading if needed
-        if handles_to_load and hasattr(self.waveform_db, 'load_signals_async'):
-            self.waveform_db.load_signals_async(handles_to_load)
+        # NOTE: Don't call load_signals_async here - let the caller handle async loading
+        # after the nodes are added to the session tree so they can be found and updated
 
-        return validated_nodes
+        return validated_nodes, handles_to_load
     
     def _get_all_signals(self, nodes: list[SignalNode]) -> list[SignalNode]:
         """Get all non-group signals from node list."""
@@ -391,3 +396,7 @@ class InstantiateSnippetDialog(QDialog):
     def get_group_name(self) -> str:
         """Get the user-specified group name."""
         return self.group_name
+
+    def get_handles_to_load(self) -> list[int]:
+        """Get the handles that need async loading."""
+        return self.handles_to_load

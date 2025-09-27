@@ -1275,3 +1275,274 @@ class TestSnippetAPBScenario:
         assert len(session.root_nodes) == 3
 
         print("APB_ADDR snippet scenario test completed successfully!")
+
+    def test_apb_addr_snippet_instantiation_with_different_scope(self, apb_waveform_db, snippet_manager, qapp):
+        """Test the specific scenario reported: instantiate snippet with different scope."""
+        from wavescout.waveform_loader import create_signal_node_from_var
+
+        db = apb_waveform_db
+        session = WaveformSession()
+
+        # Step 1: Load test_inputs/apb_sim.vcd (already loaded via fixture)
+        print("Step 1: Loaded apb_sim.vcd")
+
+        # Step 2: Add apb_testbench.paddr to canvas
+        apb_addr_node = None
+        target_signal = "apb_testbench.paddr"
+
+        for handle, vars_list in db.iter_handles_and_vars():
+            for var in vars_list:
+                full_name = var.full_name(db.hierarchy)
+                if full_name == target_signal:
+                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                    apb_addr_node.name = full_name
+                    session.root_nodes.append(apb_addr_node)
+                    break
+            if apb_addr_node:
+                break
+
+        assert apb_addr_node is not None, f"Signal {target_signal} not found"
+        print(f"Step 2: Added {target_signal} to canvas")
+
+        # Step 3: Select apb_testbench.paddr and create group APB_ADDR
+        session.selected_nodes = [apb_addr_node]
+
+        group_node = SignalNodeGroup(
+            name="APB_ADDR",
+            children=[apb_addr_node]
+        )
+
+        # Replace signal with group
+        session.root_nodes = [group_node]
+        apb_addr_node.parent = group_node
+
+        print("Step 3: Created APB_ADDR group")
+
+        # Step 4: Save group APB_ADDR to snippets
+        parent_scope = snippet_manager.find_common_parent(group_node)
+        print(f"Parent scope found: {parent_scope}")
+
+        # Create snippet with relative names
+        signal_copy = group_node.children[0].deep_copy()
+        relative_name = signal_copy.name
+        if parent_scope and signal_copy.name.startswith(f"{parent_scope}."):
+            relative_name = signal_copy.name[len(parent_scope) + 1:]
+        signal_copy.name = relative_name
+
+        snippet = Snippet(
+            name="APB_ADDR",
+            parent_name=parent_scope,
+            num_nodes=1,
+            nodes=[signal_copy],
+            description="APB address signal"
+        )
+
+        assert snippet_manager.save_snippet(snippet)
+        print("Step 4: Saved APB_ADDR snippet")
+
+        # Step 5: Instantiate APB_ADDR snippet with DIFFERENT scope: dut scope
+        different_scope = "apb_testbench.dut"
+        print(f"Step 5: Instantiating snippet with different scope: {different_scope}")
+
+        # Load the snippet
+        loaded_snippet = snippet_manager.get_snippet("APB_ADDR")
+        assert loaded_snippet is not None
+
+        # Build full paths with different scope
+        remapped_nodes = []
+        for node in loaded_snippet.nodes:
+            # Create copy and use different parent scope
+            remapped_node = node.deep_copy()
+            # Build full path: different_scope + "." + relative_name
+            full_name = f"{different_scope}.{node.name}"
+            remapped_node.name = full_name
+            remapped_nodes.append(remapped_node)
+
+        # Step 6: Wait till signal loading completes and verify handle resolution
+        print("Step 6: Validating and resolving signals with new scope")
+
+        try:
+            validated_nodes, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
+                remapped_nodes, db
+            )
+
+            # Wait for async signal loading
+            if handles_to_load and hasattr(db, 'wait_for_signals'):
+                print(f"Waiting for {len(handles_to_load)} signals to load...")
+                db.wait_for_signals(handles_to_load, timeout=10.0)
+
+            # Verify signal was loaded properly
+            assert len(validated_nodes) == 1
+            signal_node = validated_nodes[0]
+            assert signal_node.handle != -1, f"Signal handle not resolved: {signal_node.handle}"
+            assert signal_node.name == "apb_testbench.dut.paddr"
+
+            print(f"Step 6: Signal successfully loaded with handle {signal_node.handle}")
+
+        except ValueError as e:
+            pytest.fail(f"Signal validation failed: {e}")
+
+        # Step 7: Verify that SignalNode is updated with valid signal
+        # Check that we can get the variable from the handle
+        var = db.var_from_handle(signal_node.handle)
+        assert var is not None, "Cannot retrieve variable from handle"
+
+        full_name_from_var = var.full_name(db.hierarchy)
+        assert full_name_from_var == "apb_testbench.dut.paddr"
+
+        print("Step 7: SignalNode verified with valid signal data")
+
+        # Step 8: Remove APB_ADDR snippet
+        assert snippet_manager.delete_snippet("APB_ADDR")
+        print("Step 8: Removed APB_ADDR snippet")
+
+        print("Test complete: Snippet instantiation with different scope works correctly!")
+
+    def test_snippet_async_loading_integration(self, apb_waveform_db, snippet_manager, qapp):
+        """Test that snippet instantiation properly handles async signal loading."""
+        from wavescout.waveform_loader import create_signal_node_from_var
+        from wavescout.waveform_controller import WaveformController
+        from wavescout.snippet_dialogs import InstantiateSnippetDialog
+
+        db = apb_waveform_db
+        session = WaveformSession()
+        session.waveform_db = db
+
+        # Create a controller (this handles the async loading events)
+        controller = WaveformController()
+        controller.set_session(session)
+
+        print("Step 1: Created controller and loaded session")
+
+        # Step 2: Create and save a snippet
+        apb_addr_node = None
+        target_signal = "apb_testbench.paddr"
+
+        for handle, vars_list in db.iter_handles_and_vars():
+            for var in vars_list:
+                full_name = var.full_name(db.hierarchy)
+                if full_name == target_signal:
+                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                    apb_addr_node.name = full_name
+                    break
+            if apb_addr_node:
+                break
+
+        assert apb_addr_node is not None
+
+        # Create snippet from the signal
+        parent_scope = "apb_testbench"
+        signal_copy = apb_addr_node.deep_copy()
+        signal_copy.name = "paddr"  # Relative name
+
+        snippet = Snippet(
+            name="ASYNC_TEST",
+            parent_name=parent_scope,
+            num_nodes=1,
+            nodes=[signal_copy]
+        )
+
+        assert snippet_manager.save_snippet(snippet)
+        print("Step 2: Created and saved snippet")
+
+        # Step 3: Instantiate snippet with different scope using dialog
+        different_scope = "apb_testbench.dut"
+        loaded_snippet = snippet_manager.get_snippet("ASYNC_TEST")
+
+        dialog = InstantiateSnippetDialog(loaded_snippet, db)
+        dialog.scope_edit.setText(different_scope)
+        dialog._validate_scope()  # This should validate and prepare nodes
+
+        remapped_nodes = dialog.get_remapped_nodes()
+        handles_to_load = dialog.get_handles_to_load()
+
+        assert remapped_nodes is not None
+        assert len(remapped_nodes) == 1
+        assert remapped_nodes[0].name == "apb_testbench.dut.paddr"
+        print(f"Step 3: Dialog validated nodes, {len(handles_to_load)} handles need loading")
+
+        # Step 4: Simulate the instantiation workflow
+        # First add to session without async loading (like original bug)
+        group_node = SignalNodeGroup(
+            name="ASYNC_TEST_GROUP",
+            children=remapped_nodes,
+            is_expanded=True
+        )
+        for child in remapped_nodes:
+            child.parent = group_node
+
+        # Add to session first
+        success = controller.instantiate_snippet([group_node])
+        assert success
+        print("Step 4: Added nodes to session")
+
+        # Verify the signal is not loaded yet (should be None)
+        signal_node = remapped_nodes[0]
+        assert signal_node.signal is None, "Signal should be None before async loading"
+
+        # Step 5: Now trigger async loading (this is the fix)
+        if handles_to_load and hasattr(db, 'load_signals_async'):
+            db.load_signals_async(handles_to_load)
+            print("Step 5: Triggered async signal loading")
+
+        # Step 6: Wait for async loading to complete
+        if handles_to_load and hasattr(db, 'wait_for_signals'):
+            success = db.wait_for_signals(handles_to_load, timeout=10.0)
+            assert success, "Timeout waiting for signals to load"
+            print("Step 6: Async loading completed")
+
+            # Wait for Qt event processing to complete (the events are delivered asynchronously)
+            from PySide6.QtWidgets import QApplication
+            import time
+            for _ in range(10):  # Give time for Qt signals to be processed
+                QApplication.processEvents()
+                time.sleep(0.01)
+            print("Step 6b: Event processing completed")
+
+        # Step 7: Verify that the signal node was updated by the controller
+        # The controller should have found the node in the session tree and updated it
+        print(f"Signal node handle: {signal_node.handle}")
+        print(f"Signal node signal: {signal_node.signal}")
+        print(f"Session root nodes count: {len(session.root_nodes)}")
+
+        # Let's check if any nodes in the session have the signal loaded
+        def find_signal_nodes_with_handle(nodes, target_handle):
+            found = []
+            for node in nodes:
+                if isinstance(node, SignalNodeSignal) and node.handle == target_handle:
+                    found.append(node)
+                elif isinstance(node, SignalNodeGroup):
+                    found.extend(find_signal_nodes_with_handle(node.children, target_handle))
+            return found
+
+        # Find all nodes with our target handle
+        nodes_with_handle = find_signal_nodes_with_handle(session.root_nodes, signal_node.handle)
+        print(f"Found {len(nodes_with_handle)} nodes with handle {signal_node.handle}")
+        for i, node in enumerate(nodes_with_handle):
+            print(f"  Node {i}: signal={node.signal is not None}, name={node.name}")
+
+        # Check if the session tree node is updated (this is what matters)
+        session_node = nodes_with_handle[0] if nodes_with_handle else None
+        assert session_node is not None, "No node found in session tree"
+        assert session_node.signal is not None, "Signal should be loaded in session tree node"
+
+        # Also check our reference variable - this might be different due to deep_copy
+        print(f"Reference signal_node id: {id(signal_node)}")
+        print(f"Session signal_node id: {id(session_node)}")
+        print(f"Are they the same object? {signal_node is session_node}")
+
+        # For this test, we care that the session tree node is updated, not our reference
+
+        # Verify the signal contains the expected data
+        var = db.var_from_handle(signal_node.handle)
+        assert var is not None
+        full_name_from_var = var.full_name(db.hierarchy)
+        assert full_name_from_var == "apb_testbench.dut.paddr"
+
+        print("Step 7: Signal node was properly updated by async loading mechanism")
+
+        # Step 8: Clean up
+        snippet_manager.delete_snippet("ASYNC_TEST")
+        print("Step 8: Cleanup completed")
+
+        print("SUCCESS: Async loading integration test passed!")

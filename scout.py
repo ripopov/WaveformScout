@@ -1731,28 +1731,34 @@ class WaveScoutMainWindow(FramelessWindow):
         if dialog.exec() == InstantiateSnippetDialog.DialogCode.Accepted:
             remapped_nodes = dialog.get_remapped_nodes()
             group_name = dialog.get_group_name()  # Get custom group name
+            handles_to_load = dialog.get_handles_to_load()  # Get handles that need async loading
             if remapped_nodes and self.wave_widget.controller:
                 # Get currently selected node to insert after
                 after_id = None
                 if self.wave_widget.session and self.wave_widget.session.selected_nodes:
                     after_id = self.wave_widget.session.selected_nodes[-1].instance_id
-                
+
                 # Wrap the snippet nodes in a group with custom name
                 group_node = SignalNodeGroup(
                     name=group_name,  # Use custom group name from dialog
                     children=remapped_nodes,
                     is_expanded=True
                 )
-                
+
                 # Set parent references for children
                 for child in remapped_nodes:
                     child.parent = group_node
-                
+
                 # Instantiate the snippet as a single group
                 success = self.wave_widget.controller.instantiate_snippet(
                     [group_node],  # Pass as single-element list containing the group
                     after_id
                 )
+
+                # NOW trigger async loading after nodes are in the session tree
+                if success and handles_to_load and self.wave_widget.session and self.wave_widget.session.waveform_db:
+                    if hasattr(self.wave_widget.session.waveform_db, 'load_signals_async'):
+                        self.wave_widget.session.waveform_db.load_signals_async(handles_to_load)
                 
                 if success:
                     QMessageBox.information(
@@ -1793,14 +1799,11 @@ class WaveScoutMainWindow(FramelessWindow):
                 validated_nodes, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
                     full_path_nodes, waveform_db
                 )
-                # Schedule async loading if needed
-                if handles_to_load and hasattr(waveform_db, 'load_signals_async'):
-                    waveform_db.load_signals_async(handles_to_load)
             except ValueError as e:
                 # Enhance error message to include snippet name
                 tprint(f"Error in snippet '{name}': {e}")
                 sys.exit(1)
-            
+
             # Create group to wrap snippet (reuse logic from _on_snippet_instantiate)
             group_node = SignalNodeGroup(
                 name=snippet.name,
@@ -1809,11 +1812,15 @@ class WaveScoutMainWindow(FramelessWindow):
             )
             for child in validated_nodes:
                 child.parent = group_node
-            
+
             # Instantiate using existing controller method
             if not self.wave_widget.controller.instantiate_snippet([group_node]):
                 tprint(f"Error: Failed to instantiate snippet: {name}")
                 sys.exit(1)
+
+            # NOW schedule async loading after nodes are in the session tree
+            if handles_to_load and hasattr(waveform_db, 'load_signals_async'):
+                waveform_db.load_signals_async(handles_to_load)
 
             tprint(f"Successfully loaded snippet: {name}")
         
