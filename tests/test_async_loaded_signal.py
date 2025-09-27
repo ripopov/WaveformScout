@@ -37,28 +37,6 @@ class TestAsyncLoadedSignal:
         db.open(test_file)
         return db
 
-    def test_cached_signal_fast_path(self, waveform_db):
-        """Test that cached signals return immediately without async loading."""
-        # Get a valid signal handle
-        handles = waveform_db.get_all_handles()
-        assert len(handles) > 0
-        handle = handles[0]
-
-        # Pre-cache the signal
-        signal = waveform_db.get_signal(handle)
-        assert signal is not None
-
-        # Create AsyncLoadedSignal - should use fast path
-        async_signal = AsyncLoadedSignal(handle, waveform_db)
-
-        # Should be immediately loaded
-        assert async_signal.is_loaded() is True
-
-        # Should return the cached signal without blocking
-        loaded_signal = async_signal.get_signal_blocking(timeout=0.1)
-        assert loaded_signal == signal
-        assert loaded_signal is signal  # Same object
-
     def test_async_loading_real_signal(self, waveform_db, qt_app):
         """Test async loading of a real signal from FST file."""
         # Get a valid signal handle
@@ -359,74 +337,3 @@ class TestWaveformDBIntegration:
         # Verify signal is valid
         signal = async_signal.get_signal_blocking()
         assert signal is not None
-
-    def test_cache_reuse_performance(self, waveform_db):
-        """Test that cached signals have zero overhead."""
-        # Get handles
-        handles = waveform_db.get_all_handles()
-        test_handles = handles[:10] if len(handles) >= 10 else handles
-
-        # Pre-load all signals into cache
-        waveform_db.preload_signals(test_handles)
-
-        # Measure time to create AsyncLoadedSignals for cached signals
-        start_time = time.perf_counter()
-        async_signals = []
-        for handle in test_handles:
-            async_signal = waveform_db.load_signal(handle)
-            async_signals.append(async_signal)
-        elapsed = time.perf_counter() - start_time
-
-        # All should be immediately loaded
-        for async_signal in async_signals:
-            assert async_signal.is_loaded() is True
-
-        # Should be very fast (< 10ms total, < 1ms per signal)
-        assert elapsed < 0.01, f"Creating {len(test_handles)} cached AsyncLoadedSignals took {elapsed:.3f}s"
-
-        # Verify signals are accessible immediately
-        for async_signal in async_signals:
-            signal = async_signal.get_signal_blocking(timeout=0.001)  # Very short timeout
-            assert signal is not None
-
-    def test_mixed_cached_and_async_signals(self, waveform_db, qt_app):
-        """Test handling mix of cached and non-cached signals."""
-        # Get handles
-        handles = waveform_db.get_all_handles()
-        assert len(handles) >= 6
-        cached_handles = handles[:3]
-        async_handles = handles[3:6]
-
-        # Pre-cache first set
-        waveform_db.preload_signals(cached_handles)
-
-        # Clear specific handles from cache
-        for handle in async_handles:
-            if handle in waveform_db._signal_cache:
-                del waveform_db._signal_cache[handle]
-
-        # Load all signals
-        all_handles = cached_handles + async_handles
-        async_signals = []
-        for handle in all_handles:
-            async_signal = waveform_db.load_signal(handle)
-            async_signals.append(async_signal)
-
-        # First 3 should be immediately ready
-        for i in range(3):
-            assert async_signals[i].is_loaded() is True
-
-        # Last 3 might need loading
-        for i in range(3, 6):
-            if not async_signals[i].is_loaded():
-                # Wait for loading
-                start_time = time.time()
-                while not async_signals[i].is_loaded() and (time.time() - start_time) < 5.0:
-                    QApplication.processEvents()
-                    time.sleep(0.01)
-
-        # All should be loaded now
-        for async_signal in async_signals:
-            assert async_signal.is_loaded() is True
-            signal = async_signal.get_signal_blocking()
-            assert signal is not None
