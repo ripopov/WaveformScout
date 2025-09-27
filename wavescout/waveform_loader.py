@@ -46,10 +46,12 @@ def create_signal_node_from_var(var: pyrox.Var, hierarchy: pyrox.Hierarchy, hand
         display_format.data_format = DataFormat.UNSIGNED
     
     # Create signal node
+    from wavescout.waveform_db import AsyncLoadedSignal
     node = SignalNodeSignal(
         name=full_name,
         var=var,  # Pass the var object directly
         handle=handle,
+        signal=AsyncLoadedSignal.placeholder(handle),
         format=display_format,
         nickname="",
         is_multi_bit=not is_single_bit  # Multi-bit if NOT 1-bit

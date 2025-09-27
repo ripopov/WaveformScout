@@ -735,7 +735,6 @@ class SignalNamesView(BaseColumnView):
 
         db = self._controller.session.waveform_db
         validated2: List[SignalNode] = []
-        handles_to_load: List[SignalHandle] = []
 
         for node in nodes:
             if isinstance(node, SignalNodeGroup):
@@ -749,21 +748,11 @@ class SignalNamesView(BaseColumnView):
                     if var:
                         # Populate the var field which may be None after deserialization
                         node.var = var
-                        # Check if signal is cached
-                        if not node.signal:
-                            if db.are_signals_cached([node.handle]):
-                                node.signal = db.get_signal(node.handle)
-                            else:
-                                # Mark for async loading
-                                handles_to_load.append(node.handle)
+                        # Create or update AsyncLoadedSignal for the handle
+                        node.signal = db.load_signal(node.handle)
                         validated2.append(node)
                 except Exception:
                     # Skip nodes with invalid handles
                     pass
-            # Note: Nodes without handles are skipped
-
-        # Trigger async loading for uncached signals
-        if handles_to_load:
-            db.load_signals_async(handles_to_load)
 
         return validated2

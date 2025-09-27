@@ -145,8 +145,6 @@ class InstantiateSnippetDialog(QDialog):
         Returns:
             Tuple of (validated nodes, handles that need async loading)
         """
-        handles_to_load: list[int] = []
-
         def validate_node(node: SignalNode) -> SignalNode:
             new_node = node.deep_copy()
 
@@ -157,14 +155,8 @@ class InstantiateSnippetDialog(QDialog):
                     raise ValueError(f"Signal '{node.name}' not found in waveform")
                 new_node.handle = handle
 
-                # Check if signal is cached
-                if hasattr(waveform_db, 'are_signals_cached') and waveform_db.are_signals_cached([handle]):
-                    # Load synchronously if cached
-                    new_node.signal = waveform_db.get_signal(handle)
-                else:
-                    # Leave signal as None and mark for async loading
-                    new_node.signal = None
-                    handles_to_load.append(handle)
+                # Create AsyncLoadedSignal for the handle
+                new_node.signal = waveform_db.load_signal(handle)
 
                 return new_node
 
@@ -179,14 +171,13 @@ class InstantiateSnippetDialog(QDialog):
             return new_node
 
         validated_nodes = [validate_node(node) for node in nodes]
-        return validated_nodes, handles_to_load
+        return validated_nodes
     
     def __init__(self, snippet: Snippet, waveform_db: Optional[WaveformDB], parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.snippet = snippet
         self.waveform_db = waveform_db
         self.remapped_nodes: Optional[list[SignalNode]] = None
-        self.handles_to_load: list[int] = []
         self.group_name: str = snippet.name  # Default to snippet name
         
         self.setWindowTitle(f"Instantiate Snippet: {snippet.name}")
@@ -309,7 +300,7 @@ class InstantiateSnippetDialog(QDialog):
         
         # Try to remap and validate
         try:
-            self.remapped_nodes, self.handles_to_load = self._remap_and_validate(target_scope)
+            self.remapped_nodes = self._remap_and_validate(target_scope)
 
             # Update preview
             preview_lines = []
@@ -330,8 +321,7 @@ class InstantiateSnippetDialog(QDialog):
             self.preview_text.clear()
             self.ok_button.setEnabled(False)
             self.remapped_nodes = None
-            self.handles_to_load = []
-    
+
     @staticmethod
     def build_full_paths(node: SignalNode, parent_scope: str) -> SignalNode:
         """Build full paths by concatenating parent scope with relative names."""
@@ -366,12 +356,12 @@ class InstantiateSnippetDialog(QDialog):
             full_path_nodes.append(self.build_full_paths(node, new_parent_scope))
 
         # Then validate and resolve handles
-        validated_nodes, handles_to_load = self.validate_and_resolve_nodes(full_path_nodes, self.waveform_db)
+        validated_nodes = self.validate_and_resolve_nodes(full_path_nodes, self.waveform_db)
 
         # NOTE: Don't call load_signals_async here - let the caller handle async loading
         # after the nodes are added to the session tree so they can be found and updated
 
-        return validated_nodes, handles_to_load
+        return validated_nodes
     
     def _get_all_signals(self, nodes: list[SignalNode]) -> list[SignalNode]:
         """Get all non-group signals from node list."""
@@ -396,7 +386,3 @@ class InstantiateSnippetDialog(QDialog):
     def get_group_name(self) -> str:
         """Get the user-specified group name."""
         return self.group_name
-
-    def get_handles_to_load(self) -> list[int]:
-        """Get the handles that need async loading."""
-        return self.handles_to_load

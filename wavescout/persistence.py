@@ -110,13 +110,10 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) ->
             # Update the handle if we found it
             if handle is not None:
                 node.handle = handle
-                # Check if signal is cached
-                if hasattr(waveform_db, 'are_signals_cached') and waveform_db.are_signals_cached([handle]):
-                    # Load synchronously if cached
-                    node.signal = waveform_db.get_signal(handle)
-                else:
-                    # Leave signal as None and mark for async loading
-                    node.signal = None
+                # Create AsyncLoadedSignal for the handle
+                node.signal = waveform_db.load_signal(handle)
+                # Check if already loaded (cached)
+                if not node.signal.is_loaded():
                     handles_to_load.append(handle)
                 # Also update the var field
                 var = waveform_db.get_var(handle)
@@ -188,16 +185,15 @@ def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = 
     if waveform_db and handle is not None:
         var = waveform_db.get_var(handle)
 
-    # During deserialization, var might be None if waveform_db is not yet available
-    # or if handle needs to be resolved. We need to provide something to satisfy
-    # the non-optional var field. It will be properly resolved in resolve_node.
-    # For now, we'll pass None and fix it up later with a type ignore.
+    signal = waveform_db.load_signal(handle)
+
     signal_node = SignalNodeSignal(
         name=data['name'],
         nickname=data.get('nickname', ''),
         parent=parent,
         height_scaling=data.get('height_scaling', 1),
         handle=handle,
+        signal=signal,
         format=display_format if display_format is not None else DisplayFormat(),
         is_multi_bit=data.get('is_multi_bit', False),
         instance_id=instance_id,
@@ -350,12 +346,16 @@ def deserialize_snippet_nodes(
             # Signal not found in waveform
             return None
 
+        # Create AsyncLoadedSignal for the handle
+        signal = waveform_db.load_signal(handle)
+
         signal_node = SignalNodeSignal(
             name=name,
             nickname=node_data.get('nickname', ''),
             parent=parent,
             height_scaling=node_data.get('height_scaling', 1),
             handle=handle,
+            signal=signal,
             format=display_format if display_format is not None else DisplayFormat(),
             is_multi_bit=node_data.get('is_multi_bit', False),
             instance_id=SignalNode._generate_id(),
@@ -371,14 +371,12 @@ def deserialize_snippet_nodes(
     def collect_handles(node: SignalNode) -> None:
         """Collect handles that need async loading."""
         if isinstance(node, SignalNodeSignal) and node.handle is not None:
-            # Check if signal needs to be loaded
-            if hasattr(waveform_db, 'are_signals_cached'):
-                if not waveform_db.are_signals_cached([node.handle]):
+            # Create AsyncLoadedSignal for the handle
+            if waveform_db:
+                node.signal = waveform_db.load_signal(node.handle)
+                # Track handles that need async loading
+                if not node.signal.is_loaded():
                     handles_to_load.append(node.handle)
-                    node.signal = None  # Will be loaded asynchronously
-                else:
-                    # Load cached signal synchronously
-                    node.signal = waveform_db.get_signal(node.handle)
         if isinstance(node, SignalNodeGroup):
             for child in node.children:
                 collect_handles(child)
@@ -475,7 +473,10 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     db_uri = data.get('db_uri')
     if db_uri and pathlib.Path(db_uri).exists():
         db_start = time.time()
-        waveform_db = WaveformDB()
+        # Create WaveformDB with EventBus for async loading to work
+        from wavescout.application.event_bus import EventBus
+        event_bus = EventBus()
+        waveform_db = WaveformDB(event_bus=event_bus)
         waveform_db.open(db_uri)
         tprint(f"  load_session.open_waveform_db: {time.time() - db_start:.3f}s")
 
@@ -542,14 +543,9 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     if waveform_db:
         handles_to_load = _resolve_signal_handles(session.root_nodes, waveform_db)
 
-        # Trigger async loading if we have the async API available
-        if handles_to_load and hasattr(waveform_db, 'load_signals_async'):
-            waveform_db.load_signals_async(handles_to_load)
-        elif handles_to_load:
-            # Fallback to synchronous loading for older backends
-            # Preload all signals used in the session while we're still in the loading thread
-            # This avoids cross-thread signal corruption issues
-            waveform_db.preload_signals(handles_to_load)
+        if handles_to_load:
+            for handle in handles_to_load:
+                waveform_db.load_signal(handle)
 
         # Update viewport total_duration from the waveform's time table
         time_table = waveform_db.get_time_table()

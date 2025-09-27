@@ -207,7 +207,9 @@ class WaveformItemModel(QAbstractItemModel):
         db = self._session.waveform_db
         try:
             # Use cached Signal object from node
-            signal_obj = signal_node.signal
+            if not signal_node.signal.is_loaded():
+                return ""
+            signal_obj = signal_node.signal.get_signal_blocking(timeout=0.001)
             if not signal_obj:
                 return ""
             query = signal_obj.query_signal(max(0, self._session.cursor_time))

@@ -175,12 +175,10 @@ def generate_signal_draw_commands(
         if signal.handle is None:
             return None
 
-        # Only use already-attached Signal object to avoid blocking loads
-        signal_obj = signal.signal if hasattr(signal, 'signal') else None
-        if not signal_obj:
-            # Signal not loaded yet - return None to skip rendering
+        if not signal.signal.is_loaded():
             return None
 
+        signal_obj = signal.signal.get_signal_blocking()
         # Get signal bit width for data format conversion
         # We need to get it from the variable, not the signal object
         # Check if var exists and is not None

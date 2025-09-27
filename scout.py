@@ -1240,24 +1240,15 @@ class WaveScoutMainWindow(FramelessWindow):
                 self._add_node_to_session(node)
             return
         
-        # Check if signals are already cached
         waveform_db = self.wave_widget.session.waveform_db
         if not waveform_db:
             return
             
-        if waveform_db.are_signals_cached(handles):
-            # All signals cached, add immediately
-            for node in signal_nodes:
-                self._add_node_to_session(node)
-        else:
-            # Need to load signals asynchronously using new system
-            # Add nodes immediately with signal=None
-            for node in signal_nodes:
-                self._add_node_to_session(node)
-            # Trigger async loading
-            if self.wave_widget.session.waveform_db and hasattr(self.wave_widget.session.waveform_db, 'load_signals_async'):
-                self.wave_widget.session.waveform_db.load_signals_async(handles)
-    
+        # Need to load signals asynchronously using new system
+        # Add nodes immediately with signal=None
+        for node in signal_nodes:
+            self._add_node_to_session(node)
+
     def _extract_session_handles(self, session):
         """Extract all signal handles from a session.
         

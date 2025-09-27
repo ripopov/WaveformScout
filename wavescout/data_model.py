@@ -43,6 +43,9 @@ from enum import Enum
 from pyrox import SignalHandle, Var
 
 if TYPE_CHECKING:
+    from wavescout.waveform_db import AsyncLoadedSignal
+
+if TYPE_CHECKING:
     from pyrox import Signal
     from wavescout.waveform_db import WaveformDB
 
@@ -132,9 +135,17 @@ class SignalNodeSignal(SignalNode):
 
     var: Var = field(repr=False, compare=False)  # Non-optional, must be provided
     handle: Optional[SignalHandle] = None
-    signal: Optional["Signal"] = field(default=None, repr=False, compare=False)
+    signal: "AsyncLoadedSignal" = field(repr=False, compare=False)
     format: DisplayFormat = field(default_factory=DisplayFormat)
     is_multi_bit: bool = False
+
+    def __post_init__(self) -> None:
+        """Initialize with AsyncLoadedSignal if not provided."""
+        if not hasattr(self, 'signal') or self.signal is None:
+            # Create placeholder AsyncLoadedSignal
+            from wavescout.waveform_db import AsyncLoadedSignal
+            if self.handle is not None:
+                self.signal = AsyncLoadedSignal.placeholder(self.handle)
 
     def _comparison_state(self) -> Tuple[Any, ...]:
         return (
@@ -145,6 +156,7 @@ class SignalNodeSignal(SignalNode):
             self.handle,
             self.format,
             self.is_multi_bit,
+            # signal excluded from comparison
         )
 
     def deep_copy(self) -> "SignalNodeSignal":
@@ -161,6 +173,7 @@ class SignalNodeSignal(SignalNode):
             height_scaling=self.height_scaling,
             var=self.var,  # Pass the same var reference
             handle=self.handle,
+            signal=self.signal,  # Share AsyncLoadedSignal reference
             format=format_copy,
             is_multi_bit=self.is_multi_bit,
         )

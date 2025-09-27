@@ -620,10 +620,10 @@ class WaveformCanvas(QWidget):
             try:
                 db = self._model._session.waveform_db
                 # Skip if signal not loaded yet (avoid blocking)
-                if not signal_node.signal:
+                if not signal_node.signal.is_loaded():
                     continue
                 # Use already loaded signal object
-                signal_obj = signal_node.signal
+                signal_obj = signal_node.signal.get_signal_blocking(timeout=0.001)
                 query = signal_obj.query_signal(max(0, self._cursor_time))
                 raw_value = query.value
 
@@ -828,7 +828,14 @@ class WaveformCanvas(QWidget):
                                     continue
                                 if waveform_db is not None:
                                     from .signal_renderer import compute_global_signal_range
-                                    cmin, cmax = compute_global_signal_range(child.handle, waveform_db, child.format.data_format, child.signal, child.var)
+                                    # Get the actual Signal object if loaded
+                                    signal_obj = None
+                                    if child.signal.is_loaded():
+                                        try:
+                                            signal_obj = child.signal.get_signal_blocking(timeout=0.001)
+                                        except (RuntimeError, TimeoutError):
+                                            pass
+                                    cmin, cmax = compute_global_signal_range(child.handle, waveform_db, child.format.data_format, signal_obj, child.var)
                                 else:
                                     # Fallback to viewport samples
                                     dd = draw_commands.draw_commands.get(child.handle)
@@ -1056,8 +1063,8 @@ class WaveformCanvas(QWidget):
             # Draw a regular signal
             node = row.source
             if isinstance(node, SignalNodeSignal) and node.handle is not None:
-                # Check if signal is loading (signal is None)
-                if node.signal is None:
+                # Check if signal is loading
+                if not node.signal.is_loaded():
                     # Draw loading placeholder
                     painter.setPen(QPen(QColor(128, 128, 128)))  # Gray color for loading text
                     painter.setFont(QFont("Arial", 9))
@@ -1077,7 +1084,7 @@ class WaveformCanvas(QWidget):
                         'height_scaling': node.height_scaling,
                         'instance_id': node.instance_id,
                         'is_selected': is_selected,
-                        'signal': node.signal,
+                        'signal': node.signal.get_signal_blocking(timeout=0.001) if node.signal.is_loaded() else None,
                     }
                     render_type = node.format.render_type
                     if render_type == RenderType.BOOL:

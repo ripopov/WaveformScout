@@ -193,20 +193,16 @@ class DesignTreeView(QWidget):
             render_type = RenderType.BOOL if is_single_bit else RenderType.BUS
         format = DisplayFormat(render_type=render_type)
 
-        # Create the signal node
+        signal = self.waveform_db.load_signal(handle)
+
         signal_node = SignalNodeSignal(
             name=full_path,
             handle=handle,
+            signal=signal,
             var=var_obj,  # Pass the var object
             format=format,
             is_multi_bit=not is_single_bit
         )
-
-        # Check if signal is cached and populate if so
-        if handle is not None and self.waveform_db:
-            if self.waveform_db.are_signals_cached([handle]):
-                signal_node.signal = self.waveform_db.get_signal(handle)
-            # Otherwise leave signal=None for async loading
 
         return signal_node
 
@@ -432,7 +428,7 @@ class DesignTreeView(QWidget):
         """
         tprint(f"[DESIGN_TREE] _emit_signal_nodes_from_variables: {len(var_data_list)} variables")
         signal_nodes = []
-        handles_to_load = []
+        handles_to_load: list[int] = []
 
         for var_data in var_data_list:
             signal_node = self._create_signal_node_from_var(var_data)
@@ -544,19 +540,15 @@ class DesignTreeView(QWidget):
             render_type = RenderType.BOOL if is_single_bit else RenderType.BUS
         format = DisplayFormat(render_type=render_type)
 
-        # Create the signal node
+        signal = self.waveform_db.load_signal(handle)
+
         signal_node = SignalNodeSignal(
             name=full_path,
             handle=handle,
+            signal=signal,
             var=var,  # Pass the var object
             format=format,
             is_multi_bit=not is_single_bit
         )
-
-        # Check if signal is cached and populate if so
-        if handle is not None and self.waveform_db:
-            if self.waveform_db.are_signals_cached([handle]):
-                signal_node.signal = self.waveform_db.get_signal(handle)
-            # Otherwise leave signal=None for async loading
 
         return signal_node

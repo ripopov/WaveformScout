@@ -1039,9 +1039,15 @@ class WaveformController:
         if not is_valid_clock_signal(node.var):
             return
         
-        signal = db.signal_from_handle(node.handle)
-        if not signal:
-            return
+        # Get signal (blocking since we need it immediately for calculations)
+        async_signal = db.load_signal(node.handle)
+        if not async_signal.is_loaded():
+            try:
+                signal = async_signal.get_signal_blocking(timeout=5.0)
+            except (RuntimeError, TimeoutError):
+                return
+        else:
+             signal = async_signal.get_signal_blocking()
         
         # Calculate clock period and phase offset
         result = calculate_clock_period(signal, node.var)
@@ -1227,13 +1233,10 @@ class WaveformController:
             tprint("[CONTROLLER] No session, returning")
             return
 
-        # Update all nodes with loaded signal data
+        # Update loading state (AsyncLoadedSignal handles updates directly)
         for handle, signal in event.pairs:
             # Remove from loading state
             self.session.loading_handles.discard(handle)
-
-            # Find and update all nodes with this handle
-            self._update_nodes_with_signal(handle, signal)
 
         # Emit callback for UI updates
         tprint("[CONTROLLER] Emitting signals_loaded and session_changed callbacks")
@@ -1254,25 +1257,6 @@ class WaveformController:
 
         # Log error
         tprint(f"Signal loading failed: {event.error}")
-
-    def _update_nodes_with_signal(self, handle: SignalHandle, signal: "Signal") -> None:
-        """Update all SignalNodeSignal instances with the given handle."""
-        tprint(f"[CONTROLLER] _update_nodes_with_signal: handle={handle}")
-        if not self.session:
-            tprint("[CONTROLLER] No session, returning")
-            return
-
-        def update_in_tree(nodes: List[SignalNode]) -> None:
-            for node in nodes:
-                if isinstance(node, SignalNodeSignal) and node.handle == handle:
-                    # Update the signal field
-                    node.signal = signal
-                elif isinstance(node, SignalNodeGroup):
-                    # Recurse into group
-                    update_in_tree(node.children)
-
-        # Update all nodes in the tree
-        update_in_tree(self.session.root_nodes)
 
     def load_signals_async(self, handles: List[SignalHandle]) -> None:
         """Request async loading of signals.
