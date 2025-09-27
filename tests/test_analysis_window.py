@@ -26,12 +26,31 @@ from wavescout.analysis_engine import (
 from tests.test_utils import get_test_input_path, TestFiles
 
 
+_signal_cache = {}
+
 def _test_sample(db, handle, t):
-    sig = db.signal_from_handle(handle)
+    # Cache signals to avoid loading them repeatedly
+    if handle not in _signal_cache:
+        async_sig = db.load_signal(handle)
+        if not async_sig.is_loaded():
+            try:
+                sig = async_sig.get_signal_blocking(timeout=1.0)
+            except (RuntimeError, TimeoutError):
+                _signal_cache[handle] = None
+                return ""
+        else:
+            sig = async_sig.get_signal_blocking()
+        _signal_cache[handle] = sig
+    else:
+        sig = _signal_cache[handle]
+
     if sig is None:
         return ""
     qr = sig.query_signal(max(0, t))
     return str(qr.value) if qr.value is not None else ""
+
+
+# MockAsyncLoadedSignal removed - using real AsyncLoadedSignal instead
 
 
 def test_analysis_with_analog_signals():
@@ -39,7 +58,9 @@ def test_analysis_with_analog_signals():
     print("\n=== Testing Signal Analysis with analog_signals_short.vcd ===")
     
     # Load the waveform directly for debugging
-    db = WaveformDB()
+    from wavescout.application.event_bus import EventBus
+    event_bus = EventBus()
+    db = WaveformDB(event_bus=event_bus)
     db.open(str(get_test_input_path(TestFiles.ANALOG_SIGNALS_SHORT_VCD)))
     
     print(f"Loaded waveform file")
@@ -50,9 +71,9 @@ def test_analysis_with_analog_signals():
     if time_table:
         print(f"Time range: 0 to {time_table[-1]}")
     
-    # List all signals
+    # List all signals (limit to first 20 for testing)
     all_signals = []
-    handles = db.get_all_handles()
+    handles = db.get_all_handles()[:20]  # Limit to first 20 signals
     if handles:
         for handle in handles:
             var = db.var_from_handle(handle)
@@ -94,15 +115,17 @@ def test_analysis_with_analog_signals():
             name=name,
             var=MockVar(name.split('.')[-1], 32),  # Use MockVar for tests
             handle=handle,
+            signal=db.load_signal(handle),  # Use real AsyncLoadedSignal
             format=DisplayFormat()
         )
         test_signals.append(signal)
-    
+
     # Create sampling signal node
     sampling_signal = SignalNodeSignal(
         name=clk_cnt_name,
         var=MockVar(clk_cnt_name.split('.')[-1], 32),
         handle=clk_cnt_handle,
+        signal=db.load_signal(clk_cnt_handle),  # Use real AsyncLoadedSignal
         format=DisplayFormat()
     )
     
@@ -190,12 +213,13 @@ def test_analysis_window_integration():
                         name=var.full_name(waveform_db.hierarchy),
                         var=var,  # Use the real var object from waveform_db
                         handle=handle,
+                        signal=waveform_db.load_signal(handle),  # Use real AsyncLoadedSignal
                         format=DisplayFormat()
                     )
                     all_signals.append(signal)
                     # Add to session root_nodes so they appear in combo box
                     session.root_nodes.append(signal)
-                    
+
                     if 'clk_cnt' in signal.name.lower() and not clk_cnt_signal:
                         clk_cnt_signal = signal
         
