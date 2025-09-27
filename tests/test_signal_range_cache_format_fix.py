@@ -17,7 +17,7 @@ from wavescout.data_model import (
 )
 from wavescout.signal_renderer import get_signal_range, compute_global_signal_range
 from wavescout.signal_sampling import SignalDrawingData, SignalSample, ValueKind
-from wavescout.protocols import WaveformDBProtocol
+from wavescout.waveform_db import WaveformDB
 
 
 class MockQueryResult:

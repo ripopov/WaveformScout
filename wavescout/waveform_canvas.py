@@ -37,7 +37,7 @@ import time as time_module
 import time
 import math
 from .timing_utils import tprint
-from .protocols import WaveformDBProtocol
+from .waveform_db import WaveformDB
 from .data_model import SignalRangeCache
 from .time_grid_renderer import TimeGridRenderer, TickInfo
 
@@ -1173,7 +1173,7 @@ class WaveformCanvas(QWidget):
 
 
     
-    def _generate_all_draw_commands(self, signal_nodes: List[SignalNodeSignal], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDBProtocol) -> CachedWaveDrawData:
+    def _generate_all_draw_commands(self, signal_nodes: List[SignalNodeSignal], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDB) -> CachedWaveDrawData:
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"

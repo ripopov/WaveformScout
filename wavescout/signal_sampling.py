@@ -7,7 +7,7 @@ zoom levels and generating optimized drawing commands for rendering.
 from enum import Enum
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Any
-from .protocols import WaveformDBProtocol
+from .waveform_db import WaveformDB
 import math
 
 from .data_model import SignalNodeSignal, Time, DataFormat
@@ -145,7 +145,7 @@ def generate_signal_draw_commands(
     start_time: Time,
     end_time: Time,
     canvas_width: int,
-    waveform_db: WaveformDBProtocol,
+    waveform_db: WaveformDB,
     waveform_max_time: Optional[Time] = None
 ) -> Optional[SignalDrawingData]:
     """Generate drawing commands for a single signal.

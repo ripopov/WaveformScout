@@ -9,7 +9,7 @@ from dataclasses import asdict
 from enum import Enum
 from datetime import datetime
 import pyrox
-from .protocols import WaveformDBProtocol
+from .waveform_db import WaveformDB
 from .data_model import (
     WaveformSession,
     SignalNode,
@@ -77,7 +77,7 @@ def _serialize_node(node: SignalNode) -> Dict[str, Any]:
     return data
 
 
-def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProtocol) -> List[int]:
+def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) -> List[int]:
     """Resolve signal handles for all nodes to ensure they're correct for the current backend.
 
     This is crucial when loading sessions across different backends (pylibfst vs pyrox)
@@ -135,7 +135,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDBProt
     return handles_to_load
 
 
-def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = None, waveform_db: Optional['WaveformDBProtocol'] = None) -> SignalNode:
+def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = None, waveform_db: Optional['WaveformDB'] = None) -> SignalNode:
     """Deserialize a dictionary to a SignalNode, handling nested children."""
     # Create display format if present
     format_data = data.get('format')
@@ -263,7 +263,7 @@ def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[
 def deserialize_snippet_nodes(
     data: List[Dict[str, Any]],
     parent_scope: str,
-    waveform_db: Optional[WaveformDBProtocol]
+    waveform_db: Optional[WaveformDB]
 ) -> Optional[tuple[List[SignalNode], List[int]]]:
     """
     Deserialize snippet nodes with scope remapping and handle resolution.
@@ -511,7 +511,7 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     # Create session
     session_start = time.time()
     session = WaveformSession(
-        waveform_db=cast(WaveformDBProtocol, waveform_db) if waveform_db else None,
+        waveform_db=waveform_db if waveform_db else None,
         root_nodes=root_nodes,
         viewport=viewport,
         markers=markers,
@@ -540,7 +540,7 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     # Resolve signal handles if waveform_db is available
     handles_to_load: List[int] = []
     if waveform_db:
-        handles_to_load = _resolve_signal_handles(session.root_nodes, cast(WaveformDBProtocol, waveform_db))
+        handles_to_load = _resolve_signal_handles(session.root_nodes, waveform_db)
 
         # Trigger async loading if we have the async API available
         if handles_to_load and hasattr(waveform_db, 'load_signals_async'):

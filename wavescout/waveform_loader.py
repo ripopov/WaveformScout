@@ -63,11 +63,11 @@ def create_sample_session(vcd_path: str) -> WaveformSession:
     Args:
         vcd_path: Path to the waveform file (VCD or FST)
     """
-    from .protocols import WaveformDBProtocol
+    from .waveform_db import WaveformDB
     db = WaveformDB()
     db.open(vcd_path)
     session = WaveformSession()
-    session.waveform_db = cast(WaveformDBProtocol, db)
+    session.waveform_db = db
     timescale = db.get_timescale()
     if timescale:
         session.timescale = timescale

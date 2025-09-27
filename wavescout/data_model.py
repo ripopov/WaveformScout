@@ -44,7 +44,7 @@ from pyrox import SignalHandle, Var
 
 if TYPE_CHECKING:
     from pyrox import Signal
-    from wavescout.protocols import WaveformDBProtocol
+    from wavescout.waveform_db import WaveformDB
 
 Time = int  # In Timescale units
 
@@ -341,7 +341,7 @@ class SignalRangeCache:
 
 @dataclass
 class WaveformSession:
-    waveform_db: Optional['WaveformDBProtocol'] = None  # Pointer to WaveformDB instance
+    waveform_db: Optional['WaveformDB'] = None  # Pointer to WaveformDB instance
     root_nodes: List[SignalNode] = field(default_factory=list)
     viewport: Viewport = field(default_factory=Viewport)
     markers: List[Marker] = field(default_factory=list)

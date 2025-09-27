@@ -37,7 +37,7 @@ from . import config
 from .timing_utils import tprint
 RENDERING = config.RENDERING
 import math
-from .protocols import WaveformDBProtocol
+from .waveform_db import WaveformDB
 
 # Type definitions for node_info and params dictionaries
 class NodeInfo(TypedDict):
@@ -61,7 +61,7 @@ class RenderParams(TypedDict, total=False):
     scroll_value: int
     visible_nodes_info: list[NodeInfo]
     visible_nodes: list[SignalNode]  # SignalNode objects
-    waveform_db: Optional[WaveformDBProtocol]
+    waveform_db: Optional[WaveformDB]
     generation: int
     base_row_height: int
     header_height: int
@@ -547,7 +547,7 @@ def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[T
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBProtocol, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None, var: Optional["Var"] = None) -> Tuple[float, float]:
+def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDB, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None, var: Optional["Var"] = None) -> Tuple[float, float]:
     """Estimate global min/max from the waveform database.
 
     Rationale
@@ -647,7 +647,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
                     scaling_mode: AnalogScalingMode,
                     signal_range_cache: Dict[SignalNodeID, SignalRangeCache],
                     data_format: DataFormat = DataFormat.UNSIGNED,
-                    waveform_db: Optional[WaveformDBProtocol] = None,
+                    waveform_db: Optional[WaveformDB] = None,
                     start_time: Optional[Time] = None, end_time: Optional[Time] = None,
                     signal_obj: Optional["Signal"] = None) -> Tuple[float, float]:
     """Return analog Y-range using a small cache keyed by signal instance.

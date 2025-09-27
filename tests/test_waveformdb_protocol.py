@@ -1,22 +1,21 @@
-"""Tests for WaveformDB protocol conformance and new helper methods."""
+"""Tests for WaveformDB methods and functionality."""
 
 import pytest
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wavescout.waveform_db import WaveformDB
-from wavescout.protocols import WaveformDBProtocol
 from .test_utils import get_test_input_path, TestFiles
 
 if TYPE_CHECKING:
     from pyrox import Var
 
 
-def test_waveformdb_conforms_to_protocol():
-    """Test that WaveformDB provides all required protocol methods."""
+def test_waveformdb_has_required_methods():
+    """Test that WaveformDB provides all required methods."""
     db = WaveformDB()
-    
-    # Check all protocol methods exist
+
+    # Check all methods exist
     assert hasattr(db, 'find_handle_by_path')
     assert hasattr(db, 'find_handle_by_name')
     assert hasattr(db, 'get_handle_for_var')
@@ -25,13 +24,10 @@ def test_waveformdb_conforms_to_protocol():
     assert hasattr(db, 'get_var_bitwidth')
     assert hasattr(db, 'get_time_table')
     assert hasattr(db, 'get_timescale')
-    
+
     # Check attributes
     assert hasattr(db, 'waveform')
     assert hasattr(db, 'hierarchy')
-    
-    # Type check - ensure it's protocol compatible
-    protocol_db: WaveformDBProtocol = db  # This should not raise type errors
 
 
 def test_find_handle_by_path():
@@ -156,8 +152,8 @@ def test_iter_handles_and_vars_returns_iterable():
     assert count > 0, "Should have at least one handle/var pair"
 
 
-def test_protocol_methods_with_empty_db():
-    """Test protocol methods work correctly with an empty/unloaded database."""
+def test_methods_with_empty_db():
+    """Test methods work correctly with an empty/unloaded database."""
     db = WaveformDB()
     
     # All methods should handle empty DB gracefully

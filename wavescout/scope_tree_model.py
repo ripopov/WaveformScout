@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from pyrox import ScopeIter
 import pyrox
 from pyrox import SignalHandle
-from .protocols import WaveformDBProtocol
+from .waveform_db import WaveformDB
 from .vars_view import VariableData
 from .icon_cache import get_icon_cache
 from .timing_utils import tprint
@@ -51,7 +51,7 @@ class ScopeTreeModel(QAbstractItemModel):
     # Signal emitted when scope selection changes
     scope_selected = Signal(str)  # Emits the full path of the selected scope
     
-    def __init__(self, waveform_db: Optional[WaveformDBProtocol] = None, parent: Optional[QObject] = None) -> None:
+    def __init__(self, waveform_db: Optional[WaveformDB] = None, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         tprint(f"ScopeTreeModel.__init__ called with waveform_db={waveform_db is not None}")
         self.waveform_db = waveform_db
@@ -62,7 +62,7 @@ class ScopeTreeModel(QAbstractItemModel):
             self.load_hierarchy(waveform_db)
     
     
-    def load_hierarchy(self, waveform_db: WaveformDBProtocol) -> None:
+    def load_hierarchy(self, waveform_db: WaveformDB) -> None:
         """Load the hierarchy from waveform database, filtering to show only scopes."""
         tprint("ScopeTreeModel.load_hierarchy starting")
         start_time = time.time()

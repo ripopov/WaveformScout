@@ -27,7 +27,7 @@ from .settings_manager import SettingsManager
 from .scope_tree_model import ScopeTreeModel, DesignTreeNode
 from .vars_view import VarsView
 
-from .protocols import WaveformDBProtocol
+from .waveform_db import WaveformDB
 from .vars_view import VariableData
 from .timing_utils import tprint
 
@@ -44,7 +44,7 @@ class DesignTreeView(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         
-        self.waveform_db: Optional['WaveformDBProtocol'] = None
+        self.waveform_db: Optional['WaveformDB'] = None
         self.scope_tree_model: Optional[ScopeTreeModel] = None
         self.vars_view: Optional[VarsView] = None
         
@@ -96,7 +96,7 @@ class DesignTreeView(QWidget):
         # For backwards compatibility, create unified_tree reference
         self.unified_tree = self.scope_tree
     
-    def set_waveform_db(self, waveform_db: Optional['WaveformDBProtocol']) -> None:
+    def set_waveform_db(self, waveform_db: Optional['WaveformDB']) -> None:
         """Set the waveform database and initialize models"""
         tprint(f"DesignTreeView.set_waveform_db called with waveform_db={waveform_db is not None}")
         start_time = time.time()
