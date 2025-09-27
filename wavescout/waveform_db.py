@@ -453,21 +453,6 @@ class WaveformDB:
 
         return None
 
-    def get_var_bitwidth(self, handle: SignalHandle) -> int:
-        """Get bit width for a signal.
-
-        Args:
-            handle: Signal handle
-
-        Returns:
-            Bit width of the signal (defaults to 32 if unknown)
-        """
-        var = self.get_var(handle)
-        if var:
-            width = var.bitwidth()
-            if width is not None:
-                return int(width)
-        return 32  # Default bit width
 
     # Async loading methods
 

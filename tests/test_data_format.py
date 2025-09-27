@@ -227,7 +227,8 @@ def test_with_vcd_file():
             continue
             
         # Get bit width
-        bit_width = db.get_var_bitwidth(handle)
+        var = db.get_var(handle)
+        bit_width = var.bitwidth() if var else 32
         
         # Sample at time 0
         sig = db.signal_from_handle(handle)

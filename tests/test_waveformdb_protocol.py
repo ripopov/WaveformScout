@@ -20,7 +20,6 @@ def test_waveformdb_has_required_methods():
     assert hasattr(db, 'find_handle_by_name')
     assert hasattr(db, 'get_var')
     assert hasattr(db, 'iter_handles_and_vars')
-    assert hasattr(db, 'get_var_bitwidth')
     assert hasattr(db, 'get_time_table')
     assert hasattr(db, 'get_timescale')
 
@@ -76,41 +75,6 @@ def test_find_handle_by_path():
     assert db.find_handle_by_path("nonexistent") is None
 
 
-def test_get_var_bitwidth():
-    """Test get_var_bitwidth for normal and default cases."""
-    vcd_file = get_test_input_path(TestFiles.SWERV1_VCD)
-    
-    if not vcd_file.exists():
-        pytest.skip(f"Test VCD file not found: {vcd_file}")
-    
-    db = WaveformDB()
-    db.open(str(vcd_file))
-    
-    # Test with actual signals
-    handles_and_vars = db.iter_handles_and_vars()
-    tested_widths = set()
-    
-    for handle, var_list in handles_and_vars[:20]:  # Test first 20 signals
-        if var_list:
-            var = var_list[0]
-            
-            # Get bit width using new method
-            bit_width = db.get_var_bitwidth(handle)
-            assert isinstance(bit_width, int)
-            assert bit_width > 0
-            
-            # Verify it matches the var's bitwidth if available
-            if hasattr(var, 'bitwidth'):
-                expected_width = var.bitwidth()
-                assert bit_width == expected_width
-                tested_widths.add(bit_width)
-    
-    # Ensure we tested various bit widths
-    assert len(tested_widths) > 0, "Should have tested at least one signal with bitwidth"
-    
-    # Test with invalid handle (should return default)
-    invalid_handle = 999999
-    assert db.get_var_bitwidth(invalid_handle) == 32  # Default value
 
 
 def test_iter_handles_and_vars_returns_iterable():
@@ -160,6 +124,5 @@ def test_methods_with_empty_db():
     assert db.find_handle_by_name("any_name") is None
     assert db.get_var(0) is None
     assert list(db.iter_handles_and_vars()) == []
-    assert db.get_var_bitwidth(0) == 32  # Default
     assert db.get_time_table() is None
     assert db.get_timescale() is None
