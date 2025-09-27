@@ -15,7 +15,7 @@ from wavescout.analysis_engine import (
     compute_signal_statistics,
     generate_sampling_times_signal,
 )
-from tests.test_utils import get_test_input_path, TestFiles, MockVar
+from tests.test_utils import get_test_input_path, TestFiles
 
 
 def test_analysis_with_analog_signals():
@@ -31,7 +31,9 @@ def test_analysis_with_analog_signals():
     print("\n=== Signal Analysis Integration Test ===")
     
     # Step 1: Load analog_signals_short.vcd using test utilities
-    db = WaveformDB()
+    from wavescout.application.event_bus import EventBus
+    event_bus = EventBus()
+    db = WaveformDB(event_bus=event_bus)
     db.open(str(get_test_input_path(TestFiles.ANALOG_SIGNALS_SHORT_VCD)))
     print("✓ Step 1: Loaded analog_signals_short.vcd")
     
@@ -47,6 +49,7 @@ def test_analysis_with_analog_signals():
                 name=name,
                 var=var,  # Use the actual var from waveform_db
                 handle=handle,
+                signal=db.load_signal(handle),  # Use real AsyncLoadedSignal from waveform_db
                 format=DisplayFormat()
             )
             all_signals.append(signal)
@@ -56,7 +59,13 @@ def test_analysis_with_analog_signals():
                 clk_cnt_signal = signal
     
     print(f"✓ Step 2: Added {len(all_signals)} signals to wave")
-    
+
+    # Wait for all signals to load
+    handles_to_wait = [sig.handle for sig in all_signals]
+    if not db.wait_for_signals(handles_to_wait, timeout=10.0):
+        print("Warning: Not all signals loaded within timeout")
+    print(f"✓ Signals loaded and ready")
+
     # Step 3: Set clk_cnt as sampling signal
     assert clk_cnt_signal is not None, "clk_cnt signal not found"
     print(f"✓ Step 3: Set {clk_cnt_signal.name} as sampling signal")
