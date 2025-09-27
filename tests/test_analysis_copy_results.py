@@ -46,10 +46,26 @@ def test_copy_results():
             for handle in handles:
                 var = session.waveform_db.var_from_handle(handle)
                 if var:
+                    # Use the proper load_signal method to create AsyncLoadedSignal
+                    async_signal = session.waveform_db.load_signal(handle)
+
+                    # Wait for signal to load with timeout
+                    import time
+                    start_time = time.time()
+                    timeout = 5.0
+                    while not async_signal.is_loaded() and (time.time() - start_time) < timeout:
+                        QApplication.processEvents()
+                        time.sleep(0.01)
+
+                    # Ensure signal is loaded
+                    if not async_signal.is_loaded():
+                        print(f"WARNING: Signal {handle} did not load in time")
+
                     signal = SignalNodeSignal(
                         name=var.full_name(session.waveform_db.hierarchy),
                         var=var,  # Add the required var field
                         handle=handle,
+                        signal=async_signal,
                         format=DisplayFormat()
                     )
                     test_signals.append(signal)
