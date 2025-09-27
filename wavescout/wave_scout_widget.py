@@ -489,17 +489,17 @@ class WaveScoutWidget(QWidget):
         This is called when async signal loading completes and we need to
         update the canvas to show the newly loaded signals.
         """
-        print(f"[WAVE_SCOUT_WIDGET] _on_controller_signals_loaded called")
+        tprint("[WAVE_SCOUT_WIDGET] _on_controller_signals_loaded called")
         if self._canvas:
             # Force canvas to repaint now that signals are loaded
-            print(f"[WAVE_SCOUT_WIDGET] Updating canvas")
+            tprint("[WAVE_SCOUT_WIDGET] Updating canvas")
             self._canvas.update()
 
         # Also trigger model update to refresh the values column
         if self.model:
             row_count = self.model.rowCount()
             if row_count > 0:
-                print(f"[WAVE_SCOUT_WIDGET] Emitting dataChanged for {row_count} rows")
+                tprint(f"[WAVE_SCOUT_WIDGET] Emitting dataChanged for {row_count} rows")
                 # Emit dataChanged for all rows to update values
                 self.model.dataChanged.emit(
                     self.model.index(0, 0),
@@ -512,10 +512,10 @@ class WaveScoutWidget(QWidget):
         This is called when async signal loading starts. We could use this
         to show loading indicators if needed.
         """
-        print(f"[WAVE_SCOUT_WIDGET] _on_controller_signals_loading called")
+        tprint("[WAVE_SCOUT_WIDGET] _on_controller_signals_loading called")
         # For now, just ensure canvas updates to show "Loading..." placeholders
         if self._canvas:
-            print(f"[WAVE_SCOUT_WIDGET] Updating canvas for loading state")
+            tprint("[WAVE_SCOUT_WIDGET] Updating canvas for loading state")
             self._canvas.update()
     
     def _on_theme_changed(self) -> None:

@@ -15,6 +15,7 @@ from pyrox import SignalHandle
 from .data_model import Time, Timescale, TimeUnit
 from .application.event_bus import EventBus
 from .application.events import SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
+from .timing_utils import tprint
 
 
 class AsyncEventBridge(QObject):
@@ -37,32 +38,32 @@ class AsyncEventBridge(QObject):
     def _emit_loading_started(self, handles: List[Any]) -> None:
         """Emit loading started event on main thread."""
         import threading
-        print(f"[ASYNC_BRIDGE] _emit_loading_started on thread {threading.current_thread().name} with {len(handles)} handles")
+        tprint(f"[ASYNC_BRIDGE] _emit_loading_started on thread {threading.current_thread().name} with {len(handles)} handles")
         if self._event_bus:
-            print(f"[ASYNC_BRIDGE] Publishing SignalLoadingStartedEvent")
+            tprint("[ASYNC_BRIDGE] Publishing SignalLoadingStartedEvent")
             self._event_bus.publish(SignalLoadingStartedEvent(handles=handles))
         else:
-            print(f"[ASYNC_BRIDGE] No event bus to publish to")
+            tprint("[ASYNC_BRIDGE] No event bus to publish to")
 
     def _emit_loaded(self, pairs: List[Tuple[Any, Any]]) -> None:
         """Emit loaded event on main thread."""
         import threading
-        print(f"[ASYNC_BRIDGE] _emit_loaded on thread {threading.current_thread().name} with {len(pairs)} pairs")
+        tprint(f"[ASYNC_BRIDGE] _emit_loaded on thread {threading.current_thread().name} with {len(pairs)} pairs")
         if self._event_bus:
-            print(f"[ASYNC_BRIDGE] Publishing SignalLoadedEvent")
+            tprint("[ASYNC_BRIDGE] Publishing SignalLoadedEvent")
             self._event_bus.publish(SignalLoadedEvent(pairs=pairs))
         else:
-            print(f"[ASYNC_BRIDGE] No event bus to publish to")
+            tprint("[ASYNC_BRIDGE] No event bus to publish to")
 
     def _emit_loading_failed(self, handles: List[Any], error: str) -> None:
         """Emit loading failed event on main thread."""
         import threading
-        print(f"[ASYNC_BRIDGE] _emit_loading_failed on thread {threading.current_thread().name} with {len(handles)} handles, error: {error}")
+        tprint(f"[ASYNC_BRIDGE] _emit_loading_failed on thread {threading.current_thread().name} with {len(handles)} handles, error: {error}")
         if self._event_bus:
-            print(f"[ASYNC_BRIDGE] Publishing SignalLoadingFailedEvent")
+            tprint("[ASYNC_BRIDGE] Publishing SignalLoadingFailedEvent")
             self._event_bus.publish(SignalLoadingFailedEvent(handles=handles, error=error))
         else:
-            print(f"[ASYNC_BRIDGE] No event bus to publish to")
+            tprint("[ASYNC_BRIDGE] No event bus to publish to")
 
 
 class WaveformDB:
@@ -104,7 +105,7 @@ class WaveformDB:
         file_size_mb = file_size / (1024 * 1024)
         file_name = os.path.basename(uri)
 
-        print(f"Loading {file_name} ({file_size_mb:.1f} MB)...")
+        tprint(f"Loading {file_name} ({file_size_mb:.1f} MB)...")
 
         # Load waveform using pyrox
         load_start = time.time()
@@ -112,7 +113,7 @@ class WaveformDB:
         self.hierarchy = self.waveform.hierarchy
         load_end = time.time()
 
-        print(f"  - Waveform loaded in {load_end - load_start:.2f} seconds")
+        tprint(f"  - Waveform loaded in {load_end - load_start:.2f} seconds")
 
         # Register async callback if event bus is available
         if self._event_bus and self.waveform:
@@ -123,7 +124,7 @@ class WaveformDB:
 
         # No more mapping construction - everything is queried on-demand
         total_time = time.time() - start_time
-        print(f"  - Total load time: {total_time:.2f} seconds")
+        tprint(f"  - Total load time: {total_time:.2f} seconds")
 
     def top_signals(self) -> List[SignalHandle]:
         """Get handles for top-level signals."""
@@ -272,15 +273,15 @@ class WaveformDB:
         thread_name = threading.current_thread().name
 
         if self.waveform is None:
-            print(f"[GET_SIGNAL] Handle {handle} - no waveform (thread: {thread_name})")
+            tprint(f"[GET_SIGNAL] Handle {handle} - no waveform (thread: {thread_name})")
             return None
 
         # Check Python-side cache first
         if handle in self._signal_cache:
-            print(f"[GET_SIGNAL] Handle {handle} - CACHE HIT (thread: {thread_name})")
+            tprint(f"[GET_SIGNAL] Handle {handle} - CACHE HIT (thread: {thread_name})")
             return self._signal_cache[handle]
 
-        print(f"[GET_SIGNAL] Handle {handle} - CACHE MISS, loading from Rust (thread: {thread_name})")
+        tprint(f"[GET_SIGNAL] Handle {handle} - CACHE MISS, loading from Rust (thread: {thread_name})")
 
         try:
             # Load signal from Rust (always fresh)
@@ -288,13 +289,13 @@ class WaveformDB:
             if signal:
                 # Cache in Python
                 self._signal_cache[handle] = signal
-                print(f"[GET_SIGNAL] Handle {handle} - loaded and cached (thread: {thread_name})")
+                tprint(f"[GET_SIGNAL] Handle {handle} - loaded and cached (thread: {thread_name})")
             else:
-                print(f"[GET_SIGNAL] Handle {handle} - not found in waveform (thread: {thread_name})")
+                tprint(f"[GET_SIGNAL] Handle {handle} - not found in waveform (thread: {thread_name})")
             return signal
         except Exception as e:
             # Signal not found or other error
-            print(f"[GET_SIGNAL] Handle {handle} - error: {e} (thread: {thread_name})")
+            tprint(f"[GET_SIGNAL] Handle {handle} - error: {e} (thread: {thread_name})")
             return None
 
     def var_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Var]:
@@ -354,7 +355,7 @@ class WaveformDB:
         handles_to_load = [h for h in unique_handles if h not in self._signal_cache]
         if not handles_to_load:
             elapsed = time.perf_counter() - start_time
-            print(f"preload_signals: All {len(unique_handles)} signals already cached (took {elapsed:.3f}s)")
+            tprint(f"preload_signals: All {len(unique_handles)} signals already cached (took {elapsed:.3f}s)")
             return
 
         # Convert handles to Var objects
@@ -366,7 +367,7 @@ class WaveformDB:
 
         if not vars_to_load:
             elapsed = time.perf_counter() - start_time
-            print(f"preload_signals: No valid signals to load (took {elapsed:.3f}s)")
+            tprint(f"preload_signals: No valid signals to load (took {elapsed:.3f}s)")
             return
 
         # Batch load signals using pyrox API (always multithreaded)
@@ -388,14 +389,14 @@ class WaveformDB:
             total_time = time.perf_counter() - start_time
             already_cached = len(unique_handles) - len(handles_to_load)
 
-            print(f"preload_signals: Loaded {cached_count} new signals, {already_cached} already cached")
-            print(f"  - Pyrox loading: {load_time:.3f}s")
-            print(f"  - Cache storage: {cache_time:.3f}s")
-            print(f"  - Total time: {total_time:.3f}s")
+            tprint(f"preload_signals: Loaded {cached_count} new signals, {already_cached} already cached")
+            tprint(f"  - Pyrox loading: {load_time:.3f}s")
+            tprint(f"  - Cache storage: {cache_time:.3f}s")
+            tprint(f"  - Total time: {total_time:.3f}s")
 
         except Exception as e:
             elapsed = time.perf_counter() - start_time
-            print(f"preload_signals: Failed after {elapsed:.3f}s - {str(e)}")
+            tprint(f"preload_signals: Failed after {elapsed:.3f}s - {str(e)}")
             # Re-raise the exception to be handled by the caller
             raise RuntimeError(f"Failed to load signals: {str(e)}")
 
@@ -548,33 +549,33 @@ class WaveformDB:
         thread-safe and post events to the Qt thread when updating UI.
         """
         import threading
-        print(f"[WAVEFORM_DB] _on_async_event called from thread {threading.current_thread().name}")
-        print(f"[WAVEFORM_DB] Event: {event}")
+        tprint(f"[WAVEFORM_DB] _on_async_event called from thread {threading.current_thread().name}")
+        tprint(f"[WAVEFORM_DB] Event: {event}")
 
         if not self._event_bridge:
-            print(f"[WAVEFORM_DB] No event bridge, returning")
+            tprint("[WAVEFORM_DB] No event bridge, returning")
             return
 
         event_type = event.get("type")
-        print(f"[WAVEFORM_DB] Event type: {event_type}")
+        tprint(f"[WAVEFORM_DB] Event type: {event_type}")
 
         if event_type == "SignalStartLoad":
             # Track handles being loaded
             handles = event.get("handles", [])
-            print(f"[WAVEFORM_DB] SignalStartLoad: {len(handles)} handles")
+            tprint(f"[WAVEFORM_DB] SignalStartLoad: {len(handles)} handles")
             self._loading_handles.update(handles)
             # Emit via Qt signal (thread-safe)
-            print(f"[WAVEFORM_DB] Emitting loading_started signal")
+            tprint("[WAVEFORM_DB] Emitting loading_started signal")
             self._event_bridge.loading_started.emit(handles)
 
         elif event_type == "SignalLoaded":
             # Process loaded signals
             signals_data = event.get("signals", [])
-            print(f"[WAVEFORM_DB] SignalLoaded: {len(signals_data)} signals")
+            tprint(f"[WAVEFORM_DB] SignalLoaded: {len(signals_data)} signals")
             loaded_pairs = []
 
             for handle, signal in signals_data:
-                print(f"[WAVEFORM_DB] Caching signal for handle {handle}")
+                tprint(f"[WAVEFORM_DB] Caching signal for handle {handle}")
                 # Update Python cache
                 self._signal_cache[handle] = signal
                 # Remove from loading set
@@ -583,7 +584,7 @@ class WaveformDB:
 
             # Emit via Qt signal (thread-safe)
             if loaded_pairs:
-                print(f"[WAVEFORM_DB] Emitting loaded signal with {len(loaded_pairs)} pairs")
+                tprint(f"[WAVEFORM_DB] Emitting loaded signal with {len(loaded_pairs)} pairs")
                 self._event_bridge.loaded.emit(loaded_pairs)
 
         elif event_type == "Error":
@@ -602,9 +603,9 @@ class WaveformDB:
         Args:
             handles: Sequence of signal handles to load
         """
-        print(f"[WAVEFORM_DB] load_signals_async called with {len(handles)} handles")
+        tprint(f"[WAVEFORM_DB] load_signals_async called with {len(handles)} handles")
         if not self.waveform:
-            print(f"[WAVEFORM_DB] No waveform, returning")
+            tprint("[WAVEFORM_DB] No waveform, returning")
             return
 
         # Filter out already cached and currently loading signals
@@ -613,20 +614,20 @@ class WaveformDB:
             if h not in self._signal_cache and h not in self._loading_handles
         ]
 
-        print(f"[WAVEFORM_DB] After filtering: {len(handles_to_load)} handles need loading")
-        print(f"[WAVEFORM_DB] Cached: {len(self._signal_cache)}, Loading: {len(self._loading_handles)}")
+        tprint(f"[WAVEFORM_DB] After filtering: {len(handles_to_load)} handles need loading")
+        tprint(f"[WAVEFORM_DB] Cached: {len(self._signal_cache)}, Loading: {len(self._loading_handles)}")
 
         if not handles_to_load:
             # All signals are either cached or being loaded
-            print(f"[WAVEFORM_DB] All signals cached or loading, returning")
+            tprint("[WAVEFORM_DB] All signals cached or loading, returning")
             return
 
         # Mark handles as loading
         self._loading_handles.update(handles_to_load)
-        print(f"[WAVEFORM_DB] Marked {len(handles_to_load)} handles as loading")
+        tprint(f"[WAVEFORM_DB] Marked {len(handles_to_load)} handles as loading")
 
         # Trigger async load via pyrox
-        print(f"[WAVEFORM_DB] Calling pyrox load_signals_async")
+        tprint("[WAVEFORM_DB] Calling pyrox load_signals_async")
         self.waveform.load_signals_async(list(handles_to_load))
 
     def is_signal_loading(self, handle: SignalHandle) -> bool:

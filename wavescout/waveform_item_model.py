@@ -475,7 +475,7 @@ class WaveformItemModel(QAbstractItemModel):
         try:
             return self._move_nodes(nodes_to_move, parent_node, insert_row)
         except Exception as e:
-            print(f"Drop failed: {e}")
+            tprint(f"Drop failed: {e}")
             import traceback
             traceback.print_exc()
             return False

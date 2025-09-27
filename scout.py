@@ -1000,7 +1000,7 @@ class WaveScoutMainWindow(FramelessWindow):
                 # Print confirmation for CLI/integration tests
                 if file_path:
                     try:
-                        print(f"Successfully loaded waveform: {file_path}")
+                        tprint(f"Successfully loaded waveform: {file_path}")
                     except Exception:
                         pass
             else:
@@ -1095,7 +1095,7 @@ class WaveScoutMainWindow(FramelessWindow):
     def load_session_file(self, file_path: str):
         """Load a session from a specified file path."""
         if not os.path.exists(file_path):
-            print(f"Error: Session file not found: {file_path}")
+            tprint(f"Error: Session file not found: {file_path}")
             return
             
         # Clear the design tree before loading new session
@@ -1151,7 +1151,7 @@ class WaveScoutMainWindow(FramelessWindow):
             
         session_file = self._loading_state.session_path or 'unknown'
         error_msg = f"Failed to load session from {session_file}:\n{error_msg}"
-        print(f"Error: {error_msg}")
+        tprint(f"Error: {error_msg}")
         show_critical(self, "Load Error", error_msg)
         self.statusBar().showMessage("Session load failed")
         
@@ -1178,7 +1178,7 @@ class WaveScoutMainWindow(FramelessWindow):
         if self._loading_state.session_path is not None:
             session_file = self._loading_state.session_path
             self.statusBar().showMessage(f"Session loaded from: {Path(session_file).name}")
-            print(f"Successfully loaded session from: {session_file}")
+            tprint(f"Successfully loaded session from: {session_file}")
         
         # Clean up loading state
         self._loading_state.clear()
@@ -1289,7 +1289,7 @@ class WaveScoutMainWindow(FramelessWindow):
     
     def _on_session_preload_error(self, error_msg):
         """Handle error during session signal preloading."""
-        print(f"Warning: Failed to preload session signals: {error_msg}")
+        tprint(f"Warning: Failed to preload session signals: {error_msg}")
         # Continue anyway - signals will load lazily if needed
         self._finalize_waveform_load()
     
@@ -1319,7 +1319,7 @@ class WaveScoutMainWindow(FramelessWindow):
                 self.current_wave_file = Path(file_path)
                 self.setWindowTitle(f"WaveScout - {Path(file_path).name}")
                 self.statusBar().showMessage(f"Loaded: {Path(file_path).name}")
-                print(f"Successfully loaded waveform: {file_path}")
+                tprint(f"Successfully loaded waveform: {file_path}")
             
             # Update design tree if we have a waveform
             # Defer heavy UI updates to allow UI to remain responsive
@@ -1341,7 +1341,7 @@ class WaveScoutMainWindow(FramelessWindow):
                     if getattr(self, 'exit_after_load', False):
                         def exit_after_load():
                             import sys
-                            print("Successfully loaded waveform: " + str(self.current_wave_file))
+                            tprint("Successfully loaded waveform: " + str(self.current_wave_file))
                             sys.stdout.flush()
                             QApplication.instance().quit()
                         QTimer.singleShot(200, exit_after_load)
@@ -1779,7 +1779,7 @@ class WaveScoutMainWindow(FramelessWindow):
             # Load snippet from file (reuse existing loading)
             snippet = manager.load_snippet_file(name)
             if not snippet:
-                print(f"Error: Snippet file not found: {name}", file=sys.stderr)
+                tprint(f"Error: Snippet file not found: {name}")
                 sys.exit(1)
                 return  # This return is for testing - sys.exit will normally terminate
             
@@ -1798,7 +1798,7 @@ class WaveScoutMainWindow(FramelessWindow):
                     waveform_db.load_signals_async(handles_to_load)
             except ValueError as e:
                 # Enhance error message to include snippet name
-                print(f"Error in snippet '{name}': {e}", file=sys.stderr)
+                tprint(f"Error in snippet '{name}': {e}")
                 sys.exit(1)
             
             # Create group to wrap snippet (reuse logic from _on_snippet_instantiate)
@@ -1812,15 +1812,15 @@ class WaveScoutMainWindow(FramelessWindow):
             
             # Instantiate using existing controller method
             if not self.wave_widget.controller.instantiate_snippet([group_node]):
-                print(f"Error: Failed to instantiate snippet: {name}", file=sys.stderr)
+                tprint(f"Error: Failed to instantiate snippet: {name}")
                 sys.exit(1)
-            
-            print(f"Successfully loaded snippet: {name}")
+
+            tprint(f"Successfully loaded snippet: {name}")
         
         # Check if we should exit after loading
         if getattr(self, 'exit_after_load', False):
             import sys
-            print("Successfully loaded waveform: " + str(self.current_wave_file))
+            tprint("Successfully loaded waveform: " + str(self.current_wave_file))
             sys.stdout.flush()
             QApplication.instance().quit()
     

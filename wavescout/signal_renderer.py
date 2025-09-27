@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat, GroupRenderMode
 from .signal_sampling import SignalDrawingData, ValueKind
 from . import config
+from .timing_utils import tprint
 RENDERING = config.RENDERING
 import math
 from .protocols import WaveformDBProtocol
@@ -637,7 +638,7 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDBPro
         return min_val, max_val
         
     except Exception as e:
-        print(f"Error computing global signal range: {e}")
+        tprint(f"Error computing global signal range: {e}")
         return 0.0, 1.0
 
 

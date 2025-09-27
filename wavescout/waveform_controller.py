@@ -40,6 +40,7 @@ from .application.events import (
     SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
 )
 from pyrox import SignalHandle
+from .timing_utils import tprint
 
 
 Callback = Callable[[], None]
@@ -106,32 +107,32 @@ class WaveformController:
 
     # ---- Session / selection ----
     def set_session(self, session: WaveformSession) -> None:
-        print(f"[CONTROLLER] set_session called")
+        tprint("[CONTROLLER] set_session called")
         self.session = session
 
         # Hook up event bus to WaveformDB if it doesn't have one
         # This is crucial for sessions loaded in background threads
         if session and session.waveform_db:
-            print(f"[CONTROLLER] Session has waveform_db")
+            tprint("[CONTROLLER] Session has waveform_db")
             # We need to access internal WaveformDB attributes, so check if it's the actual class
             # not just the protocol
             from wavescout.waveform_db import WaveformDB, AsyncEventBridge
             if isinstance(session.waveform_db, WaveformDB):
                 waveform_db = session.waveform_db
-                print(f"[CONTROLLER] WaveformDB instance detected")
-                print(f"[CONTROLLER] WaveformDB._event_bus = {waveform_db._event_bus}")
-                print(f"[CONTROLLER] WaveformDB._event_bridge = {waveform_db._event_bridge}")
+                tprint("[CONTROLLER] WaveformDB instance detected")
+                tprint(f"[CONTROLLER] WaveformDB._event_bus = {waveform_db._event_bus}")
+                tprint(f"[CONTROLLER] WaveformDB._event_bridge = {waveform_db._event_bridge}")
 
                 # Check if WaveformDB lacks an event bridge
                 if hasattr(waveform_db, '_event_bus') and waveform_db._event_bus is None:
-                    print(f"[CONTROLLER] WaveformDB lacks event bus, hooking up...")
+                    tprint("[CONTROLLER] WaveformDB lacks event bus, hooking up...")
                     # Hook up our event bus
                     waveform_db._event_bus = self.event_bus
                     # Create event bridge for thread-safe async callbacks
                     waveform_db._event_bridge = AsyncEventBridge(self.event_bus)
                     # Re-register async callback if waveform is loaded
                     if waveform_db.waveform:
-                        print(f"[CONTROLLER] Re-registering async callback")
+                        tprint("[CONTROLLER] Re-registering async callback")
                         waveform_db.waveform.set_async_callback(waveform_db._on_async_event)
 
                     # If there are signals that were supposed to load async but didn't
@@ -140,12 +141,12 @@ class WaveformController:
                         # Handles that are marked as loading but haven't loaded yet
                         handles_to_reload = list(waveform_db._loading_handles)
                         if handles_to_reload:
-                            print(f"[CONTROLLER] Re-triggering loading for {len(handles_to_reload)} handles")
+                            tprint(f"[CONTROLLER] Re-triggering loading for {len(handles_to_reload)} handles")
                             # Clear the loading set and re-trigger
                             waveform_db._loading_handles.clear()
                             waveform_db.load_signals_async(handles_to_reload)
                 else:
-                    print(f"[CONTROLLER] WaveformDB already has event bus, skipping hookup")
+                    tprint("[CONTROLLER] WaveformDB already has event bus, skipping hookup")
 
         # Sync selected IDs from session.selected_nodes
         self._selected_ids = {n.instance_id for n in session.selected_nodes}
@@ -808,7 +809,7 @@ class WaveformController:
             # Ensure all nodes have valid handles and unique instance IDs
             for node in snippet_nodes:
                 if isinstance(node, SignalNodeSignal) and node.handle == -1:
-                    print(f"Warning: Signal {node.name} has invalid handle")
+                    tprint(f"Warning: Signal {node.name} has invalid handle")
                     return False
             
             # Insert the nodes
@@ -817,7 +818,7 @@ class WaveformController:
             return True
             
         except Exception as e:
-            print(f"Error instantiating snippet: {e}")
+            tprint(f"Error instantiating snippet: {e}")
             return False
     
     def ungroup_nodes(self, group_ids: Iterable[SignalNodeID]) -> None:
@@ -1208,9 +1209,9 @@ class WaveformController:
 
     def _on_signal_loading_started(self, event: SignalLoadingStartedEvent) -> None:
         """Handle signal loading started event."""
-        print(f"[CONTROLLER] _on_signal_loading_started: {len(event.handles)} handles")
+        tprint(f"[CONTROLLER] _on_signal_loading_started: {len(event.handles)} handles")
         if not self.session:
-            print(f"[CONTROLLER] No session, returning")
+            tprint("[CONTROLLER] No session, returning")
             return
 
         # Add handles to session loading state
@@ -1221,9 +1222,9 @@ class WaveformController:
 
     def _on_signal_loaded(self, event: SignalLoadedEvent) -> None:
         """Handle signal loaded event."""
-        print(f"[CONTROLLER] _on_signal_loaded: {len(event.pairs)} signals")
+        tprint(f"[CONTROLLER] _on_signal_loaded: {len(event.pairs)} signals")
         if not self.session:
-            print(f"[CONTROLLER] No session, returning")
+            tprint("[CONTROLLER] No session, returning")
             return
 
         # Update all nodes with loaded signal data
@@ -1235,7 +1236,7 @@ class WaveformController:
             self._update_nodes_with_signal(handle, signal)
 
         # Emit callback for UI updates
-        print(f"[CONTROLLER] Emitting signals_loaded and session_changed callbacks")
+        tprint("[CONTROLLER] Emitting signals_loaded and session_changed callbacks")
         self._emit("signals_loaded")
         self._emit("session_changed")
 
@@ -1252,13 +1253,13 @@ class WaveformController:
         self._emit("signals_loaded")  # Still emit to update UI
 
         # Log error
-        print(f"Signal loading failed: {event.error}")
+        tprint(f"Signal loading failed: {event.error}")
 
     def _update_nodes_with_signal(self, handle: SignalHandle, signal: "Signal") -> None:
         """Update all SignalNodeSignal instances with the given handle."""
-        print(f"[CONTROLLER] _update_nodes_with_signal: handle={handle}")
+        tprint(f"[CONTROLLER] _update_nodes_with_signal: handle={handle}")
         if not self.session:
-            print(f"[CONTROLLER] No session, returning")
+            tprint("[CONTROLLER] No session, returning")
             return
 
         def update_in_tree(nodes: List[SignalNode]) -> None:

@@ -10,6 +10,7 @@ from typing import Optional, TypeAlias, Any
 from PySide6.QtCore import QStandardPaths, QObject, Signal
 
 from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal
+from wavescout.timing_utils import tprint
 
 SnippetDict: TypeAlias = dict[str, "Snippet"]
 
@@ -106,7 +107,7 @@ class SnippetManager(QObject):
                     snippet = Snippet.from_dict(data)
                     self._snippets[snippet.name] = snippet
             except Exception as e:
-                print(f"Error loading snippet {json_file}: {e}")
+                tprint(f"Error loading snippet {json_file}: {e}")
     
     def load_snippet_file(self, filename: str) -> Optional[Snippet]:
         """Load a specific snippet file from the snippets directory."""
@@ -118,7 +119,7 @@ class SnippetManager(QObject):
                 data = json.load(f)
                 return Snippet.from_dict(data)
         except Exception as e:
-            print(f"Error loading snippet {json_file}: {e}")
+            tprint(f"Error loading snippet {json_file}: {e}")
             return None
     
     def save_snippet(self, snippet: Snippet) -> bool:
@@ -152,7 +153,7 @@ class SnippetManager(QObject):
             return True
             
         except Exception as e:
-            print(f"Error saving snippet: {e}")
+            tprint(f"Error saving snippet: {e}")
             return False
     
     def delete_snippet(self, name: str) -> bool:
@@ -169,7 +170,7 @@ class SnippetManager(QObject):
             return True
             
         except Exception as e:
-            print(f"Error deleting snippet {name}: {e}")
+            tprint(f"Error deleting snippet {name}: {e}")
             return False
     
     def get_snippet(self, name: str) -> Optional[Snippet]:
@@ -209,7 +210,7 @@ class SnippetManager(QObject):
             return True
             
         except Exception as e:
-            print(f"Error renaming snippet: {e}")
+            tprint(f"Error renaming snippet: {e}")
             return False
     
     def find_common_parent(self, group_node: SignalNode) -> str:
