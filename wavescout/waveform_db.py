@@ -393,16 +393,6 @@ class WaveformDB:
             return var.signal_handle()  # type: ignore[no-any-return]
         return None
 
-    def get_next_available_handle(self) -> int:
-        """Get the next available handle ID."""
-        if not self.hierarchy:
-            return 0
-        # Count unique signal refs
-        refs = set()
-        for var in self.hierarchy.all_vars():
-            refs.add(var.signal_handle())
-        return len(refs)
-
     def clear_signal_cache(self) -> None:
         """Clear the signal cache. Primarily for testing.
 
