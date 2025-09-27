@@ -3,7 +3,7 @@
 from typing import List, Tuple, Optional, Dict, TYPE_CHECKING, Sequence, Iterable, Any, Union, Tuple
 import time as time_module
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QObject, Signal, QThread
+from PySide6.QtCore import QObject, Signal, QThread, Qt
 
 if TYPE_CHECKING:
     from pyrox import Scope
@@ -21,18 +21,18 @@ from .timing_utils import tprint
 class AsyncEventBridge(QObject):
     """Bridge to safely pass async events from worker threads to main Qt thread."""
 
-    loading_started = Signal(List[SignalHandle])  # List of handles
-    loaded = Signal(List[Tuple[SignalHandle, Signal]])  # List of (handle, signal) pairs 
-    loading_failed = Signal(List[SignalHandle], str)  # List of handles, error message
+    loading_started = Signal(list)  # List of handles
+    loaded = Signal(list)  # List of (handle, signal) pairs
+    loading_failed = Signal(list, str)  # List of handles, error message
 
     def __init__(self, event_bus: EventBus):
         super().__init__()
         self._event_bus = event_bus
 
-        # Connect signals to event bus on main thread
-        self.loading_started.connect(self._emit_loading_started)
-        self.loaded.connect(self._emit_loaded)
-        self.loading_failed.connect(self._emit_loading_failed)
+        # Connect signals to event bus on main thread with queued connections for thread safety
+        self.loading_started.connect(self._emit_loading_started, Qt.ConnectionType.QueuedConnection)
+        self.loaded.connect(self._emit_loaded, Qt.ConnectionType.QueuedConnection)
+        self.loading_failed.connect(self._emit_loading_failed, Qt.ConnectionType.QueuedConnection)
 
     def _emit_loading_started(self, handles: List[SignalHandle]) -> None:
         """Emit loading started event on main thread."""
