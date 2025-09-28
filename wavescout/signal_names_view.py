@@ -71,8 +71,8 @@ class BaseColumnView(QTreeView):
         if model:
             for col in range(model.columnCount()):
                 if hasattr(self, '_show_multiple_columns') and self._show_multiple_columns:
-                    # For SignalValuesView, show columns 1 and 2
-                    should_hide = col not in [1, 2]
+                    # For SignalValuesView, show columns 1, 2, and 3 (Value, Format, Color)
+                    should_hide = col not in [1, 2, 3]
                 else:
                     # For other views, show only the specified column
                     should_hide = col != self._visible_column

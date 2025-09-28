@@ -22,7 +22,7 @@ class WaveformItemModel(QAbstractItemModel):
         super().__init__(parent)
         self._session = session
         self._controller = controller
-        self._headers = ["Signal", "Value", "Format", "Waveform"]
+        self._headers = ["Signal", "Value", "Format", "Color", "Waveform"]
         self._cleanup_done = False
 
         # Get settings manager instance
@@ -61,7 +61,7 @@ class WaveformItemModel(QAbstractItemModel):
 
     # -- overriding row/column API --
     def columnCount(self, _parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex()) -> int:
-        return 4  # One column for each panel: Signal, Value, Format, Waveform
+        return 5  # One column for each panel: Signal, Value, Format, Color, Waveform
 
     def rowCount(self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex()) -> int:
         # Return number of children for given parent (or root nodes)
@@ -143,10 +143,20 @@ class WaveformItemModel(QAbstractItemModel):
                 # Format column - show data format
                 return self._format_at_cursor(node)
             elif col == 3:
+                # Color column - return empty string for display (color shown via BackgroundRole)
+                return ""
+            elif col == 4:
                 return ""  # Waveform painted by canvas
         elif role == Qt.ItemDataRole.ForegroundRole:
             if isinstance(node, SignalNode):
                 return node.format.color
+            return None
+        elif role == Qt.ItemDataRole.BackgroundRole:
+            # Show color in the Color column (column 3)
+            if index.column() == 3 and isinstance(node, SignalNode):
+                if node.format.color:
+                    from PySide6.QtGui import QColor
+                    return QColor(node.format.color)
             return None
         elif role == Qt.ItemDataRole.UserRole:
             return node  # For delegates to access full node data

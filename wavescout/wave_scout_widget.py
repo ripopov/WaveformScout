@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout,
                                QScrollBar, QSplitter,
                                QLabel, QFrame, QApplication)
 from PySide6.QtCore import Qt, Signal, QModelIndex, QItemSelectionModel, QItemSelection, QEvent, QTimer, QObject
-from PySide6.QtGui import QKeyEvent, QWheelEvent
+from PySide6.QtGui import QKeyEvent, QWheelEvent, QMouseEvent
 from typing import Optional, cast, List
 import time
 from .timing_utils import tprint
@@ -17,12 +17,51 @@ from .config import RENDERING, UI
 
 
 class SignalValuesView(BaseColumnView):
-    """Tree view for signal values and formats at cursor (columns 1-2)."""
-    
+    """Tree view for signal values, formats, and colors at cursor (columns 1-3)."""
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(visible_column=1, allow_expansion=False, parent=parent)
-        # Override to show both columns 1 and 2
+        # Override to show columns 1, 2, and 3
         self._show_multiple_columns = True
+        self._controller: Optional['WaveformController'] = None
+
+    def set_controller(self, controller: 'WaveformController') -> None:
+        """Set the controller for handling color changes."""
+        self._controller = controller
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        """Handle double-clicks, especially on the color column."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QColorDialog
+        from PySide6.QtGui import QColor
+        from .data_model import SignalNode
+
+        if event.button() == Qt.MouseButton.LeftButton:
+            index = self.indexAt(event.pos())
+            if index.isValid() and index.column() == 3:  # Color column
+                node = index.internalPointer()
+                if isinstance(node, SignalNode) and self._controller:
+                    # Get current color or use default
+                    current_color = QColor(node.format.color) if node.format.color else QColor(Qt.GlobalColor.white)
+
+                    # Open color dialog
+                    new_color = QColorDialog.getColor(
+                        current_color,
+                        self,
+                        "Select Signal Color"
+                    )
+
+                    if new_color.isValid():
+                        # Apply new color
+                        color_str = new_color.name()  # Returns hex format "#RRGGBB"
+                        self._controller.set_node_format(
+                            node.instance_id,
+                            color=color_str
+                        )
+                    return
+
+        # Let base class handle other double-clicks
+        super().mouseDoubleClickEvent(event)
 
 
 class WaveScoutWidget(QWidget):
@@ -89,7 +128,8 @@ class WaveScoutWidget(QWidget):
         
         # Create the views
         self._names_view = SignalNamesView(controller=self.controller)
-        self._values_view = SignalValuesView()  # Now shows both Value and Format columns
+        self._values_view = SignalValuesView()  # Now shows Value, Format, and Color columns
+        self._values_view.set_controller(self.controller)  # Set controller for color picker
         self._canvas = WaveformCanvas(None)
         
         # Install event filter on child views to handle keyboard shortcuts
