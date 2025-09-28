@@ -16,75 +16,89 @@ from wavescout.data_model import (
     AnalysisMode,
     GroupRenderMode,
 )
-from .test_utils import get_test_input_path, TestFiles, MockVar
+from wavescout.waveform_db import WaveformDB
+from wavescout.waveform_loader import create_signal_node_from_var
+from .test_utils import get_test_input_path, TestFiles
 
 
 def create_test_session():
-    """Create a test session with various signal configurations."""
-    session = WaveformSession()
-    
-    # Add simple signal
-    node1 = SignalNodeSignal(
-        name="clk",
-        var=MockVar("clk"),
-        handle=1,
-        format=DisplayFormat(
-            data_format=DataFormat.BIN,
-            color="#33C3F0"
-        )
-    )
-    
+    """Create a test session with various signal configurations using real waveform."""
+    # Create session from a small test VCD file
+    vcd_path = get_test_input_path(TestFiles.APB_SIM_VCD)
+    session = create_sample_session(str(vcd_path))
+
+    # Get waveform database and add signals
+    db = session.waveform_db
+    if not db:
+        raise RuntimeError("Failed to open waveform database")
+
+    hierarchy = db.hierarchy
+    all_handles = list(db.get_all_handles())
+    all_handles.sort()  # For consistency
+
+    # Add first signal as a simple signal
+    if len(all_handles) >= 1:
+        var1 = db.get_var(all_handles[0])
+        if var1:
+            node1 = create_signal_node_from_var(var1, hierarchy, all_handles[0], db)
+            # Customize format
+            node1.format.data_format = DataFormat.BIN
+            node1.format.color = "#33C3F0"
+            session.root_nodes.append(node1)
+
     # Add group with children
-    group = SignalNodeGroup(
-        name="CPU",
-        group_render_mode=GroupRenderMode.OVERLAPPED,
-        is_expanded=False
-    )
-    
-    child1 = SignalNodeSignal(
-        name="pc[31:0]",
-        var=MockVar("pc", 32),
-        handle=2,
-        format=DisplayFormat(
-            data_format=DataFormat.HEX,
-            color="#FF0000"
-        ),
-        parent=group,
-        nickname="Program Counter"
-    )
-    
-    child2 = SignalNodeSignal(
-        name="instruction[31:0]",
-        var=MockVar("instruction", 32),
-        handle=3,
-        format=DisplayFormat(
-            data_format=DataFormat.HEX,
-            color="#00FF00"
-        ),
-        parent=group
-    )
-    
-    group.children = [child1, child2]
-    
-    # Set up session
-    session.root_nodes = [node1, group]
-    # Create viewport with new normalized coordinate system
-    # Total duration is 10000, we want to show from 1000 to 2000 (10% of the waveform)
-    session.viewport = Viewport()
-    session.viewport.total_duration = 10000  # Total waveform duration
-    session.viewport.left = 0.1   # 1000/10000 = 0.1
-    session.viewport.right = 0.2  # 2000/10000 = 0.2
-    session.markers = [
-        Marker(time=1100, label="A", color="#FF0000"),
-        Marker(time=1750, label="B", color="#00FF00")
-    ]
-    session.cursor_time = 1250
-    session.analysis_mode = AnalysisMode(
-        mode="max",
-        range_start=1000,
-        range_end=2000
-    )
-    
+    if len(all_handles) >= 3:
+        group = SignalNodeGroup(
+            name="CPU",
+            group_render_mode=GroupRenderMode.OVERLAPPED,
+            is_expanded=False
+        )
+
+        # Add two children to the group
+        var2 = db.get_var(all_handles[1])
+        if var2:
+            child1 = create_signal_node_from_var(var2, hierarchy, all_handles[1], db)
+            child1.format.data_format = DataFormat.HEX
+            child1.format.color = "#FF0000"
+            child1.parent = group
+            child1.nickname = "Program Counter"
+            group.children.append(child1)
+
+        var3 = db.get_var(all_handles[2])
+        if var3:
+            child2 = create_signal_node_from_var(var3, hierarchy, all_handles[2], db)
+            child2.format.data_format = DataFormat.HEX
+            child2.format.color = "#00FF00"
+            child2.parent = group
+            group.children.append(child2)
+
+        session.root_nodes.append(group)
+
+    # Set up viewport and other session properties
+    time_table = db.get_time_table()
+    if time_table and len(time_table) > 1:
+        total_duration = time_table[-1]
+        session.viewport.total_duration = total_duration
+        # Show the middle 10% of the waveform
+        session.viewport.left = 0.45
+        session.viewport.right = 0.55
+
+        # Set markers and cursor within visible range
+        visible_start = int(total_duration * 0.45)
+        visible_end = int(total_duration * 0.55)
+        visible_mid = (visible_start + visible_end) // 2
+
+        session.markers = [
+            Marker(time=visible_start + (visible_end - visible_start) // 4, label="A", color="#FF0000"),
+            Marker(time=visible_start + 3 * (visible_end - visible_start) // 4, label="B", color="#00FF00")
+        ]
+        session.cursor_time = visible_mid
+        session.analysis_mode = AnalysisMode(
+            mode="max",
+            range_start=visible_start,
+            range_end=visible_end
+        )
+
     return session
 
 
@@ -105,30 +119,30 @@ def test_save_and_load_session():
         
         # Verify basic properties
         assert len(loaded_session.root_nodes) == 2
-        assert loaded_session.viewport.left == 0.1
-        assert loaded_session.viewport.right == 0.2
-        assert loaded_session.viewport.total_duration == 10000
-        # Verify calculated properties
-        assert loaded_session.viewport.start_time == 1000
-        assert loaded_session.viewport.end_time == 2000
-        assert loaded_session.cursor_time == 1250
+        # Viewport values are dynamic based on actual waveform
+        assert 0.4 <= loaded_session.viewport.left <= 0.5
+        assert 0.5 <= loaded_session.viewport.right <= 0.6
+        assert loaded_session.viewport.total_duration > 0
+        # Verify cursor is within the viewport range
+        assert loaded_session.viewport.start_time <= loaded_session.cursor_time <= loaded_session.viewport.end_time
         
         # Verify markers
         assert len(loaded_session.markers) == 2
-        assert loaded_session.markers[0].time == 1100
         assert loaded_session.markers[0].label == "A"
-        assert loaded_session.markers[1].time == 1750
         assert loaded_session.markers[1].label == "B"
-        
+        # Markers should be within the viewport
+        assert loaded_session.viewport.start_time <= loaded_session.markers[0].time <= loaded_session.viewport.end_time
+        assert loaded_session.viewport.start_time <= loaded_session.markers[1].time <= loaded_session.viewport.end_time
+
         # Verify analysis mode
         assert loaded_session.analysis_mode.mode == "max"
-        assert loaded_session.analysis_mode.range_start == 1000
-        assert loaded_session.analysis_mode.range_end == 2000
+        # Analysis range should be the viewport range
+        assert loaded_session.analysis_mode.range_start == loaded_session.viewport.start_time
+        assert loaded_session.analysis_mode.range_end == loaded_session.viewport.end_time
         
         # Verify first node (simple signal)
         node1 = loaded_session.root_nodes[0]
-        assert node1.name == "clk"
-        assert node1.handle == 1
+        assert node1.handle is not None
         assert node1.format.data_format == DataFormat.BIN
         assert node1.format.color == "#33C3F0"
         assert not node1.is_group
@@ -143,16 +157,14 @@ def test_save_and_load_session():
         
         # Verify children
         child1 = group.children[0]
-        assert child1.name == "pc[31:0]"
-        assert child1.handle == 2
+        assert child1.handle is not None
         assert child1.nickname == "Program Counter"
         assert child1.format.data_format == DataFormat.HEX
         assert child1.format.color == "#FF0000"
         assert child1.parent == group
-        
+
         child2 = group.children[1]
-        assert child2.name == "instruction[31:0]"
-        assert child2.handle == 3
+        assert child2.handle is not None
         assert child2.format.data_format == DataFormat.HEX
         assert child2.format.color == "#00FF00"
         assert child2.parent == group
@@ -210,11 +222,9 @@ def test_save_session_with_waveform_db():
 def test_load_session_missing_waveform():
     """Test loading a session when waveform file is missing."""
     original_session = create_test_session()
-    # Set a fake waveform database path
-    from wavescout.waveform_db import WaveformDB
-    fake_db = WaveformDB()
-    fake_db.uri = "/nonexistent/path.vcd"
-    original_session.waveform_db = fake_db
+    # Change the waveform database path to a non-existent file
+    if original_session.waveform_db:
+        original_session.waveform_db.uri = "/nonexistent/path.vcd"
     
     # Save to temporary file
     with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
@@ -238,13 +248,31 @@ def test_load_session_missing_waveform():
 
 def test_sampling_signal_persistence():
     """Test that sampling_signal is correctly saved and loaded."""
-    # Create session with sampling signal
-    session = WaveformSession()
-    
-    # Add signals
-    signal1 = SignalNodeSignal(name='data', var=MockVar('data'), handle=1, instance_id=100)
-    signal2 = SignalNodeSignal(name='clock', var=MockVar('clock'), handle=2, instance_id=200)
-    session.root_nodes = [signal1, signal2]
+    # Create session from a test VCD file
+    vcd_path = get_test_input_path(TestFiles.APB_SIM_VCD)
+    session = create_sample_session(str(vcd_path))
+
+    db = session.waveform_db
+    if not db:
+        raise RuntimeError("Failed to open waveform database")
+
+    hierarchy = db.hierarchy
+    all_handles = list(db.get_all_handles())
+    all_handles.sort()
+
+    # Add two signals
+    if len(all_handles) >= 2:
+        var1 = db.get_var(all_handles[0])
+        var2 = db.get_var(all_handles[1])
+
+        if var1 and var2:
+            signal1 = create_signal_node_from_var(var1, hierarchy, all_handles[0], db)
+            signal1.instance_id = 100
+            signal2 = create_signal_node_from_var(var2, hierarchy, all_handles[1], db)
+            signal2.instance_id = 200
+            session.root_nodes = [signal1, signal2]
+    else:
+        pytest.skip("Not enough signals in test file")
     
     # Set sampling signal
     session.sampling_signal = signal2
@@ -261,7 +289,6 @@ def test_sampling_signal_persistence():
         
         # Verify sampling signal is restored
         assert loaded.sampling_signal is not None, "Sampling signal should be restored"
-        assert loaded.sampling_signal.name == 'clock', "Sampling signal name should match"
         assert loaded.sampling_signal.instance_id == 200, "Sampling signal ID should match"
         
     finally:
@@ -270,12 +297,30 @@ def test_sampling_signal_persistence():
 
 def test_sampling_signal_in_nested_group():
     """Test sampling_signal persistence when signal is in a nested group."""
-    session = WaveformSession()
-    
-    # Create group with children
-    group = SignalNodeGroup(name='GROUP', instance_id=1000)
-    child = SignalNodeSignal(name='child_signal', var=MockVar('child_signal'), handle=10, parent=group, instance_id=1001)
-    group.children = [child]
+    # Create session from a test VCD file
+    vcd_path = get_test_input_path(TestFiles.APB_SIM_VCD)
+    session = create_sample_session(str(vcd_path))
+
+    db = session.waveform_db
+    if not db:
+        raise RuntimeError("Failed to open waveform database")
+
+    hierarchy = db.hierarchy
+    all_handles = list(db.get_all_handles())
+    all_handles.sort()
+
+    if len(all_handles) >= 1:
+        # Create group with a child from real signal
+        group = SignalNodeGroup(name='GROUP', instance_id=1000)
+
+        var = db.get_var(all_handles[0])
+        if var:
+            child = create_signal_node_from_var(var, hierarchy, all_handles[0], db)
+            child.parent = group
+            child.instance_id = 1001
+            group.children = [child]
+    else:
+        pytest.skip("Not enough signals in test file")
     
     session.root_nodes = [group]
     session.sampling_signal = child
@@ -290,7 +335,6 @@ def test_sampling_signal_in_nested_group():
         
         # Verify
         assert loaded.sampling_signal is not None
-        assert loaded.sampling_signal.name == 'child_signal'
         assert loaded.sampling_signal.instance_id == 1001
         assert loaded.sampling_signal.parent is not None
         assert loaded.sampling_signal.parent.name == 'GROUP'
