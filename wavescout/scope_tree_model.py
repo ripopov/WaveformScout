@@ -5,10 +5,11 @@ This model filters out variables and shows only scopes (modules) in the hierarch
 """
 
 from __future__ import annotations
-from typing import Optional, Union, overload, List, Dict, TYPE_CHECKING, Any
+
 import time
+from typing import Optional, Union, overload, List, Dict, TYPE_CHECKING, Any
+
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, Qt, Signal, QObject
-from PySide6.QtGui import QIcon
 
 if TYPE_CHECKING:
     from pyrox import ScopeIter

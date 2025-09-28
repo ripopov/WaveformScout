@@ -5,14 +5,13 @@ providing a clean, type-safe interface for the WaveformCanvas.
 """
 
 import math
-from typing import List, Tuple, Optional, Callable, TypedDict
-from dataclasses import dataclass
+from typing import List, Tuple, Optional, TypedDict
 
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics
 
-from .data_model import Time, TimeUnit, TimeRulerConfig, Timescale
 from . import config
+from .data_model import Time, TimeUnit, TimeRulerConfig, Timescale
 
 RENDERING = config.RENDERING
 

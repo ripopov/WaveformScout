@@ -5,9 +5,10 @@ This module provides runtime theme switching capabilities with predefined color 
 
 from enum import Enum
 from typing import Dict
+
 from PySide6.QtCore import QObject, Signal, QSettings
 
-from .config import ColorScheme, RGBA
+from .config import ColorScheme
 
 
 class ThemeName(Enum):

@@ -1,36 +1,34 @@
 """Optimized waveform canvas widget with offline rendering pipeline."""
 
-from PySide6.QtWidgets import QWidget, QScrollBar
-from PySide6.QtCore import Qt, Signal, QModelIndex, QTimer, QRectF, QRect
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics, QImage, QResizeEvent, QPaintEvent, QShowEvent, QMouseEvent, QCloseEvent, QKeyEvent, QBrush
-from typing import List, Tuple, Dict, Optional, Union, Set, Any
-from .waveform_item_model import WaveformItemModel
 from dataclasses import dataclass, field
+from typing import List, Tuple, Dict, Optional, Union, Set
+
+from PySide6.QtCore import Qt, Signal, QModelIndex, QTimer, QRectF, QRect
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics, QImage, QResizeEvent, QPaintEvent, QShowEvent, \
+    QMouseEvent, QCloseEvent, QKeyEvent, QBrush
+from PySide6.QtWidgets import QWidget, QScrollBar
 from pyrox import SignalHandle
 
+from . import config
+from .canvas_layout import CanvasLayout, build_layout, VisibleRow
 from .data_model import (
     TreeNode,
-    GroupNode,
     SignalNode,
     SignalNodeID,
     Time,
-    TimeUnit,
     TimeRulerConfig,
     RenderType,
-    Marker,
-    GroupRenderMode,
-    DisplayFormat,
+)
+from .signal_renderer import (
+    draw_digital_signal, draw_bus_signal, draw_analog_signal, draw_event_signal,
+    NodeInfo, RenderParams, GROUP_RENDERERS, GroupDrawingPayload
 )
 from .signal_sampling import (
     SignalDrawingData,
     generate_signal_draw_commands
 )
-from .signal_renderer import (
-    draw_digital_signal, draw_bus_signal, draw_analog_signal, draw_event_signal,
-    NodeInfo, RenderParams, draw_overlapped_group, GROUP_RENDERERS, GroupDrawingPayload
-)
-from .canvas_layout import CanvasLayout, build_layout, VisibleRow
-from . import config
+from .waveform_item_model import WaveformItemModel
+
 RENDERING = config.RENDERING
 MARKER_LABELS = config.MARKER_LABELS
 import time as time_module
@@ -941,7 +939,6 @@ class WaveformCanvas(QWidget):
     
     def _render_waveforms(self, painter: QPainter, params: RenderParams) -> None:
         """Render waveforms using new layout system."""
-        import time as time_module
 
         # Check if we have draw commands
         draw_commands = params.get('draw_commands', {})

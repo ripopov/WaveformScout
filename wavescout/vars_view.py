@@ -4,16 +4,16 @@ Variables view widget for split mode in DesignTreeView.
 This widget displays variables in a table format with filtering support.
 """
 
-from typing import Optional, List, Dict, Union, TypedDict, Any, TYPE_CHECKING
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableView, QLineEdit,
-    QAbstractItemView, QHeaderView
-)
+from typing import Optional, List, Union, TypedDict, TYPE_CHECKING
+
 from PySide6.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, QPersistentModelIndex,
     QSortFilterProxyModel, Signal, QTimer, QObject
 )
-from PySide6.QtGui import QKeySequence
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QTableView, QLineEdit,
+    QAbstractItemView, QHeaderView
+)
 
 if TYPE_CHECKING:
     from wavescout.waveform_db import Var

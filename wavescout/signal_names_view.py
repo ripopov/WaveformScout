@@ -1,18 +1,20 @@
 """Signal names tree view for the WaveScout widget."""
 
-from PySide6.QtWidgets import QTreeView, QAbstractItemView, QMenu, QStyledItemDelegate, QWidget, QStyleOptionViewItem, QInputDialog, QColorDialog, QApplication, QMessageBox
-from PySide6.QtCore import Qt, Signal, QModelIndex, QAbstractItemModel, QPoint, QSize, QMimeData
-from PySide6.QtGui import QAction, QActionGroup, QKeyEvent, QColor, QKeySequence, QClipboard
-from typing import List, Optional, Callable, Union, TYPE_CHECKING, Dict, Any
-from PySide6.QtCore import QPersistentModelIndex
 import json
-from pyrox import SignalHandle
-from .data_model import TreeNode, SignalNode, GroupNode, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
-from .config import RENDERING, UI
+from typing import List, Optional, Callable, Union, TYPE_CHECKING
+
+from PySide6.QtCore import QPersistentModelIndex
+from PySide6.QtCore import Qt, Signal, QModelIndex, QAbstractItemModel, QPoint, QSize, QMimeData
+from PySide6.QtGui import QAction, QActionGroup, QKeyEvent, QColor, QKeySequence
+from PySide6.QtWidgets import QTreeView, QAbstractItemView, QMenu, QStyledItemDelegate, QWidget, QStyleOptionViewItem, \
+    QInputDialog, QColorDialog, QApplication, QMessageBox
+
 from .clock_utils import is_valid_clock_signal
+from .config import RENDERING, UI
+from .data_model import TreeNode, SignalNode, GroupNode, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
 from .persistence import _serialize_node, _deserialize_node
-from .snippet_manager import SnippetManager
 from .snippet_dialogs import SaveSnippetDialog
+from .snippet_manager import SnippetManager
 
 if TYPE_CHECKING:
     from .waveform_controller import WaveformController

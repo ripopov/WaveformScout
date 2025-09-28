@@ -2,7 +2,8 @@
 Centralized application settings management using QSettings.
 """
 
-from typing import Optional, cast, Any
+from typing import Optional, Any
+
 from PySide6.QtCore import QObject, QSettings, Signal
 
 

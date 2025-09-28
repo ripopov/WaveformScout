@@ -3,12 +3,11 @@ Dialogs for snippet save and instantiation operations.
 """
 
 from typing import Optional
+
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QTextEdit, QLabel, QPushButton,
-    QDialogButtonBox, QMessageBox, QWidget
+    QDialog, QVBoxLayout, QFormLayout,
+    QLineEdit, QTextEdit, QLabel, QDialogButtonBox, QMessageBox, QWidget
 )
-from PySide6.QtCore import Qt
 
 from wavescout.data_model import TreeNode, GroupNode, SignalNode
 from wavescout.snippet_manager import Snippet, SnippetManager

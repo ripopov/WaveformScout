@@ -3,15 +3,15 @@ Widget for browsing and managing signal snippets in the right sidebar.
 """
 
 from typing import Optional, Any, Union
-from datetime import datetime
+
+from PySide6.QtCore import (
+    Qt, QAbstractTableModel, QModelIndex, Signal, QPoint, QPersistentModelIndex
+)
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView, QLabel,
     QPushButton, QMenu, QMessageBox, QHeaderView, QInputDialog
 )
-from PySide6.QtCore import (
-    Qt, QAbstractTableModel, QModelIndex, Signal, QPoint, QPersistentModelIndex
-)
-from PySide6.QtGui import QAction, QIcon
 
 from wavescout.snippet_manager import Snippet, SnippetManager
 

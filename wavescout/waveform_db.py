@@ -1,9 +1,10 @@
 """WaveformDB implementation with backend-agnostic design."""
 
-from typing import List, Tuple, Optional, Dict, TYPE_CHECKING, Sequence, Iterable, Any, Union
 import time as time_module
+from typing import List, Tuple, Optional, Dict, TYPE_CHECKING, Sequence, Iterable, Any
+
+from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QObject, Signal, QThread, Qt
 
 if TYPE_CHECKING:
     from pyrox import Scope
@@ -12,7 +13,7 @@ import pyrox
 
 from pyrox import SignalHandle
 import threading
-from .data_model import Time, Timescale, TimeUnit
+from .data_model import Time, Timescale
 from .application.event_bus import EventBus
 from .application.events import SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
 from .timing_utils import tprint

@@ -37,14 +37,13 @@ Displayed signals can be grouped into a tree structure. So WaveformSession is a 
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING, Any
 from enum import Enum
+from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING, Any
 
 from pyrox import SignalHandle
 
 if TYPE_CHECKING:
     from wavescout.waveform_db import AsyncLoadedSignal, Var, WaveformDB
-    from pyrox import Signal
 
 Time = int  # In Timescale units
 

@@ -6,19 +6,18 @@ and filtered variables in the bottom panel.
 """
 
 from __future__ import annotations
-from typing import Optional, List, cast, Union, TYPE_CHECKING
+
 import time
+from typing import Optional, List, cast, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from wavescout.waveform_db import Var
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QPushButton,
-    QLabel, QSplitter, QLineEdit, QTableView,
-    QHeaderView, QProgressDialog, QApplication, QAbstractItemView
+    QWidget, QVBoxLayout, QHBoxLayout, QTreeView,
+    QLabel, QSplitter, QProgressDialog, QApplication, QAbstractItemView
 )
-from PySide6.QtCore import Qt, Signal, QModelIndex, QSortFilterProxyModel, QEvent, QObject
+from PySide6.QtCore import Qt, Signal, QModelIndex, QEvent, QObject
 from PySide6.QtGui import QKeyEvent
-import pyrox
 
 from pyrox import SignalHandle
 

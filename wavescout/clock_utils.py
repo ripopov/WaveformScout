@@ -1,7 +1,9 @@
 """Clock signal utilities for calculating clock periods from various signal types."""
 
 from typing import Optional
+
 import pyrox
+
 from wavescout.data_model import Time
 from wavescout.waveform_db import Var
 

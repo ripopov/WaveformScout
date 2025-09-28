@@ -1,6 +1,5 @@
 """Helper functions to load waveforms and create signal nodes."""
 
-from typing import cast, Optional
 import pyrox
 from pyrox import SignalHandle
 

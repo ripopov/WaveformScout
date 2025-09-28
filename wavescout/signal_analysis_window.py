@@ -3,27 +3,26 @@
 from __future__ import annotations
 
 from typing import List, Optional, Dict, Any
-from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QIntValidator
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGroupBox,
     QRadioButton, QComboBox, QLineEdit, QTableWidget,
     QTableWidgetItem, QProgressBar, QPushButton,
-    QLabel, QButtonGroup, QHeaderView, QMessageBox,
+    QLabel, QButtonGroup, QMessageBox,
     QAbstractItemView, QWidget
 )
-from PySide6.QtGui import QIntValidator, QKeySequence, QClipboard
-from PySide6.QtWidgets import QApplication
 
-from .data_model import TreeNode, Time
-from .waveform_controller import WaveformController
 from .analysis_engine import (
     compute_signal_statistics,
     generate_sampling_times_period,
     generate_sampling_times_signal,
     SignalStatistics
 )
+from .data_model import TreeNode, Time
+from .waveform_controller import WaveformController
 
 
 class SignalAnalysisWorker(QThread):

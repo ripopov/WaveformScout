@@ -11,12 +11,8 @@ these callbacks and update their views accordingly.
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Iterable, Set, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from pyrox import Signal
-
 from .data_model import (
     WaveformSession,
-    Viewport,
     TreeNode,
     GroupNode,
     SignalNode,
@@ -25,7 +21,6 @@ from .data_model import (
     SignalNodeID,
     DataFormat,
     GroupRenderMode,
-    DisplayFormat,
     RenderType,
 )
 from .clock_utils import calculate_clock_period, is_valid_clock_signal
@@ -34,9 +29,8 @@ MARKER_LABELS = config.MARKER_LABELS
 RENDERING = config.RENDERING
 from .application.event_bus import EventBus
 from .application.events import (
-    Event, StructureChangedEvent, FormatChangedEvent, ViewportChangedEvent,
-    CursorMovedEvent, SelectionChangedEvent, MarkerAddedEvent, MarkerRemovedEvent,
-    MarkerMovedEvent, SessionLoadedEvent, SessionClosedEvent, FormatChanges,
+    StructureChangedEvent, FormatChangedEvent, ViewportChangedEvent,
+    CursorMovedEvent, SelectionChangedEvent, FormatChanges,
     SignalLoadingStartedEvent, SignalLoadedEvent, SignalLoadingFailedEvent
 )
 from pyrox import SignalHandle

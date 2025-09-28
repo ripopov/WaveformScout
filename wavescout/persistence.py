@@ -3,13 +3,11 @@
 import json
 import pathlib
 import time
-from typing import Dict, Any, List, Optional, cast
-from .timing_utils import tprint
 from dataclasses import asdict
-from enum import Enum
 from datetime import datetime
-import pyrox
-from .waveform_db import WaveformDB
+from enum import Enum
+from typing import Dict, Any, List, Optional
+
 from .data_model import (
     WaveformSession,
     TreeNode,
@@ -24,6 +22,7 @@ from .data_model import (
     Marker,
     AnalysisMode,
 )
+from .timing_utils import tprint
 from .waveform_db import WaveformDB
 
 

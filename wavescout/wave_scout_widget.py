@@ -16,8 +16,6 @@ from .signal_names_view import SignalNamesView, BaseColumnView
 from .config import RENDERING, UI
 
 
-
-
 class SignalValuesView(BaseColumnView):
     """Tree view for signal values and formats at cursor (columns 1-2)."""
     

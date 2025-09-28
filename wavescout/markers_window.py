@@ -1,19 +1,21 @@
 """Markers management window for WaveScout."""
 
+from typing import Optional
+
+from PySide6.QtCore import Qt, Signal, QModelIndex, QPersistentModelIndex
+from PySide6.QtGui import QColor, QKeyEvent, QCloseEvent, QPainter, QBrush
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QColorDialog, QHeaderView, QMessageBox, QWidget,
-    QStyledItemDelegate, QStyleOptionViewItem, QStyle
+    QPushButton, QColorDialog, QHeaderView, QWidget,
+    QStyledItemDelegate, QStyleOptionViewItem
 )
-from .message_box_utils import show_warning
-from PySide6.QtCore import Qt, Signal, QModelIndex, QPersistentModelIndex
-from PySide6.QtGui import QColor, QKeyEvent, QCloseEvent, QCursor, QPainter, QBrush
-from typing import Optional
-from .waveform_controller import WaveformController
+
 from . import config
+from .message_box_utils import show_warning
+from .waveform_controller import WaveformController
+
 MARKER_LABELS = config.MARKER_LABELS
 RENDERING = config.RENDERING
-from .data_model import Marker
 
 
 class ColorCellDelegate(QStyledItemDelegate):

@@ -4,7 +4,7 @@ Dialog for configuring hierarchical name display levels.
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, 
-    QLabel, QLineEdit, QPushButton, QDialogButtonBox, QWidget
+    QLabel, QLineEdit, QPushButton, QWidget
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator, QKeyEvent

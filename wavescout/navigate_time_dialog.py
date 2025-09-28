@@ -1,16 +1,16 @@
 """Dialog for navigating to specific time or clock cycle in waveform."""
 
 from typing import Optional
+
+from PySide6.QtCore import Qt, QRegularExpression
+from PySide6.QtGui import QRegularExpressionValidator, QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-    QLineEdit, QPushButton, QMessageBox, QWidget,
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QMessageBox, QWidget,
     QFormLayout
 )
-from PySide6.QtCore import Qt, QRegularExpression
-from PySide6.QtGui import QIntValidator, QRegularExpressionValidator, QKeyEvent, QShowEvent
 
-from wavescout.waveform_controller import WaveformController
 from wavescout.data_model import Time
+from wavescout.waveform_controller import WaveformController
 
 
 class NavigateTimeDialog(QDialog):

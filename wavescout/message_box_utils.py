@@ -1,8 +1,9 @@
 """Utility functions for creating copyable message boxes."""
 
-from PySide6.QtWidgets import QMessageBox, QWidget
-from PySide6.QtCore import Qt
 from typing import Optional
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMessageBox, QWidget
 
 
 def show_critical(parent: Optional[QWidget], title: str, text: str, detailed_text: Optional[str] = None) -> int:
