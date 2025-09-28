@@ -43,7 +43,7 @@ def main_window_with_signals(main_window):
             var = db.var_from_handle(handle)
             if var:
                 from wavescout.waveform_loader import create_signal_node_from_var
-                signal_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                signal_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
                 signals_to_add.append(signal_node)
 
         # Add all signals at once
