@@ -171,13 +171,29 @@ class InstantiateSnippetDialog(QDialog):
             return new_node
 
         validated_nodes = [validate_node(node) for node in nodes]
-        return validated_nodes
+
+        # Collect handles that need async loading
+        handles_to_load: list[int] = []
+
+        def collect_handles(node: SignalNode) -> None:
+            if isinstance(node, SignalNodeSignal) and node.handle is not None and node.handle != -1:
+                if not waveform_db.is_signal_cached(node.handle):
+                    handles_to_load.append(node.handle)
+            elif isinstance(node, SignalNodeGroup):
+                for child in node.children:
+                    collect_handles(child)
+
+        for node in validated_nodes:
+            collect_handles(node)
+
+        return validated_nodes, handles_to_load
     
     def __init__(self, snippet: Snippet, waveform_db: Optional[WaveformDB], parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.snippet = snippet
         self.waveform_db = waveform_db
         self.remapped_nodes: Optional[list[SignalNode]] = None
+        self.handles_to_load: list[int] = []
         self.group_name: str = snippet.name  # Default to snippet name
         
         self.setWindowTitle(f"Instantiate Snippet: {snippet.name}")
@@ -300,7 +316,7 @@ class InstantiateSnippetDialog(QDialog):
         
         # Try to remap and validate
         try:
-            self.remapped_nodes = self._remap_and_validate(target_scope)
+            self.remapped_nodes, self.handles_to_load = self._remap_and_validate(target_scope)
 
             # Update preview
             preview_lines = []
@@ -356,12 +372,12 @@ class InstantiateSnippetDialog(QDialog):
             full_path_nodes.append(self.build_full_paths(node, new_parent_scope))
 
         # Then validate and resolve handles
-        validated_nodes = self.validate_and_resolve_nodes(full_path_nodes, self.waveform_db)
+        validated_nodes, handles_to_load = self.validate_and_resolve_nodes(full_path_nodes, self.waveform_db)
 
         # NOTE: Don't call load_signals_async here - let the caller handle async loading
         # after the nodes are added to the session tree so they can be found and updated
 
-        return validated_nodes
+        return validated_nodes, handles_to_load
     
     def _get_all_signals(self, nodes: list[SignalNode]) -> list[SignalNode]:
         """Get all non-group signals from node list."""

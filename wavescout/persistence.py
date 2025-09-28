@@ -132,7 +132,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) ->
     return handles_to_load
 
 
-def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = None, waveform_db: Optional['WaveformDB'] = None) -> SignalNode:
+def _deserialize_node(data: Dict[str, Any], waveform_db: WaveformDB, parent: Optional[SignalNodeGroup]) -> SignalNode:
     """Deserialize a dictionary to a SignalNode, handling nested children."""
     # Create display format if present
     format_data = data.get('format')
@@ -174,17 +174,14 @@ def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = 
 
         children_data = data.get('children', [])
         for child_data in children_data:
-            child = _deserialize_node(child_data, parent=group_node, waveform_db=waveform_db)
+            child = _deserialize_node(child_data, waveform_db=waveform_db, parent=group_node)
             group_node.children.append(child)
 
         return group_node
 
     # Get var from waveform_db if available
     handle = data.get('handle')
-    var = None
-    if waveform_db and handle is not None:
-        var = waveform_db.get_var(handle)
-
+    var = var = waveform_db.get_var(handle)
     signal = waveform_db.load_signal(handle)
 
     signal_node = SignalNodeSignal(
@@ -197,7 +194,7 @@ def _deserialize_node(data: Dict[str, Any], parent: Optional[SignalNodeGroup] = 
         format=display_format if display_format is not None else DisplayFormat(),
         is_multi_bit=data.get('is_multi_bit', False),
         instance_id=instance_id,
-        var=var,  # type: ignore[arg-type]  # Will be resolved in resolve_node
+        var=var,
     )
 
     return signal_node
@@ -505,7 +502,7 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     nodes_start = time.time()
     root_nodes = []
     for node_data in data.get('root_nodes', []):
-        node = _deserialize_node(node_data, waveform_db=waveform_db)
+        node = _deserialize_node(node_data, waveform_db=waveform_db, parent=None)
         root_nodes.append(node)
     tprint(f"  load_session.deserialize_nodes ({len(root_nodes)} root nodes): {time.time() - nodes_start:.3f}s")
 
