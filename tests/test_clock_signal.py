@@ -21,8 +21,11 @@ from wavescout.clock_utils import (
     calculate_clock_period
 )
 from wavescout.waveform_controller import WaveformController
+from wavescout.waveform_db import AsyncLoadedSignal
 from wavescout.time_grid_renderer import TimeGridRenderer, TimeRulerConfig
 from wavescout.persistence import save_session, load_session
+from wavescout import create_sample_session
+from wavescout.waveform_loader import create_signal_node_from_var
 import tempfile
 
 # Import test utilities for proper file path handling
@@ -189,73 +192,87 @@ class TestWaveformController:
     """Test WaveformController clock signal management."""
     
     def test_set_clock_signal(self):
-        """Test setting a clock signal."""
-        # Create controller with mock session and database
+        """Test setting a clock signal with real waveform data."""
+        # Create session with real waveform
+        test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Create controller and set session
         controller = WaveformController()
-        session = WaveformSession()
-        db = Mock()
-        session.waveform_db = db
         controller.set_session(session)
-        
-        # Create a signal node
-        node = SignalNodeSignal(
-            name="clk",
-            var=MockVar("clk"),
-            handle=1,
-            format=DisplayFormat()
-        )
-        
-        # Mock database methods
-        var = Mock()
-        var.var_type.return_value = 'Wire'  # Proper case
-        var.bitwidth.return_value = 1  # Use bitwidth not width
-        db.var_from_handle.return_value = var
-        
-        signal = Mock()
-        signal.all_changes.return_value = iter([
-            (0, '0'), (100, '1'), (200, '0'), (300, '1')
-        ])
-        db.signal_from_handle.return_value = signal
-        
+
+        # Find the clock signal
+        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        assert clock_handle is not None, "Clock signal not found"
+
+        # Get the variable and create signal node
+        var = db.var_from_handle(clock_handle)
+        hierarchy = db.hierarchy
+        node = create_signal_node_from_var(var, hierarchy, clock_handle, db)
+
         # Set clock signal
         controller.set_clock_signal(node)
-        
+
         # Verify clock signal was set
         assert session.clock_signal is not None
         clock_period, clock_phase, clock_node = session.clock_signal
-        assert clock_period == 200  # Period between positive edges
-        assert clock_phase == 100  # First positive edge at 100
+        assert clock_period == 100000  # Period in ps
+        assert clock_phase == 50000  # First positive edge at 50000 ps
         assert clock_node == node
     
     def test_clear_clock_signal(self):
-        """Test clearing clock signal."""
+        """Test clearing clock signal with real waveform data."""
+        # Create session with real waveform
+        test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Create controller and set session
         controller = WaveformController()
-        session = WaveformSession()
-        
-        # Set a clock signal
-        node = SignalNodeSignal(name="clk", var=MockVar("clk"), handle=1, format=DisplayFormat())
-        session.clock_signal = (100, 0, node)  # period, phase, node
         controller.set_session(session)
-        
+
+        # Find and set a clock signal
+        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        var = db.var_from_handle(clock_handle)
+        hierarchy = db.hierarchy
+        node = create_signal_node_from_var(var, hierarchy, clock_handle, db)
+        controller.set_clock_signal(node)
+
+        # Verify it was set
+        assert session.clock_signal is not None
+
         # Clear clock signal
         controller.clear_clock_signal()
-        
+
         # Verify it was cleared
         assert session.clock_signal is None
     
     def test_is_clock_signal(self):
-        """Test checking if a node is the clock signal."""
+        """Test checking if a node is the clock signal with real waveform data."""
+        # Create session with real waveform
+        test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Create controller and set session
         controller = WaveformController()
-        session = WaveformSession()
-        
-        # Create two nodes
-        clock_node = SignalNodeSignal(name="clk", var=MockVar("clk"), handle=1, format=DisplayFormat())
-        other_node = SignalNodeSignal(name="data", var=MockVar("data"), handle=2, format=DisplayFormat())
-        
-        # Set clock signal
-        session.clock_signal = (100, 0, clock_node)  # period, phase, node
         controller.set_session(session)
-        
+
+        # Find two different signals
+        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        data_handle = db.find_handle_by_path('apb_testbench.pwdata')
+
+        hierarchy = db.hierarchy
+        clock_var = db.var_from_handle(clock_handle)
+        data_var = db.var_from_handle(data_handle)
+
+        clock_node = create_signal_node_from_var(clock_var, hierarchy, clock_handle, db)
+        other_node = create_signal_node_from_var(data_var, hierarchy, data_handle, db)
+
+        # Set clock signal
+        controller.set_clock_signal(clock_node)
+
         # Check
         assert controller.is_clock_signal(clock_node) == True
         assert controller.is_clock_signal(other_node) == False
@@ -325,56 +342,77 @@ class TestSessionPersistence:
     """Test clock signal persistence in session files."""
     
     def test_save_load_clock_signal(self):
-        """Test saving and loading session with clock signal."""
-        # Create session with clock signal
-        session = WaveformSession()
-        clock_node = SignalNodeSignal(
-            name="clk",
-            var=MockVar("clk"),
-            handle=1,
-            format=DisplayFormat()
-        )
+        """Test saving and loading session with clock signal using real waveform."""
+        # Create session with real waveform
+        test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Find and add clock signal to root nodes
+        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        var = db.var_from_handle(clock_handle)
+        hierarchy = db.hierarchy
+        clock_node = create_signal_node_from_var(var, hierarchy, clock_handle, db)
         session.root_nodes = [clock_node]
-        session.clock_signal = (100, 0, clock_node)  # period, phase, node
-        
+
+        # Set as clock signal using controller
+        controller = WaveformController()
+        controller.set_session(session)
+        controller.set_clock_signal(clock_node)
+
+        # Verify it was set with correct period
+        assert session.clock_signal is not None
+        orig_period, orig_phase, _ = session.clock_signal
+        assert orig_period == 100000  # Should be 100000 ps for this clock
+
         # Save to temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             temp_path = Path(f.name)
-        
+
         try:
-            save_session(session, temp_path)  # Correct parameter order
-            
+            save_session(session, temp_path)
+
             # Load session
             loaded_session = load_session(temp_path)
-            
+
             # Verify clock signal was restored
             assert loaded_session.clock_signal is not None
             clock_period, clock_phase, loaded_clock_node = loaded_session.clock_signal
-            assert clock_period == 100
-            assert clock_phase == 0  # Default phase
-            assert loaded_clock_node.name == "clk"
+            assert clock_period == orig_period
+            assert clock_phase == orig_phase
+            assert loaded_clock_node.name == clock_node.name
             assert loaded_clock_node.instance_id == clock_node.instance_id
         finally:
             temp_path.unlink()  # Clean up
     
     def test_load_session_without_clock(self):
-        """Test loading session without clock signal (backward compatibility)."""
-        # Create session without clock signal
-        session = WaveformSession()
-        session.root_nodes = [
-            SignalNodeSignal(name="data", var=MockVar("data"), handle=1, format=DisplayFormat())
-        ]
-        
+        """Test loading session without clock signal (backward compatibility) with real waveform."""
+        # Create session with real waveform but no clock signal
+        test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Add a non-clock signal to root nodes
+        data_handle = db.find_handle_by_path('apb_testbench.pwdata')
+        assert data_handle is not None, "Data signal not found"
+        var = db.var_from_handle(data_handle)
+        hierarchy = db.hierarchy
+        data_node = create_signal_node_from_var(var, hierarchy, data_handle, db)
+        session.root_nodes = [data_node]
+
+        # Ensure no clock signal is set
+        session.clock_signal = None
+
         # Save to temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             temp_path = Path(f.name)
-        
+
         try:
-            save_session(session, temp_path)  # Correct parameter order
-            
+            save_session(session, temp_path)
+
             # Load session
             loaded_session = load_session(temp_path)
-            
+
             # Verify no clock signal
             assert loaded_session.clock_signal is None
         finally:
@@ -386,22 +424,33 @@ class TestRealWaveform:
     
     def test_apb_sim_clock_detection(self):
         """Test clock period detection on apb_sim.vcd file."""
-        from wavescout.waveform_db import WaveformDB
         from wavescout.clock_utils import calculate_clock_period
-        
-        # Load the waveform using proper test utilities
-        db = WaveformDB()
+        from wavescout.application.event_bus import EventBus
+
+        # Create session with real waveform and event bus
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
-        db.open(str(test_file))
-        
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Ensure event bus is set up for async loading
+        if not hasattr(db, '_event_bus') or db._event_bus is None:
+            event_bus = EventBus()
+            db._event_bus = event_bus
+            from wavescout.waveform_db import AsyncEventBridge
+            db._event_bridge = AsyncEventBridge(event_bus)
+            if db.waveform:
+                db.waveform.set_async_callback(db._on_async_event)
+
         # Find the clock signal apb_testbench.pclk
         clock_handle = db.find_handle_by_path('apb_testbench.pclk')
         assert clock_handle is not None, "Clock signal apb_testbench.pclk not found"
-        
-        # Get the signal and variable
-        signal = db.signal_from_handle(clock_handle)
+
+        # Load the signal using new async API
+        async_signal = db.load_signal(clock_handle)
+        # Wait for signal to load
+        signal = async_signal.get_signal_blocking(timeout=5.0)
         var = db.var_from_handle(clock_handle)
-        
+
         assert signal is not None, "Could not get signal from handle"
         assert var is not None, "Could not get variable from handle"
         
@@ -422,32 +471,23 @@ class TestRealWaveform:
     
     def test_apb_sim_controller_integration(self):
         """Test setting apb_testbench.pclk as clock signal through controller."""
-        from wavescout.waveform_db import WaveformDB
-        from wavescout.waveform_controller import WaveformController
-        from wavescout.data_model import WaveformSession, SignalNodeSignal, DisplayFormat
-        
-        # Create controller and session
-        controller = WaveformController()
-        session = WaveformSession()
-        
-        # Load the waveform using proper test utilities
-        db = WaveformDB()
+        # Create session with real waveform
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
-        db.open(str(test_file))
-        session.waveform_db = db
+        session = create_sample_session(str(test_file))
+        db = session.waveform_db
+
+        # Create controller and set session
+        controller = WaveformController()
         controller.set_session(session)
         
         # Find the clock signal handle
         clock_handle = db.find_handle_by_path('apb_testbench.pclk')
         assert clock_handle is not None
         
-        # Create a signal node for the clock
-        clock_node = SignalNodeSignal(
-            name="apb_testbench.pclk",
-            var=MockVar("pclk"),
-            handle=clock_handle,
-            format=DisplayFormat()
-        )
+        # Create a signal node for the clock using real var
+        var = db.var_from_handle(clock_handle)
+        hierarchy = db.hierarchy
+        clock_node = create_signal_node_from_var(var, hierarchy, clock_handle, db)
         
         # Set as clock signal
         controller.set_clock_signal(clock_node)
