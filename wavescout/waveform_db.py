@@ -18,6 +18,72 @@ from .application.events import SignalLoadingStartedEvent, SignalLoadedEvent, Si
 from .timing_utils import tprint
 
 
+class Var:
+    """Wrapper for pyrox.Var that allows creating placeholders for testing/serialization."""
+
+    def __init__(self, pyrox_var: Optional[pyrox.Var] = None):
+        """Initialize with a pyrox.Var or None for placeholder."""
+        self._pyrox_var = pyrox_var
+        self._is_placeholder = pyrox_var is None
+
+    @classmethod
+    def placeholder(cls) -> "Var":
+        """Create a placeholder Var for uninitialized nodes."""
+        return cls(None)
+
+    def name(self, hierarchy: Any) -> str:
+        """Get the variable name."""
+        if self._pyrox_var is not None:
+            return self._pyrox_var.name(hierarchy)
+        return ""
+
+    def full_name(self, hierarchy: Any) -> str:
+        """Get the full hierarchical name."""
+        if self._pyrox_var is not None:
+            return self._pyrox_var.full_name(hierarchy)
+        return ""
+
+    def var_type(self) -> Any:
+        """Get the variable type."""
+        if self._pyrox_var is not None:
+            return self._pyrox_var.var_type()
+        return None
+
+    def bitwidth(self) -> int:
+        """Get the bit width of the variable. Returns 32 as default if not available."""
+        if self._pyrox_var is not None:
+            bw = self._pyrox_var.bitwidth()
+            return bw if bw is not None else 32
+        return 32
+
+    def is_1bit(self) -> bool:
+        """Check if variable is single bit."""
+        if self._pyrox_var is not None:
+            return self._pyrox_var.is_1bit()
+        return False
+
+    def index(self) -> Optional[Any]:
+        """Get the variable index."""
+        if self._pyrox_var is not None:
+            return self._pyrox_var.index()
+        return None
+
+    @property
+    def is_placeholder(self) -> bool:
+        """Check if this is a placeholder instance."""
+        return self._is_placeholder
+
+    @property
+    def pyrox_var(self) -> Optional[pyrox.Var]:
+        """Get the underlying pyrox.Var if this is not a placeholder."""
+        return self._pyrox_var
+
+    def __repr__(self) -> str:
+        if self._is_placeholder:
+            return "Var(placeholder)"
+        return f"Var({self._pyrox_var!r})"
+
+
 class AsyncLoadedSignal:
     """Future-like wrapper for asynchronously loaded signals with efficient blocking."""
 
@@ -317,12 +383,15 @@ class WaveformDB:
             count += 1
         return count
 
-    def get_var(self, handle: SignalHandle) -> Optional[pyrox.Var]:
-        """Get variable by handle. Returns pyrox Var object."""
+    def get_var(self, handle: SignalHandle) -> Optional[Var]:
+        """Get variable by handle. Returns wrapped Var object."""
         if not self.hierarchy:
             return None
         # Use the new Rust method to get var by signal ref
-        return self.hierarchy.get_var_by_signal_ref(handle)  # type: ignore[attr-defined, no-any-return]
+        pyrox_var = self.hierarchy.get_var_by_signal_ref(handle)  # type: ignore[attr-defined]
+        if pyrox_var is None:
+            return None
+        return Var(pyrox_var)
 
 
     def get_time_table(self) -> Optional[pyrox.TimeTable]:
@@ -331,7 +400,7 @@ class WaveformDB:
             return self.waveform.time_table
         return None
 
-    def var_from_handle(self, handle: SignalHandle) -> Optional[pyrox.Var]:
+    def var_from_handle(self, handle: SignalHandle) -> Optional[Var]:
         """Get the variable object for the given handle.
 
         Returns the first variable if there are aliases.

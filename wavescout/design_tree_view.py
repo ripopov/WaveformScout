@@ -10,7 +10,7 @@ from typing import Optional, List, cast, Union, TYPE_CHECKING
 import time
 
 if TYPE_CHECKING:
-    from pyrox import Var
+    from wavescout.waveform_db import Var
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QPushButton,
     QLabel, QSplitter, QLineEdit, QTableView,
@@ -502,15 +502,9 @@ class DesignTreeView(QWidget):
         
         # Check if we have a var object directly in the data
         var = var_data.get('var')
-        handle = None
-        
-        if var and self.waveform_db:
-            # Try to get handle from var object (method is required by protocol)
-            handle = var.signal_handle()
-        
-        if handle is None:
-            # Fallback to path-based lookup
-            handle = self._find_signal_handle(full_path)
+
+        # Look up handle by path
+        handle = self._find_signal_handle(full_path)
         
         if handle is None:
             return None

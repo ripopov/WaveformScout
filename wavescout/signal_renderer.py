@@ -28,7 +28,8 @@ from PySide6.QtCore import Qt, QPointF
 from pyrox import SignalHandle
 
 if TYPE_CHECKING:
-    from pyrox import Signal, Var
+    from pyrox import Signal
+    from wavescout.waveform_db import Var
     from .canvas_layout import CanvasLayout, GroupContentDescriptor
 
 from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat, GroupRenderMode
@@ -585,24 +586,15 @@ def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDB, d
         
         # Get the signal's bit width for correct signed/unsigned interpretation
         bit_width = 32  # Default bit width
+
+        # If var is provided (our Var wrapper), use it directly
         if var:
-            # Use the provided var object directly
-            try:
-                detected_width = var.bitwidth()
-                bit_width = detected_width if detected_width is not None else 32
-            except:
-                bit_width = 32  # Fallback to 32-bit if bitwidth() fails
-        elif waveform_db.hierarchy:
-            # Fallback: Find the variable corresponding to this handle to get its bit width
-            for v in waveform_db.hierarchy.all_vars():
-                var_handle = waveform_db.find_handle_by_path(v.full_name(waveform_db.hierarchy))
-                if var_handle == handle:
-                    try:
-                        detected_width = v.bitwidth()
-                        bit_width = detected_width if detected_width is not None else 32
-                    except:
-                        bit_width = 32  # Fallback to 32-bit if bitwidth() fails
-                    break
+            bit_width = var.bitwidth()  # Always returns an int (32 by default)
+        elif waveform_db and handle is not None:
+            # Otherwise try to get it from waveform_db
+            var_from_db = waveform_db.get_var(handle)
+            if var_from_db:
+                bit_width = var_from_db.bitwidth()  # Always returns an int (32 by default)
         
         # Sample the signal at various points to find min/max
         # We need to sample because wellen doesn't provide a direct way to get all transitions

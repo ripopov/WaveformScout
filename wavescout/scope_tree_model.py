@@ -164,12 +164,13 @@ class ScopeTreeModel(QAbstractItemModel):
         # Get variables in this scope
         variables: List[VariableData] = []
         for var in scope.vars(hierarchy):
+            from .waveform_db import Var as WaveformVar
             var_data: VariableData = {
                 'name': var.name(hierarchy),
                 'full_path': var.full_name(hierarchy),
                 'var_type': var.var_type(),
                 'bit_range': self._format_bit_range(var),
-                'var': var
+                'var': WaveformVar(var)  # Wrap pyrox.Var in our wrapper
             }
             variables.append(var_data)
         

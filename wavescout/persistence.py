@@ -132,7 +132,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) ->
     return handles_to_load
 
 
-def _deserialize_node(data: Dict[str, Any], waveform_db: WaveformDB, parent: Optional[SignalNodeGroup]) -> SignalNode:
+def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], parent: Optional[SignalNodeGroup]) -> SignalNode:
     """Deserialize a dictionary to a SignalNode, handling nested children."""
     # Create display format if present
     format_data = data.get('format')
@@ -181,8 +181,18 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: WaveformDB, parent: Opt
 
     # Get var from waveform_db if available
     handle = data.get('handle')
-    var = waveform_db.get_var(handle) if waveform_db else None
-    signal = waveform_db.load_signal(handle) if waveform_db else None
+
+    # Import here to avoid circular dependency
+    from .waveform_db import AsyncLoadedSignal, Var
+
+    if waveform_db and handle is not None:
+        var_from_db = waveform_db.get_var(handle)
+        var = var_from_db if var_from_db is not None else Var.placeholder()
+        signal = waveform_db.load_signal(handle)
+    else:
+        # Use placeholders when waveform_db is None or handle is None
+        var = Var.placeholder()
+        signal = AsyncLoadedSignal.placeholder(handle if handle is not None else -1)
 
     signal_node = SignalNodeSignal(
         name=data['name'],
@@ -355,7 +365,7 @@ def deserialize_snippet_nodes(
 
         # Get var from waveform_db (we know it's available in this context)
         var = None
-        if handle is not None:
+        if handle is not None and waveform_db is not None:
             var = waveform_db.get_var(handle)
 
         if var is None:
@@ -363,6 +373,10 @@ def deserialize_snippet_nodes(
             return None
 
         # Create AsyncLoadedSignal for the handle
+        # waveform_db is guaranteed to be non-None here because we checked above
+        # handle is also guaranteed to be non-None here due to the logic above
+        assert waveform_db is not None
+        assert handle is not None
         signal = waveform_db.load_signal(handle)
 
         signal_node = SignalNodeSignal(

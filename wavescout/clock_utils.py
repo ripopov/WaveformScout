@@ -3,9 +3,10 @@
 from typing import Optional
 import pyrox
 from wavescout.data_model import Time
+from wavescout.waveform_db import Var
 
 
-def is_valid_clock_signal(var: pyrox.Var) -> bool:
+def is_valid_clock_signal(var: Var) -> bool:
     """Check if a signal type is valid for use as a clock.
     
     Valid types:
@@ -205,7 +206,7 @@ def calculate_counter_clock_period(signal: pyrox.Signal, bit_width: int) -> Opti
     return None
 
 
-def calculate_clock_period(signal: pyrox.Signal, var: pyrox.Var) -> Optional[tuple[Time, Time]]:
+def calculate_clock_period(signal: pyrox.Signal, var: Var) -> Optional[tuple[Time, Time]]:
     """Calculate clock period and phase offset for any valid clock signal type.
     
     Determines the signal type and applies the appropriate algorithm.

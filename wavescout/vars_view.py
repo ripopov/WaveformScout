@@ -16,7 +16,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QKeySequence
 
 if TYPE_CHECKING:
-    from pyrox import Var
+    from wavescout.waveform_db import Var
 
 # Type definition for variable data dictionary
 class VariableData(TypedDict):
@@ -24,7 +24,7 @@ class VariableData(TypedDict):
     full_path: str
     var_type: str
     bit_range: str
-    var: "Var"  # pyrox Var object
+    var: "Var"
 
 
 class VarsModel(QAbstractTableModel):

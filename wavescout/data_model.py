@@ -40,14 +40,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional, ClassVar, Dict, Tuple, TYPE_CHECKING, Any
 from enum import Enum
 
-from pyrox import SignalHandle, Var
+from pyrox import SignalHandle
 
 if TYPE_CHECKING:
-    from wavescout.waveform_db import AsyncLoadedSignal
-
-if TYPE_CHECKING:
+    from wavescout.waveform_db import AsyncLoadedSignal, Var, WaveformDB
     from pyrox import Signal
-    from wavescout.waveform_db import WaveformDB
 
 Time = int  # In Timescale units
 
@@ -133,7 +130,7 @@ class SignalNode(ABC):
 class SignalNodeSignal(SignalNode):
     """A signal node containing waveform data handle and formatting."""
 
-    var: Var = field(repr=False, compare=False)  # Non-optional, must be provided
+    var: "Var" = field(repr=False, compare=False)  # Non-optional, must be provided
     handle: Optional[SignalHandle] = None
     signal: "AsyncLoadedSignal" = field(repr=False, compare=False)
     format: DisplayFormat = field(default_factory=DisplayFormat)

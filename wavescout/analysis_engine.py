@@ -54,16 +54,7 @@ def compute_signal_statistics(
         )
     
     # Get signal bit width for parsing
-    var = signal_node.var
-    if var:
-        if hasattr(var, 'width'):
-            bit_width = var.width()
-        elif hasattr(var, 'bitwidth'):
-            bit_width = var.bitwidth()
-        else:
-            bit_width = 1
-    else:
-        bit_width = 1
+    bit_width = signal_node.var.bitwidth()
     
     # Sample signal at each valid time and collect statistics
     min_val = float('inf')
@@ -176,18 +167,8 @@ def generate_sampling_times_signal(
     Returns:
         List of sampling times
     """
-    # Get signal information
-    if not sampling_signal.var:
-        return []
-
     # Get bit width
-    var = sampling_signal.var
-    if hasattr(var, 'width'):
-        bit_width = var.width()
-    elif hasattr(var, 'bitwidth'):
-        bit_width = var.bitwidth()
-    else:
-        bit_width = 1
+    bit_width = sampling_signal.var.bitwidth()
     
     # Get all transitions in the interval
     transitions = waveform_db.transitions(sampling_signal.handle, start_time, end_time)
@@ -248,16 +229,7 @@ def sample_signal_value(
             pass
     
     # Get signal bit width for parsing
-    var = signal_node.var
-    if var:
-        if hasattr(var, 'width'):
-            bit_width = var.width()
-        elif hasattr(var, 'bitwidth'):
-            bit_width = var.bitwidth()
-        else:
-            bit_width = 1
-    else:
-        bit_width = 1
+    bit_width = signal_node.var.bitwidth()
     
     # Parse and return the value
     return parse_signal_value(

@@ -43,15 +43,19 @@ class MockWaveformDB:
         self.signals = {}
         self.time_table = [0, 100, 200, 300, 400, 500]
         self.hierarchy = None  # Mock hierarchy - tests will use 32-bit default
-    
+
     def add_signal(self, handle: SignalHandle, values: Dict[int, int]):
         self.signals[handle] = MockSignal(values)
-    
+
     def get_signal(self, handle: SignalHandle):
         return self.signals.get(handle)
-    
+
     def get_time_table(self):
         return self.time_table
+
+    def get_var(self, handle: SignalHandle):
+        """Mock get_var that returns None to trigger 32-bit default."""
+        return None
 
 
 def create_test_drawing_data(values: list[int]) -> SignalDrawingData:
