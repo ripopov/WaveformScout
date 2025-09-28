@@ -1,24 +1,21 @@
 """Test copy-paste functionality for signals in SignalNamesView."""
 
-import os
 import pytest
 import tempfile
 from pathlib import Path
-from typing import List
 import json
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QMimeData, QModelIndex
-from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.wave_scout_widget import WaveScoutWidget
-from wavescout.data_model import SignalNodeGroup, SignalNodeSignal, DisplayFormat, RenderType
 from wavescout.signal_names_view import SignalNamesView
 from wavescout.persistence import save_session, load_session
 from .test_split_mode_helpers import add_signals_from_split_mode, add_signals_by_double_click_vars
-from .test_utils import MockVar
+from .test_utils import get_test_input_path, TestFiles
+from wavescout import create_sample_session
+from wavescout.waveform_loader import create_signal_node_from_var
 
 # Get the absolute path to the test inputs directory
 TEST_DIR = Path(__file__).parent
@@ -651,45 +648,55 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
 
 def test_copy_paste_recursion_regression(qtbot):
     """Regression test to ensure the recursion bug doesn't return.
-    
+
     This test specifically creates the conditions that caused the original bug:
     - Deep nesting of groups
     - Circular parent-child references
     - Equality comparisons that would trigger infinite recursion
     """
-    
+
     from wavescout.data_model import SignalNodeGroup, SignalNodeSignal, DisplayFormat, RenderType
     from wavescout.persistence import _serialize_node, _deserialize_node
     import json
-    
-    # Create a deeply nested structure
+
+    # Load a real waveform to get real Var objects
+    test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
+    session = create_sample_session(str(test_file))
+    db = session.waveform_db
+    hierarchy = db.hierarchy
+
+    # Get some real signal handles and variables
+    all_handles = list(db.get_all_handles())[:5]  # Get at least 5 handles
+    if len(all_handles) < 4:
+        # Skip test if not enough signals
+        pytest.skip("Need at least 4 signals for recursion test")
+        return
+
+    # Create a deeply nested structure with real signals
     root = SignalNodeGroup(name="ROOT")
-    
+
     # Level 1
     level1 = SignalNodeGroup(name="L1")
     level1.parent = root
     root.children.append(level1)
-    
+
     # Level 2
     level2 = SignalNodeGroup(name="L2")
     level2.parent = level1
     level1.children.append(level2)
-    
+
     # Level 3
     level3 = SignalNodeGroup(name="L3")
     level3.parent = level2
     level2.children.append(level3)
-    
-    # Add signals at each level
-    for i, parent in enumerate([root, level1, level2, level3]):
-        signal = SignalNodeSignal(
-            name=f"{parent.name}_signal",
-            var=MockVar(f"{parent.name}_signal"),
-            handle=i,
-            format=DisplayFormat(render_type=RenderType.BOOL)
-        )
-        signal.parent = parent
-        parent.children.append(signal)
+
+    # Add real signals at each level
+    for i, (parent, handle) in enumerate(zip([root, level1, level2, level3], all_handles[:4])):
+        var = db.get_var(handle)
+        if var:
+            signal = create_signal_node_from_var(var, hierarchy, handle, db)
+            signal.parent = parent
+            parent.children.append(signal)
     
     # Test 1: Equality comparison (would previously cause RecursionError)
     try:
@@ -719,14 +726,14 @@ def test_copy_paste_recursion_regression(qtbot):
     # Test 3: Deserialization
     try:
         deserialized_data = json.loads(json_str)
-        deserialized = _deserialize_node(deserialized_data)
+        deserialized = _deserialize_node(deserialized_data, waveform_db=db, parent=None)
         assert deserialized.name == "ROOT", "Deserialized root should have correct name"
-        
+
         # Verify structure
         assert len(deserialized.children) == 2, "Root should have 2 children (L1 + signal)"
         assert deserialized.children[0].name == "L1", "First child should be L1"
         assert len(deserialized.children[0].children) == 2, "L1 should have 2 children"
-        
+
     except RecursionError:
         pytest.fail("RecursionError occurred in deserialization - regression detected!")
     
