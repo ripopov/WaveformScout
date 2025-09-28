@@ -6,6 +6,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from scout import WaveScoutMainWindow
 from wavescout.data_model import SignalNode, SignalNodeSignal
+from wavescout.waveform_db import AsyncLoadedSignal
 
 
 def add_signals_from_split_mode(window: WaveScoutMainWindow, count: int = 5) -> List[SignalNode]:
@@ -152,7 +153,8 @@ def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3
                         signal_node = SignalNodeSignal(
                             name=var.name(waveform_db.hierarchy),
                             handle=handle,
-                            var=var
+                            var=var,
+                            signal=AsyncLoadedSignal.placeholder(handle)
                         )
 
                         # Check if already added

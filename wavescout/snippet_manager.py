@@ -45,8 +45,12 @@ class Snippet:
         
         parent_name = data["parent_name"]
         # Nodes in snippet JSON are stored with relative names; do not resolve against a DB here.
-        nodes = deserialize_snippet_nodes(data["nodes"], parent_name=parent_name, waveform_db=None)
-        
+        result = deserialize_snippet_nodes(data["nodes"], parent_scope=parent_name, waveform_db=None)
+        if result:
+            nodes, _ = result
+        else:
+            nodes = []
+
         return cls(
             name=data["name"],
             parent_name=parent_name,

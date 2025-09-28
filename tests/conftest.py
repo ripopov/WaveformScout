@@ -51,7 +51,7 @@ def add_signals_from_vcd(session, count=10, include_groups=True):
     for handle in all_handles[:count]:
         var = db.get_var(handle)
         if var:
-            node = create_signal_node_from_var(var, hierarchy, handle)
+            node = create_signal_node_from_var(var, hierarchy, handle, db)
             session.root_nodes.append(node)
             signals_added += 1
 
@@ -63,7 +63,7 @@ def add_signals_from_vcd(session, count=10, include_groups=True):
         for handle in all_handles[count:count + 3]:
             var = db.get_var(handle)
             if var:
-                child = create_signal_node_from_var(var, hierarchy, handle)
+                child = create_signal_node_from_var(var, hierarchy, handle, db)
                 child.parent = group
                 group.children.append(child)
 

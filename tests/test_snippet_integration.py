@@ -8,10 +8,19 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal, DisplayFormat, DataFormat, RenderType, WaveformSession
 from .test_utils import MockVar
+from wavescout.waveform_loader import create_signal_node_from_var
 from wavescout.snippet_manager import Snippet, SnippetManager
 from wavescout.persistence import serialize_snippet_nodes, deserialize_snippet_nodes
-from wavescout.waveform_db import WaveformDB
+from wavescout.waveform_db import WaveformDB, AsyncLoadedSignal
 from wavescout.snippet_dialogs import InstantiateSnippetDialog
+
+
+def create_async_signal(handle, waveform_db):
+    """Create an AsyncLoadedSignal for testing.
+
+    Always requires a valid waveform_db instance.
+    """
+    return AsyncLoadedSignal(handle, waveform_db)
 
 
 @pytest.fixture(scope="module")
@@ -24,9 +33,11 @@ def qapp():
 
 
 @pytest.fixture
-def waveform_db():
+def waveform_db(qapp):
     """Load real VCD file for testing."""
-    db = WaveformDB()
+    from wavescout.application.event_bus import EventBus
+    event_bus = EventBus()
+    db = WaveformDB(event_bus=event_bus)
     test_vcd = Path("test_inputs/swerv1.vcd")
     if not test_vcd.exists():
         pytest.skip(f"Test VCD file not found: {test_vcd}")
@@ -49,18 +60,18 @@ def snippet_manager(tmp_path, monkeypatch):
 def find_test_signals(waveform_db: WaveformDB, scope_prefix: str, count: int = 3) -> list[tuple[str, int]]:
     """Find test signals from a specific scope in the waveform."""
     signals = []
-    
+
     if not waveform_db.hierarchy:
         return signals
-    
+
     def collect_signals(scope, current_path=""):
         nonlocal signals
         if len(signals) >= count:
             return
-            
+
         scope_name = scope.name(waveform_db.hierarchy)
         full_path = f"{current_path}.{scope_name}" if current_path else scope_name
-        
+
         # Check if this scope matches our prefix
         if full_path.startswith(scope_prefix):
             # Collect signals from this scope
@@ -72,16 +83,27 @@ def find_test_signals(waveform_db: WaveformDB, scope_prefix: str, count: int = 3
                 handle = waveform_db.find_handle_by_path(full_name)
                 if handle is not None:
                     signals.append((full_name, handle))
-        
+
         # Recurse into child scopes
         for child_scope in scope.scopes(waveform_db.hierarchy):
             collect_signals(child_scope, full_path)
-    
+
     # Start from top scopes
     for top_scope in waveform_db.hierarchy.top_scopes():
         collect_signals(top_scope)
-    
+
     return signals
+
+
+def create_signal_node_from_handle(waveform_db: WaveformDB, handle: int) -> SignalNodeSignal:
+    """Create a SignalNode from a handle using real var data."""
+    # Get the var from the handle
+    var = waveform_db.var_from_handle(handle)
+    if var is None:
+        raise ValueError(f"No var found for handle {handle}")
+
+    # Use the create_signal_node_from_var function to get proper signal node
+    return create_signal_node_from_var(var, waveform_db.hierarchy, handle, waveform_db)
 
 
 class TestSnippetSaveLoad:
@@ -96,13 +118,9 @@ class TestSnippetSaveLoad:
         # Create signal nodes
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNodeSignal(
-                name=signal_name,
-                var=MockVar(signal_name.split('.')[-1], 32),  # Assume 32-bit for test signals
-                handle=handle,
-                format=DisplayFormat(data_format=DataFormat.HEX),
-                is_multi_bit=True
-            )
+            node = create_signal_node_from_handle(waveform_db, handle)
+            # Override format for test consistency
+            node.format = DisplayFormat(data_format=DataFormat.HEX)
             signal_nodes.append(node)
         
         # Find common parent
@@ -212,7 +230,7 @@ class TestSnippetInstantiation:
         # Create snippet
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNodeSignal(name=signal_name, var=MockVar(signal_name.split('.')[-1]), handle=handle)
+            node = create_signal_node_from_handle(waveform_db, handle)
             signal_nodes.append(node)
         
         parent_scope = snippet_manager.find_common_parent(
@@ -237,8 +255,22 @@ class TestSnippetInstantiation:
         assert len(remapped) == len(signal_nodes)
 
         # Wait for any async signal loading if needed
-        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
-            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+        if handles_to_load:
+            import time
+            # Process Qt events to allow async loading to complete
+            start_time = time.time()
+            timeout = 5.0
+            while time.time() - start_time < timeout:
+                QApplication.processEvents()
+                # Check if all nodes have loaded signals
+                all_loaded = all(
+                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    for node in remapped
+                    if isinstance(node, SignalNodeSignal)
+                )
+                if all_loaded:
+                    break
+                time.sleep(0.01)
 
         # Verify handles were resolved
         for node in remapped:
@@ -280,8 +312,22 @@ class TestSnippetInstantiation:
         assert remapped[0].name == "TOP.core_clk"
 
         # Wait for any async signal loading if needed
-        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
-            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+        if handles_to_load:
+            import time
+            # Process Qt events to allow async loading to complete
+            start_time = time.time()
+            timeout = 5.0
+            while time.time() - start_time < timeout:
+                QApplication.processEvents()
+                # Check if all nodes have loaded signals
+                all_loaded = all(
+                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    for node in remapped
+                    if isinstance(node, SignalNodeSignal)
+                )
+                if all_loaded:
+                    break
+                time.sleep(0.01)
 
         # Also test that remapping to a different scope where core_clk doesn't exist fails
         remapped_fail = deserialize_snippet_nodes(snippet_data, "TOP.rvtop", waveform_db)
@@ -324,18 +370,15 @@ class TestSnippetRoundTrip:
         # Step 2: Create signal nodes with formatting
         signal_nodes = []
         for i, (signal_name, handle) in enumerate(test_signals):
-            node = SignalNodeSignal(
-                name=signal_name,
-                var=MockVar(signal_name.split('.')[-1], 32),  # Assume 32-bit for test signals
-                handle=handle,
-                format=DisplayFormat(
-                    data_format=DataFormat.HEX if i == 0 else DataFormat.BIN,
-                    render_type=RenderType.BUS
-                ),
-                nickname=f"sig_{i}",
-                is_multi_bit=(i == 0),
-                height_scaling=1.5 if i == 0 else 1.0
+            node = create_signal_node_from_handle(waveform_db, handle)
+            # Override properties for test consistency
+            node.format = DisplayFormat(
+                data_format=DataFormat.HEX if i == 0 else DataFormat.BIN,
+                render_type=RenderType.BUS
             )
+            node.nickname = f"sig_{i}"
+            node.is_multi_bit = (i == 0)
+            node.height_scaling = 1.5 if i == 0 else 1.0
             signal_nodes.append(node)
         
         # Step 3: Create group and find parent scope
@@ -384,8 +427,22 @@ class TestSnippetRoundTrip:
         assert len(remapped) == len(signal_nodes)
 
         # Wait for any async signal loading if needed
-        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
-            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+        if handles_to_load:
+            import time
+            # Process Qt events to allow async loading to complete
+            start_time = time.time()
+            timeout = 5.0
+            while time.time() - start_time < timeout:
+                QApplication.processEvents()
+                # Check if all nodes have loaded signals
+                all_loaded = all(
+                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    for node in remapped
+                    if isinstance(node, SignalNodeSignal)
+                )
+                if all_loaded:
+                    break
+                time.sleep(0.01)
         
         # Verify all properties preserved
         for original, restored in zip(signal_nodes, remapped):
@@ -411,7 +468,7 @@ class TestSnippetRoundTrip:
         # Create signal nodes
         signal_nodes = []
         for signal_name, handle in test_signals:
-            node = SignalNodeSignal(name=signal_name, var=MockVar(signal_name.split('.')[-1]), handle=handle)
+            node = create_signal_node_from_handle(waveform_db, handle)
             signal_nodes.append(node)
         
         # Create snippet
@@ -452,8 +509,22 @@ class TestSnippetRoundTrip:
         remapped, handles_to_load = result
 
         # Wait for any async signal loading if needed
-        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
-            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+        if handles_to_load:
+            import time
+            # Process Qt events to allow async loading to complete
+            start_time = time.time()
+            timeout = 5.0
+            while time.time() - start_time < timeout:
+                QApplication.processEvents()
+                # Check if all nodes have loaded signals
+                all_loaded = all(
+                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    for node in remapped
+                    if isinstance(node, SignalNodeSignal)
+                )
+                if all_loaded:
+                    break
+                time.sleep(0.01)
         
         # Wrap in group with custom name as would happen in the UI
         group_node = SignalNodeGroup(
@@ -485,23 +556,20 @@ class TestSnippetRoundTrip:
         
         # Create complex nested structure with various properties
         # First subgroup - expanded, with analog signal
-        analog_signal = SignalNodeSignal(
-            name=test_signals[0][0],
-            var=MockVar(test_signals[0][0].split('.')[-1], 32),
-            handle=test_signals[0][1],
-            nickname="Analog Wave",
-            format=DisplayFormat(
-                data_format=DataFormat.HEX,
-                render_type=RenderType.ANALOG
-            ),
-            height_scaling=2.5,
-            is_multi_bit=True
+        analog_signal = create_signal_node_from_handle(waveform_db, test_signals[0][1])
+        analog_signal.nickname = "Analog Wave"
+        analog_signal.format = DisplayFormat(
+            data_format=DataFormat.HEX,
+            render_type=RenderType.ANALOG
         )
+        analog_signal.height_scaling = 2.5
+        analog_signal.is_multi_bit = True
         
         digital_signal = SignalNodeSignal(
             name=test_signals[1][0],
             var=MockVar(test_signals[1][0].split('.')[-1], 1),  # Single bit for clock
             handle=test_signals[1][1],
+            signal=create_async_signal(test_signals[1][1], waveform_db),
             nickname="Clock",
             format=DisplayFormat(
                 data_format=DataFormat.BIN,
@@ -522,6 +590,7 @@ class TestSnippetRoundTrip:
             name=test_signals[2][0],
             var=MockVar(test_signals[2][0].split('.')[-1], 32),
             handle=test_signals[2][1],
+            signal=create_async_signal(test_signals[2][1], waveform_db),
             nickname="Data Bus",
             format=DisplayFormat(
                 data_format=DataFormat.HEX,
@@ -535,6 +604,7 @@ class TestSnippetRoundTrip:
             name=test_signals[3][0],
             var=MockVar(test_signals[3][0].split('.')[-1], 32),
             handle=test_signals[3][1],
+            signal=create_async_signal(test_signals[3][1], waveform_db),
             nickname="Address Bus",
             format=DisplayFormat(
                 data_format=DataFormat.UNSIGNED,
@@ -555,6 +625,7 @@ class TestSnippetRoundTrip:
             name=test_signals[4][0],
             var=MockVar(test_signals[4][0].split('.')[-1], 1),  # Single bit for control signal
             handle=test_signals[4][1],
+            signal=create_async_signal(test_signals[4][1], waveform_db),
             nickname="Control",
             format=DisplayFormat(
                 data_format=DataFormat.BIN,
@@ -567,6 +638,7 @@ class TestSnippetRoundTrip:
             name=test_signals[5][0],
             var=MockVar(test_signals[5][0].split('.')[-1], 32),  # 32-bit for status bus
             handle=test_signals[5][1],
+            signal=create_async_signal(test_signals[5][1], waveform_db),
             nickname="Status",
             format=DisplayFormat(
                 data_format=DataFormat.SIGNED,
@@ -763,16 +835,16 @@ class TestSnippetRoundTrip:
         subgroup1 = SignalNodeGroup(
             name="Subgroup 1",
             children=[
-                SignalNodeSignal(name=test_signals[0][0], var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1]),
-                SignalNodeSignal(name=test_signals[1][0], var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1])
+                SignalNodeSignal(name=test_signals[0][0], var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db)),
+                SignalNodeSignal(name=test_signals[1][0], var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
             ]
         )
         
         subgroup2 = SignalNodeGroup(
             name="Subgroup 2",
             children=[
-                SignalNodeSignal(name=test_signals[2][0], var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1]),
-                SignalNodeSignal(name=test_signals[3][0], var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1])
+                SignalNodeSignal(name=test_signals[2][0], var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db)),
+                SignalNodeSignal(name=test_signals[3][0], var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
             ]
         )
         
@@ -810,16 +882,21 @@ class TestSnippetRoundTrip:
 class TestSnippetBugRegressions:
     """Test cases to prevent regressions on recently fixed bugs."""
     
-    def test_save_snippet_does_not_modify_session(self, snippet_manager):
+    def test_save_snippet_does_not_modify_session(self, waveform_db, snippet_manager):
         """Test that saving a snippet doesn't modify the original session nodes.
-        
+
         This was a bug where save_snippet modified handles in-place, causing
         signals to disappear from the canvas.
         """
-        # Create signal nodes with specific handles (simulating loaded signals)
-        signal1 = SignalNodeSignal(name="TOP.module.sig1", var=MockVar("sig1"), handle=42)
-        signal2 = SignalNodeSignal(name="TOP.module.sig2", var=MockVar("sig2"), handle=84)
-        signal3 = SignalNodeSignal(name="TOP.module.sig3", var=MockVar("sig3"), handle=126)
+        # Use real signals from the test waveform
+        test_signals = find_test_signals(waveform_db, "TOP", count=3)
+        if len(test_signals) < 3:
+            pytest.skip("Not enough test signals found")
+
+        # Create signal nodes with real handles
+        signal1 = create_signal_node_from_handle(waveform_db, test_signals[0][1])
+        signal2 = create_signal_node_from_handle(waveform_db, test_signals[1][1])
+        signal3 = create_signal_node_from_handle(waveform_db, test_signals[2][1])
         
         # Create a group as would be in a session
         group = SignalNodeGroup(
@@ -845,9 +922,9 @@ class TestSnippetBugRegressions:
         assert success, "Failed to save snippet"
         
         # CRITICAL: Verify original nodes still have their handles
-        assert signal1.handle == 42, f"Handle modified! Was 42, now {signal1.handle}"
-        assert signal2.handle == 84, f"Handle modified! Was 84, now {signal2.handle}"
-        assert signal3.handle == 126, f"Handle modified! Was 126, now {signal3.handle}"
+        assert signal1.handle == original_handles[0], f"Handle modified! Was {original_handles[0]}, now {signal1.handle}"
+        assert signal2.handle == original_handles[1], f"Handle modified! Was {original_handles[1]}, now {signal2.handle}"
+        assert signal3.handle == original_handles[2], f"Handle modified! Was {original_handles[2]}, now {signal3.handle}"
         
         # Verify the saved file has handles set to -1
         snippet_file = snippet_manager._snippets_dir / "test_no_modify.json"
@@ -932,7 +1009,7 @@ class TestSnippetBugRegressions:
         print(f"Full path 1: {full_path_nodes[0].name}")
         print(f"Full path 2: {full_path_nodes[1].name}")
     
-    def test_snippet_path_concatenation_logic(self):
+    def test_snippet_path_concatenation_logic(self, waveform_db):
         """Test the static build_full_paths method for proper concatenation.
         
         This tests the simplified logic that just concatenates parent + "." + relative_name
@@ -941,23 +1018,31 @@ class TestSnippetBugRegressions:
         from wavescout.snippet_dialogs import InstantiateSnippetDialog
         
         # Test case 1: Simple signal
-        signal = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=-1)
+        # Use a real signal for testing, but we'll override the name for path testing
+        test_signals = find_test_signals(waveform_db, "TOP", count=1)
+        if not test_signals:
+            pytest.skip("No test signals found")
+        signal = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.module")
         assert result.name == "TOP.module.signal1"
         
         # Test case 2: Nested path
-        signal = SignalNodeSignal(name="sub.module.signal", var=MockVar("signal"), handle=-1)
+        signal = SignalNodeSignal(name="sub.module.signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.parent")
         assert result.name == "TOP.parent.sub.module.signal"
         
         # Test case 3: Empty parent scope
-        signal = SignalNodeSignal(name="signal", var=MockVar("signal"), handle=-1)
+        signal = SignalNodeSignal(name="signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "")
         assert result.name == "signal"  # Should keep as-is
         
         # Test case 4: Group with children
-        child1 = SignalNodeSignal(name="sig1", var=MockVar("sig1"), handle=-1)
-        child2 = SignalNodeSignal(name="sig2", var=MockVar("sig2"), handle=-1)
+        # Get two test signals for the children
+        test_signals2 = find_test_signals(waveform_db, "TOP", count=2)
+        if len(test_signals2) < 2:
+            pytest.skip("Not enough test signals found")
+        child1 = SignalNodeSignal(name="sig1", var=MockVar("sig1"), handle=test_signals2[0][1], signal=create_async_signal(test_signals2[0][1], waveform_db))
+        child2 = SignalNodeSignal(name="sig2", var=MockVar("sig2"), handle=test_signals2[1][1], signal=create_async_signal(test_signals2[1][1], waveform_db))
         group = SignalNodeGroup(
             name="MyGroup",
             children=[child1, child2]
@@ -978,16 +1063,21 @@ class TestSnippetBugRegressions:
         assert result.children[0].parent == result
         assert result.children[1].parent == result
     
-    def test_snippet_with_nested_groups_preserves_structure(self, snippet_manager):
+    def test_snippet_with_nested_groups_preserves_structure(self, waveform_db, snippet_manager):
         """Test that nested groups in snippets maintain their structure.
         
         This verifies the complex nested group handling works correctly.
         """
         # Create a complex nested structure
-        leaf1 = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=10)
-        leaf2 = SignalNodeSignal(name="signal2", var=MockVar("signal2"), handle=20)
-        leaf3 = SignalNodeSignal(name="signal3", var=MockVar("signal3"), handle=30)
-        leaf4 = SignalNodeSignal(name="signal4", var=MockVar("signal4"), handle=40)
+        # Use real signals from the test waveform
+        test_signals = find_test_signals(waveform_db, "TOP", count=4)
+        if len(test_signals) < 4:
+            pytest.skip("Not enough test signals found")
+
+        leaf1 = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        leaf2 = SignalNodeSignal(name="signal2", var=MockVar("signal2"), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
+        leaf3 = SignalNodeSignal(name="signal3", var=MockVar("signal3"), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db))
+        leaf4 = SignalNodeSignal(name="signal4", var=MockVar("signal4"), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
         
         inner_group1 = SignalNodeGroup(
             name="Inner1",
@@ -1018,10 +1108,13 @@ class TestSnippetBugRegressions:
         # Save (this should not modify the original nodes)
         assert snippet_manager.save_snippet(snippet)
         
+        # Store original handle
+        original_handle1 = test_signals[0][1]
+
         # Verify original structure unchanged
         assert outer_group.children[0].is_expanded == False
         assert outer_group.children[1].is_expanded == True
-        assert leaf1.handle == 10  # Handle should not be modified
+        assert leaf1.handle == original_handle1  # Handle should not be modified
         
         # Load and verify saved structure
         snippet_manager._snippets.clear()
@@ -1059,22 +1152,41 @@ class TestSnippetBugRegressions:
         real_signal_path, _ = test_signals[0]
         
         # Test case 1: Valid signal
-        valid_node = SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1)
+        # Get the actual handle for the real signal
+        real_handle = waveform_db.find_handle_by_path(real_signal_path)
+        assert real_handle is not None
+        valid_node = SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))
         
         validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [valid_node], waveform_db
         )
 
         # Wait for any async signal loading if needed
-        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
-            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+        if handles_to_load:
+            import time
+            # Process Qt events to allow async loading to complete
+            start_time = time.time()
+            timeout = 5.0
+            while time.time() - start_time < timeout:
+                QApplication.processEvents()
+                # Check if all nodes have loaded signals
+                all_loaded = all(
+                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    for node in validated
+                    if isinstance(node, SignalNodeSignal)
+                )
+                if all_loaded:
+                    break
+                time.sleep(0.01)
 
         assert len(validated) == 1
         assert validated[0].name == real_signal_path
         assert validated[0].handle != -1  # Handle should be resolved
         
         # Test case 2: Invalid signal should raise ValueError
-        invalid_node = SignalNodeSignal(name="TOP.does.not.exist", var=MockVar("exist"), handle=-1)
+        # For invalid node, use a dummy handle but still need waveform_db
+        # Use a large handle number that doesn't exist
+        invalid_node = SignalNodeSignal(name="TOP.does.not.exist", var=MockVar("exist"), handle=-1, signal=create_async_signal(999999, waveform_db))
         
         with pytest.raises(ValueError) as exc_info:
             InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1085,7 +1197,7 @@ class TestSnippetBugRegressions:
         # Test case 3: Group with valid child
         group_node = SignalNodeGroup(
             name="TestGroup",
-            children=[SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1)]
+            children=[SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))]
         )
         
         validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1093,8 +1205,22 @@ class TestSnippetBugRegressions:
         )
 
         # Wait for any async signal loading if needed
-        if handles_to_load and hasattr(waveform_db, 'wait_for_signals'):
-            waveform_db.wait_for_signals(handles_to_load, timeout=5.0)
+        if handles_to_load:
+            import time
+            # Process Qt events to allow async loading to complete
+            start_time = time.time()
+            timeout = 5.0
+            while time.time() - start_time < timeout:
+                QApplication.processEvents()
+                # Check if all nodes have loaded signals
+                all_loaded = all(
+                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    for node in remapped
+                    if isinstance(node, SignalNodeSignal)
+                )
+                if all_loaded:
+                    break
+                time.sleep(0.01)
 
         assert len(validated) == 1
         assert validated[0].is_group == True
@@ -1131,7 +1257,7 @@ class TestSnippetAPBScenario:
             for var in vars_list:
                 full_name = var.full_name(db.hierarchy)
                 if full_name == target_signal:
-                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
                     apb_addr_node.name = full_name
                     session.root_nodes.append(apb_addr_node)
                     break
@@ -1294,7 +1420,7 @@ class TestSnippetAPBScenario:
             for var in vars_list:
                 full_name = var.full_name(db.hierarchy)
                 if full_name == target_signal:
-                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
                     apb_addr_node.name = full_name
                     session.root_nodes.append(apb_addr_node)
                     break
@@ -1422,7 +1548,7 @@ class TestSnippetAPBScenario:
             for var in vars_list:
                 full_name = var.full_name(db.hierarchy)
                 if full_name == target_signal:
-                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle)
+                    apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
                     apb_addr_node.name = full_name
                     break
             if apb_addr_node:
@@ -1476,9 +1602,10 @@ class TestSnippetAPBScenario:
         assert success
         print("Step 4: Added nodes to session")
 
-        # Verify the signal is not loaded yet (should be None)
+        # Verify the signal is not loaded yet (should be an unloaded AsyncLoadedSignal)
         signal_node = remapped_nodes[0]
-        assert signal_node.signal is None, "Signal should be None before async loading"
+        assert hasattr(signal_node, 'signal'), "Signal node should have signal attribute"
+        assert not signal_node.signal.is_loaded(), "Signal should not be loaded yet"
 
         # Step 5: Now trigger async loading (this is the fix)
         if handles_to_load and hasattr(db, 'load_signals_async'):
@@ -1524,7 +1651,8 @@ class TestSnippetAPBScenario:
         # Check if the session tree node is updated (this is what matters)
         session_node = nodes_with_handle[0] if nodes_with_handle else None
         assert session_node is not None, "No node found in session tree"
-        assert session_node.signal is not None, "Signal should be loaded in session tree node"
+        assert hasattr(session_node, 'signal'), "Session node should have signal attribute"
+        assert session_node.signal.is_loaded(), "Signal should be loaded in session tree node"
 
         # Also check our reference variable - this might be different due to deep_copy
         print(f"Reference signal_node id: {id(signal_node)}")

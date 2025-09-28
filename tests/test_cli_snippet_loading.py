@@ -13,7 +13,9 @@ import pytest
 from PySide6.QtCore import QStandardPaths
 from wavescout.snippet_manager import Snippet
 from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
-from .test_utils import MockVar
+from wavescout.waveform_db import AsyncLoadedSignal, WaveformDB
+from wavescout.application.event_bus import EventBus
+from .test_utils import MockVar, get_test_input_path
 
 
 @pytest.fixture
@@ -144,47 +146,57 @@ def test_invalid_snippet_json(snippets_dir):
 def test_validate_and_resolve_nodes():
     """Test the extracted validation logic."""
     from wavescout.snippet_dialogs import InstantiateSnippetDialog
-    from wavescout.waveform_db import WaveformDB
-    from wavescout.data_model import SignalNodeGroup
-    
-    # Create mock waveform database
-    class MockWaveformDB:
-        def find_handle_by_path(self, path):
-            # Simulate finding handles for known signals
-            if path == "apb_testbench.pclk":
-                return 1
-            elif path == "apb_testbench.paddr":
-                return 2
-            return None
 
-        def are_signals_cached(self, handles):
-            # Mock implementation - signals are always cached
-            return True
+    # Create real waveform database with APB test file
+    db = WaveformDB(EventBus())
+    test_file = str(get_test_input_path("apb_sim.vcd"))
+    db.open(test_file)
 
-        def get_signal(self, handle):
-            # Mock implementation
-            return f"signal_{handle}"
+    # Get actual handles for APB signals
+    pclk_handle = db.find_handle_by_path("apb_testbench.pclk")
+    paddr_handle = db.find_handle_by_path("apb_testbench.paddr")
+    assert pclk_handle is not None
+    assert paddr_handle is not None
 
-    db = MockWaveformDB()
+    # Get actual vars from the waveform
+    pclk_var = db.get_var(pclk_handle)
+    paddr_var = db.get_var(paddr_handle)
 
-    # Create test nodes
+    # Create test nodes with real AsyncLoadedSignal instances
     nodes = [
-        SignalNodeSignal(name="apb_testbench.pclk", var=MockVar("pclk"), handle=-1),
-        SignalNodeSignal(name="apb_testbench.paddr", var=MockVar("paddr", 32), handle=-1)
+        SignalNodeSignal(
+            name="apb_testbench.pclk",
+            var=pclk_var,
+            handle=-1,  # Will be resolved
+            signal=AsyncLoadedSignal(pclk_handle, db)
+        ),
+        SignalNodeSignal(
+            name="apb_testbench.paddr",
+            var=paddr_var,
+            handle=-1,  # Will be resolved
+            signal=AsyncLoadedSignal(paddr_handle, db)
+        )
     ]
 
     # Test successful validation - now returns a tuple
     validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, db)
     assert len(validated) == 2
-    assert validated[0].handle == 1
-    assert validated[1].handle == 2
-    assert len(handles_to_load) == 0  # All signals are cached
+    assert validated[0].handle == pclk_handle
+    assert validated[1].handle == paddr_handle
+    # Handles may or may not be cached depending on prior tests
     
     # Test validation failure for non-existent signal
+    # Create a placeholder signal for a non-existent path
+    # We need to use a dummy handle since AsyncLoadedSignal requires one
     bad_nodes = [
-        SignalNodeSignal(name="non_existent.signal", var=MockVar("signal"), handle=-1)
+        SignalNodeSignal(
+            name="non_existent.signal",
+            var=MockVar("signal"),
+            handle=-1,
+            signal=AsyncLoadedSignal(999999, db)  # Use a non-existent handle
+        )
     ]
-    
+
     with pytest.raises(ValueError) as exc_info:
         # This will still raise, we just ignore the return type
         InstantiateSnippetDialog.validate_and_resolve_nodes(bad_nodes, db)
@@ -223,30 +235,38 @@ def test_cli_argument_parsing(sample_vcd_file, snippets_dir, sample_snippet_data
 def test_snippet_node_hierarchy():
     """Test that hierarchical snippet nodes are handled correctly."""
     from wavescout.snippet_dialogs import InstantiateSnippetDialog
-    
-    # Create mock waveform database
-    class MockWaveformDB:
-        def find_handle_by_path(self, path):
-            if path in ["apb_testbench.group1.sig1", "apb_testbench.group1.sig2"]:
-                return len(path)  # Just return something unique
-            return None
 
-        def are_signals_cached(self, handles):
-            # Mock implementation - signals are always cached
-            return True
+    # Create real waveform database with APB test file
+    db = WaveformDB(EventBus())
+    test_file = str(get_test_input_path("apb_sim.vcd"))
+    db.open(test_file)
 
-        def get_signal(self, handle):
-            # Mock implementation
-            return f"signal_{handle}"
+    # Use actual APB signals in a hierarchical structure
+    # We'll use pclk and preset_n as our test signals
+    pclk_handle = db.find_handle_by_path("apb_testbench.pclk")
+    preset_handle = db.find_handle_by_path("apb_testbench.preset_n")
+    assert pclk_handle is not None
+    assert preset_handle is not None
 
-    db = MockWaveformDB()
+    pclk_var = db.get_var(pclk_handle)
+    preset_var = db.get_var(preset_handle)
 
-    # Create hierarchical nodes
+    # Create hierarchical nodes with renamed paths for the test
     group_node = SignalNodeGroup(
         name="group1",
         children=[
-            SignalNodeSignal(name="apb_testbench.group1.sig1", var=MockVar("sig1"), handle=-1),
-            SignalNodeSignal(name="apb_testbench.group1.sig2", var=MockVar("sig2"), handle=-1)
+            SignalNodeSignal(
+                name="apb_testbench.pclk",  # Using actual signal path
+                var=pclk_var,
+                handle=-1,
+                signal=AsyncLoadedSignal(pclk_handle, db)
+            ),
+            SignalNodeSignal(
+                name="apb_testbench.preset_n",  # Using actual signal path
+                var=preset_var,
+                handle=-1,
+                signal=AsyncLoadedSignal(preset_handle, db)
+            )
         ]
     )
 
@@ -259,9 +279,9 @@ def test_snippet_node_hierarchy():
     assert len(validated) == 1
     assert validated[0].is_group
     assert len(validated[0].children) == 2
-    assert validated[0].children[0].handle != -1
-    assert validated[0].children[1].handle != -1
-    assert len(handles_to_load) == 0  # All signals are cached
+    assert validated[0].children[0].handle == pclk_handle
+    assert validated[0].children[1].handle == preset_handle
+    # Handles may or may not be cached depending on prior tests
 
 
 def test_exit_codes_simulation():

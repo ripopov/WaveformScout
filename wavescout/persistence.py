@@ -253,6 +253,23 @@ def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[
     return serialized_nodes
 
 
+def deserialize_snippet_nodes_simple(data: List[Dict[str, Any]]) -> List[SignalNode]:
+    """
+    Deserialize snippet nodes without handle resolution (for loading snippets from disk).
+
+    Args:
+        data: List of serialized node dictionaries
+
+    Returns:
+        List of SignalNode objects with relative names
+    """
+    nodes = []
+    for node_data in data:
+        node = _deserialize_node(node_data, waveform_db=None, parent=None)
+        nodes.append(node)
+    return nodes
+
+
 def deserialize_snippet_nodes(
     data: List[Dict[str, Any]],
     parent_scope: str,
@@ -260,18 +277,20 @@ def deserialize_snippet_nodes(
 ) -> Optional[tuple[List[SignalNode], List[int]]]:
     """
     Deserialize snippet nodes with scope remapping and handle resolution.
-    
+
     Args:
         data: List of serialized node dictionaries
         parent_scope: New parent scope to prepend to signal names
         waveform_db: WaveformDB instance to resolve handles from
-    
+
     Returns:
         Tuple of (List of SignalNode objects with remapped names and resolved handles,
         List of handles that need async loading), or None if any signal cannot be found
     """
     if not waveform_db:
-        return None
+        # When no waveform_db, just deserialize without resolving
+        nodes = deserialize_snippet_nodes_simple(data)
+        return (nodes, [])
     
     def deserialize_snippet_node(
         node_data: Dict[str, Any],

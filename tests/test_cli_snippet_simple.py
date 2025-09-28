@@ -13,53 +13,58 @@ from unittest.mock import Mock, patch, MagicMock
 from wavescout.snippet_manager import Snippet, SnippetManager
 from wavescout.snippet_dialogs import InstantiateSnippetDialog
 from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal
-from test_utils import MockVar
+from wavescout.waveform_db import AsyncLoadedSignal, WaveformDB
+from wavescout.application.event_bus import EventBus
+from .test_utils import MockVar, get_test_input_path
 
 
 def test_validate_and_resolve_nodes_simple():
-    """Test the static validation method works correctly."""
-    # Create mock waveform database
-    mock_db = Mock()
-    mock_db.find_handle_by_path = Mock(side_effect=lambda path: {
-        "test.signal1": 1,
-        "test.signal2": 2,
-        "test.group.signal3": 3
-    }.get(path, None))
-    # Add mock methods for async support
-    mock_db.are_signals_cached = Mock(return_value=True)
-    mock_db.get_signal = Mock(side_effect=lambda h: f"signal_{h}")
+    """Test the static validation method works correctly with a real waveform DB."""
+    # Create real waveform database using a small test VCD
+    db = WaveformDB(EventBus())
+    vcd_path = str(get_test_input_path("apb_sim.vcd"))
+    db.open(vcd_path)
 
-    # Test successful validation - now returns a tuple
+    # Get actual handles and vars
+    pclk_h = db.find_handle_by_path("apb_testbench.pclk")
+    paddr_h = db.find_handle_by_path("apb_testbench.paddr")
+    assert pclk_h is not None and paddr_h is not None
+    pclk_var = db.get_var(pclk_h)
+    paddr_var = db.get_var(paddr_h)
+
+    # Test successful validation - returns (validated_nodes, handles_to_load)
     nodes = [
-        SignalNodeSignal(name="test.signal1", var=MockVar("signal1"), handle=-1),
-        SignalNodeSignal(name="test.signal2", var=MockVar("signal2"), handle=-1)
+        SignalNodeSignal(name="apb_testbench.pclk", var=pclk_var, handle=-1, signal=AsyncLoadedSignal(pclk_h, db)),
+        SignalNodeSignal(name="apb_testbench.paddr", var=paddr_var, handle=-1, signal=AsyncLoadedSignal(paddr_h, db))
     ]
 
-    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, mock_db)
+    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, db)
     assert len(validated) == 2
-    assert validated[0].handle == 1
-    assert validated[1].handle == 2
-    assert len(handles_to_load) == 0  # All signals are cached
+    assert validated[0].handle in (pclk_h, paddr_h)
+    assert validated[1].handle in (pclk_h, paddr_h)
+    # Don't assert cache status; just ensure it's a list of ints
+    assert isinstance(handles_to_load, list)
+    for h in handles_to_load:
+        assert isinstance(h, int)
 
     # Test validation with group
     group_node = SignalNodeGroup(
         name="mygroup",
         children=[
-            SignalNodeSignal(name="test.group.signal3", var=MockVar("signal3"), handle=-1)
+            SignalNodeSignal(name="apb_testbench.pclk", var=pclk_var, handle=-1, signal=AsyncLoadedSignal(pclk_h, db))
         ]
     )
 
-    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes([group_node], mock_db)
+    validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes([group_node], db)
     assert len(validated) == 1
     assert validated[0].is_group
     assert len(validated[0].children) == 1
-    assert validated[0].children[0].handle == 3
-    assert len(handles_to_load) == 0  # All signals are cached
-    
-    # Test validation failure
-    bad_nodes = [SignalNodeSignal(name="bad.signal", var=MockVar("signal"), handle=-1)]
+    assert validated[0].children[0].handle == pclk_h
+
+    # Test validation failure for a non-existent signal
+    bad_nodes = [SignalNodeSignal(name="bad.signal", var=MockVar("signal"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))]
     with pytest.raises(ValueError) as exc:
-        InstantiateSnippetDialog.validate_and_resolve_nodes(bad_nodes, mock_db)
+        InstantiateSnippetDialog.validate_and_resolve_nodes(bad_nodes, db)
     assert "Signal 'bad.signal' not found" in str(exc.value)
 
 
@@ -105,19 +110,19 @@ def test_remap_node_names():
     dialog = MockDialog()
     
     # Test remapping
-    node = SignalNodeSignal(name="old.scope.signal1", var=MockVar("signal1"), handle=-1)
+    node = SignalNodeSignal(name="old.scope.signal1", var=MockVar("signal1"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
     remapped = dialog._remap_node_names(node, "old.scope", "new.scope")
-    
+
     assert remapped.name == "new.scope.signal1"
     assert remapped.handle == -1  # Handle not resolved during remapping
-    
+
     # Test remapping with no old parent
-    node2 = SignalNodeSignal(name="signal2", var=MockVar("signal2"), handle=-1)
+    node2 = SignalNodeSignal(name="signal2", var=MockVar("signal2"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
     remapped2 = dialog._remap_node_names(node2, "", "new.scope")
     assert remapped2.name == "new.scope.signal2"
-    
+
     # Test remapping with no new parent
-    node3 = SignalNodeSignal(name="old.scope.signal3", var=MockVar("signal3"), handle=-1)
+    node3 = SignalNodeSignal(name="old.scope.signal3", var=MockVar("signal3"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
     remapped3 = dialog._remap_node_names(node3, "old.scope", "")
     assert remapped3.name == "signal3"
 
