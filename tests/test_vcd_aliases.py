@@ -26,8 +26,28 @@ from .test_utils import get_test_input_path, TestFiles
 @pytest.fixture
 def vcd_with_aliases():
     """Create a session from swerv1.vcd which contains signal aliases."""
+    from wavescout.waveform_db import WaveformDB
+    from wavescout.data_model import WaveformSession
+    from wavescout.application.event_bus import EventBus
+    from PySide6.QtWidgets import QApplication
+
+    # Ensure Qt app exists for event processing
+    app = QApplication.instance()
+    if not app:
+        app = QApplication([])
+
     vcd_path = get_test_input_path(TestFiles.SWERV1_VCD)
-    return create_sample_session(str(vcd_path))
+
+    # Create WaveformDB with EventBus for async loading
+    event_bus = EventBus()
+    db = WaveformDB(event_bus=event_bus)
+    db.open(str(vcd_path))
+
+    # Create session
+    session = WaveformSession()
+    session.waveform_db = db
+
+    return session
 
 
 def test_alias_detection(vcd_with_aliases):
@@ -91,7 +111,7 @@ def test_add_both_aliases_to_waveform(vcd_with_aliases, qtbot):
         for var in vars_list:
             full_name = var.full_name(hierarchy)
             if full_name in target_names:
-                node = create_signal_node_from_var(var, hierarchy, handle)
+                node = create_signal_node_from_var(var, hierarchy, handle, db)
                 node.name = full_name
                 session.root_nodes.append(node)
                 signals_added.append((full_name, handle))
@@ -137,7 +157,7 @@ def test_save_load_session_with_aliases(vcd_with_aliases, tmp_path):
             full_name = var.full_name(hierarchy)
             if full_name in target_names:
                 handle_used = handle
-                node = create_signal_node_from_var(var, hierarchy, handle)
+                node = create_signal_node_from_var(var, hierarchy, handle, db)
                 node.name = full_name
                 session.root_nodes.append(node)
                 
@@ -181,12 +201,15 @@ def test_save_load_session_with_aliases(vcd_with_aliases, tmp_path):
 
 def test_signal_loaded_once_for_aliases(vcd_with_aliases):
     """Test that signal data is loaded only once for aliases (efficiency)."""
+    import time
+    from PySide6.QtWidgets import QApplication
+
     session = vcd_with_aliases
     db = session.waveform_db
-    
+
     # Clear signal cache to start fresh
     db.clear_signal_cache()
-    
+
     # Find handle for core_clk aliases
     handle = db.find_handle_by_name("core_clk")
     if handle is None:
@@ -198,23 +221,35 @@ def test_signal_loaded_once_for_aliases(vcd_with_aliases):
                     break
             if handle is not None:
                 break
-    
+
     assert handle is not None, "Handle for core_clk not found"
-    
-    # Get signal - should load it
-    signal1 = db.get_signal(handle)
+
+    # Use new AsyncLoadedSignal API
+    async_signal1 = db.load_signal(handle)
+
+    # Process Qt events to allow async loading
+    if not async_signal1.is_loaded():
+        start_time = time.time()
+        while not async_signal1.is_loaded() and (time.time() - start_time) < 5.0:
+            QApplication.processEvents()
+            time.sleep(0.01)
+
+    # Get the loaded signal
+    assert async_signal1.is_loaded(), "Signal should be loaded"
+    signal1 = async_signal1.get_signal_blocking(timeout=0.1)
+    assert signal1 is not None, "Signal should load"
     assert db.is_signal_cached(handle), "Signal should be cached"
-    
+
     # Get signal again - should use cache
-    signal2 = db.get_signal(handle)
+    async_signal2 = db.load_signal(handle)
+    assert async_signal2.is_loaded(), "Should be immediately loaded from cache"
+    signal2 = async_signal2.get_signal_blocking(timeout=0.1)  # Short timeout since it's cached
     assert signal1 is signal2, "Should return same cached signal object"
-    
-    # Sample the signal - should use cached signal via query_signal
-    sig = db.signal_from_handle(handle)
-    qr = sig.query_signal(10)
-    value = qr.value if qr.value is not None else None
-    assert value is not None
-    
+
+    # Sample using the raw signal
+    value_at_10 = signal1.value_at_time(10)
+    assert value_at_10 is not None
+
     # Verify signal is cached (implementation detail: only one signal per handle)
     assert db.is_signal_cached(handle)
 
