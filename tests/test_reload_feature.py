@@ -11,7 +11,9 @@ from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
 from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat, RenderType, DataFormat
+from wavescout.waveform_db import WaveformDB
 from .test_utils import get_test_input_path, TestFiles, MockVar
+from wavescout.waveform_loader import create_signal_node_from_var
 
 
 class TestReloadFeature:
@@ -75,61 +77,51 @@ class TestReloadFeature:
     
     def _add_signals_to_session(self, window: WaveScoutMainWindow, count: int = 3) -> List[str]:
         """Helper to add signals to the session.
-        
+
         Returns list of signal names that were added.
         """
-        from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
-        
         # Get the waveform database
         if not window.wave_widget.session or not window.wave_widget.session.waveform_db:
             return []
-        
+
         waveform_db = window.wave_widget.session.waveform_db
+        hierarchy = waveform_db.hierarchy
         added_signals = []
-        
+
         # Get signals through hierarchy
-        if waveform_db.hierarchy:
-            signal_list = []
-            
+        if hierarchy:
+            signal_vars = []
+
             def collect_vars(scope):
-                for var in scope.vars(waveform_db.hierarchy):
-                    full_name = var.full_name(waveform_db.hierarchy)
-                    signal_list.append(full_name)
-                for child_scope in scope.scopes(waveform_db.hierarchy):
+                for var in scope.vars(hierarchy):
+                    signal_vars.append(var)
+                for child_scope in scope.scopes(hierarchy):
                     collect_vars(child_scope)
-            
-            for top_scope in waveform_db.hierarchy.top_scopes():
+
+            for top_scope in hierarchy.top_scopes():
                 collect_vars(top_scope)
-            
+
             # Add the first 'count' signals
-            for i, signal_name in enumerate(signal_list):
+            for i, var in enumerate(signal_vars):
                 if i >= count:
                     break
-                
+
+                full_name = var.full_name(hierarchy)
                 # Get handle for this signal
-                handle = waveform_db.find_handle_by_path(signal_name)
+                handle = waveform_db.find_handle_by_path(full_name)
                 if handle is not None:
-                    # Create a SignalNode
-                    signal_node = SignalNodeSignal(
-                        name=signal_name,
-                        var=MockVar(signal_name.split('.')[-1], 32),
-                        handle=handle,
-                        format=DisplayFormat(),
-                        nickname='',
-                        parent=None,
-                        height_scaling=1,
-                        is_multi_bit=False
-                    )
-                    
+                    # Create a SignalNode using the proper helper function
+                    signal_node = create_signal_node_from_var(var, hierarchy, handle, waveform_db)
+
                     # Add to session
                     window.wave_widget.session.root_nodes.append(signal_node)
-                    added_signals.append(signal_name)
-        
+                    added_signals.append(full_name)
+
         # Force UI update
         if added_signals and window.wave_widget:
             window.wave_widget.update()
             QTest.qWait(20)  # Minimal wait for UI update
-        
+
         return added_signals
     
     def _get_signal_properties(self, node: SignalNode) -> Dict[str, Any]:
