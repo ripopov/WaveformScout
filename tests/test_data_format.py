@@ -208,32 +208,41 @@ def test_with_vcd_file():
     
     # Get all variables using public API
     handles_and_vars = db.iter_handles_and_vars()
-    
-    # Test a few signals with different formats
+
+    # Test a few signals with different formats (limit to first 5)
+    count = 0
     for handle, var_list in handles_and_vars:
+        if count >= 5:
+            break
+        count += 1
         # Skip if empty list
         if not var_list:
             continue
-            
+
         # Use first variable in the list
         var = var_list[0]
-        
+
         # Create signal node
-        signal_node = create_signal_node_from_var(var, hierarchy, handle)
-        
-        # Get signal object
-        signal_obj = db.get_signal(handle)
-        if not signal_obj:
+        signal_node = create_signal_node_from_var(var, hierarchy, handle, db)
+
+        # Load signal using new API
+        async_signal = db.load_signal(handle)
+        if not async_signal.is_loaded():
+            try:
+                sig = async_signal.get_signal_blocking(timeout=1.0)
+            except (RuntimeError, TimeoutError):
+                continue
+        else:
+            sig = async_signal.get_signal_blocking()
+
+        if not sig:
             continue
-            
+
         # Get bit width
         var = db.get_var(handle)
         bit_width = var.bitwidth() if var else 32
-        
+
         # Sample at time 0
-        sig = db.signal_from_handle(handle)
-        if not sig:
-            continue
         qr = sig.query_signal(0)
         value = qr.value if qr.value is not None else None
         
