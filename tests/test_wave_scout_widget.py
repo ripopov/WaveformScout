@@ -13,6 +13,7 @@ from wavescout import (
     DisplayFormat,
     GroupRenderMode,
 )
+from wavescout.waveform_db import AsyncLoadedSignal
 from .test_utils import get_test_input_path, TestFiles
 
 
@@ -326,71 +327,80 @@ def test_create_group_from_selected(wave_widget, monkeypatch):
 def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
     """Test creating a group from groups preserves the hierarchy."""
     from PySide6.QtWidgets import QInputDialog
-    
+
     session = wave_widget.session
-    
-    # Create two groups with children
-    # Group 1: G1 with IF, WB signals
-    from tests.test_utils import MockVar
+
+    # Get real signals from the loaded VCD file
+    # The session should already have some signals loaded
+    existing_signals = []
+    for node in session.root_nodes:
+        if not node.is_group:
+            existing_signals.append(node)
+
+    # Make sure we have enough signals for the test
+    assert len(existing_signals) >= 5, f"Need at least 5 signals, got {len(existing_signals)}"
+
+    # Create two groups with children using real signals
+    # Group 1: G1 with first two signals
     g1 = SignalNodeGroup(name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
-    if_signal = SignalNodeSignal(name="IF", handle=0, var=MockVar("IF"))
-    wb_signal1 = SignalNodeSignal(name="WB", handle=1, var=MockVar("WB"))
-    if_signal.parent = g1
-    wb_signal1.parent = g1
-    g1.children = [if_signal, wb_signal1]
-    
-    # Group 2: G2 with EX, MEM, WB signals
+    signal1 = existing_signals[0]
+    signal2 = existing_signals[1]
+    signal1.parent = g1
+    signal2.parent = g1
+    g1.children = [signal1, signal2]
+
+    # Group 2: G2 with next three signals
     g2 = SignalNodeGroup(name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
-    ex_signal = SignalNodeSignal(name="EX", handle=2, var=MockVar("EX"))
-    mem_signal = SignalNodeSignal(name="MEM", handle=3, var=MockVar("MEM"))
-    wb_signal2 = SignalNodeSignal(name="WB", handle=4, var=MockVar("WB2"))
-    ex_signal.parent = g2
-    mem_signal.parent = g2
-    wb_signal2.parent = g2
-    g2.children = [ex_signal, mem_signal, wb_signal2]
-    
+    signal3 = existing_signals[2]
+    signal4 = existing_signals[3]
+    signal5 = existing_signals[4]
+    signal3.parent = g2
+    signal4.parent = g2
+    signal5.parent = g2
+    g2.children = [signal3, signal4, signal5]
+
     # Clear existing nodes and set up our test scenario
     session.root_nodes = [g1, g2]
     wave_widget.model.layoutChanged.emit()
     
     # Select all nodes (simulating Ctrl+A)
-    # This will select G1, IF, WB, G2, EX, MEM, WB
-    all_nodes = [g1, if_signal, wb_signal1, g2, ex_signal, mem_signal, wb_signal2]
+    # This will select G1, signal1, signal2, G2, signal3, signal4, signal5
+    all_nodes = [g1, signal1, signal2, g2, signal3, signal4, signal5]
     session.selected_nodes = all_nodes.copy()
-    
+
     # Mock the QInputDialog to return a test group name
     monkeypatch.setattr(QInputDialog, 'getText', lambda *args, **kwargs: ("ParentGroup", True))
-    
+
     # Create group (simulating 'g' key)
     wave_widget._create_group_from_selected()
-    
+
     # Verify the structure
     assert len(session.root_nodes) == 1, "Should have only one root node (the new group)"
-    
+
     new_group = session.root_nodes[0]
     assert new_group.is_group, "Root should be a group"
     assert new_group.name == "ParentGroup", "New group should have the specified name"
-    
+
     # The new group should contain only G1 and G2 (not their children)
     assert len(new_group.children) == 2, "New group should contain only the two original groups"
     assert g1 in new_group.children, "G1 should be in new group"
     assert g2 in new_group.children, "G2 should be in new group"
-    
+
     # G1 and G2 should still have their original children
     assert len(g1.children) == 2, "G1 should still have 2 children"
-    assert if_signal in g1.children, "IF should still be in G1"
-    assert wb_signal1 in g1.children, "WB should still be in G1"
-    
+    assert signal1 in g1.children, "signal1 should still be in G1"
+    assert signal2 in g1.children, "signal2 should still be in G1"
+
     assert len(g2.children) == 3, "G2 should still have 3 children"
-    assert ex_signal in g2.children, "EX should still be in G2"
-    assert mem_signal in g2.children, "MEM should still be in G2"
-    assert wb_signal2 in g2.children, "WB should still be in G2"
-    
+    assert signal3 in g2.children, "signal3 should still be in G2"
+    assert signal4 in g2.children, "signal4 should still be in G2"
+    assert signal5 in g2.children, "signal5 should still be in G2"
+
     # Verify parent relationships
     assert g1.parent == new_group, "G1's parent should be the new group"
     assert g2.parent == new_group, "G2's parent should be the new group"
-    assert if_signal.parent == g1, "IF's parent should still be G1"
-    assert wb_signal1.parent == g1, "WB's parent should still be G1"
+    assert signal1.parent == g1, "signal1's parent should still be G1"
+    assert signal2.parent == g1, "signal2's parent should still be G1"
 
 
 def test_create_group_cancel_dialog(wave_widget, monkeypatch):
