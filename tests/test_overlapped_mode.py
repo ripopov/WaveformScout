@@ -40,7 +40,7 @@ def test_overlapped_group_periodic_signals(qtbot):
     hierarchy = db.hierarchy
     for nm in names:
         handle, var = found[nm]
-        node = create_signal_node_from_var(var, hierarchy, handle)
+        node = create_signal_node_from_var(var, hierarchy, handle, db)
         children.append(node)
 
     # Create group and attach children
@@ -122,7 +122,7 @@ def test_overlapped_mode_triggers_immediate_rerender(qtbot):
     children = []
     for nm in names:
         handle, var = found[nm]
-        node = create_signal_node_from_var(var, hier, handle)
+        node = create_signal_node_from_var(var, hier, handle, db)
         children.append(node)
     group = SignalNodeGroup(name="G", is_expanded=True)
     for ch in children:
