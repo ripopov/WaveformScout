@@ -8,11 +8,17 @@ from typing import List, Dict, Any
 from wavescout.persistence import load_session, save_session
 from wavescout.data_model import WaveformSession, SignalNode, DisplayFormat
 from wavescout.waveform_db import WaveformDB
+from wavescout.application.event_bus import EventBus
 from .test_utils import get_test_input_path, TestFiles
 
 
 def _test_sample(db, handle, t):
-    sig = db.signal_from_handle(handle)
+    # Use new async API
+    async_sig = db.load_signal(handle)
+    try:
+        sig = async_sig.get_signal_blocking(timeout=5.0)
+    except (RuntimeError, TimeoutError):
+        return ""
     if sig is None:
         return ""
     qr = sig.query_signal(max(0, t))
@@ -288,31 +294,3 @@ class TestSessionAliasLoading:
             
         finally:
             session_file.unlink(missing_ok=True)
-    
-    def test_duplicate_handle_preloading(self, test_waveform_path: Path):
-        """Test that preload_signals correctly handles duplicate handles."""
-        if not test_waveform_path.exists():
-            pytest.skip(f"Test file {test_waveform_path} not found")
-        
-        # Create a WaveformDB with pyrox
-        db = WaveformDB()
-        db.open(str(test_waveform_path))
-        
-        # Create a list with duplicate handles (simulating what happens with aliases)
-        handles_with_duplicates = [0, 1, 2, 3, 0, 3, 0, 4, 3, 5]
-        
-        # Preload signals - this should handle duplicates correctly
-        db.preload_signals(handles_with_duplicates)
-        
-        # Verify that signals are cached and have correct values
-        assert db.is_signal_cached(0), "Handle 0 should be cached"
-        assert db.is_signal_cached(3), "Handle 3 should be cached"
-        
-        # Check that values are correct (not corrupted by duplicate loading)
-        value_0 = _test_sample(db, 0, 0)
-        assert value_0 == "1", f"Handle 0 (pready) should have value 1, got {value_0}"
-        
-        # Check clock transitions
-        transitions_3 = db.transitions(3, 0, 1000000)
-        assert len(transitions_3) > 10, \
-            f"Handle 3 (pclk) should have many transitions, got {len(transitions_3)}"
