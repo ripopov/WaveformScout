@@ -8,21 +8,21 @@ Displayed signals can be grouped into a tree structure. So WaveformSession is a 
  but usually it flat (e.g., no groups).
 
     WaveformSession
-    ├── root_nodes: [SignalNode]     (Top-level signals/groups)
-    │   ├── SignalNode (Top-level Group)
+    ├── root_nodes: [TreeNode]     (Top-level signals/groups)
+    │   ├── TreeNode (Top-level Group)
     │   │   ├── name: "CPU"
     │   │   ├── is_group: True
     │   │   └── children: [
-    │   │       ├── SignalNode (Signal)
+    │   │       ├── TreeNode (Signal)
     │   │       │   ├── name: "CPU.clk"
     │   │       │   ├── handle: 42
     │   │       │   └── format: DisplayFormat(BOOL)
-    │   │       └── SignalNode (Signal)
+    │   │       └── TreeNode (Signal)
     │   │           ├── name: "CPU.data"
     │   │           ├── handle: 43
     │   │           └── format: DisplayFormat(BUS, hex)
     │   │       ]
-    │   └── SignalNode (Top-level Signal)
+    │   └── TreeNode (Top-level Signal)
     │       ├── name: "reset"
     │       ├── handle: 10
     │       └── format: DisplayFormat(BOOL)
@@ -84,26 +84,26 @@ class DisplayFormat:
     analog_scaling_mode: AnalogScalingMode = AnalogScalingMode.SCALE_TO_ALL_DATA
 
 @dataclass(eq=False, kw_only=True)
-class SignalNode(ABC):
+class TreeNode(ABC):
     """Base node in the signal/group tree with shared attributes."""
 
     name: str
     nickname: str = ""
-    parent: Optional["SignalNodeGroup"] = field(default=None, repr=False)
+    parent: Optional["GroupNode"] = field(default=None, repr=False)
     height_scaling: int = 1
 
     # Class-level counter for generating unique instance IDs
     _id_counter: ClassVar[int] = 0
 
     # Unique identifier for this SignalNode instance
-    instance_id: SignalNodeID = field(default_factory=lambda: SignalNode._generate_id())
+    instance_id: SignalNodeID = field(default_factory=lambda: TreeNode._generate_id())
 
     def __eq__(self, other: object) -> bool:
         """Custom equality comparison that avoids circular references through parent."""
         if type(self) is not type(other):
             return False
 
-        assert isinstance(other, SignalNode)
+        assert isinstance(other, TreeNode)
         return self._comparison_state() == other._comparison_state()
 
     @abstractmethod
@@ -113,21 +113,21 @@ class SignalNode(ABC):
     @classmethod
     def _generate_id(cls) -> SignalNodeID:
         """Generate a unique instance ID shared across all node variants."""
-        SignalNode._id_counter += 1
-        return SignalNode._id_counter
+        TreeNode._id_counter += 1
+        return TreeNode._id_counter
 
     @abstractmethod
-    def deep_copy(self) -> "SignalNode":
+    def deep_copy(self) -> "TreeNode":
         """Create a deep copy of this node with a fresh instance ID."""
 
     @property
     def is_group(self) -> bool:
         """Convenience discriminator compatible with legacy callers."""
-        return isinstance(self, SignalNodeGroup)
+        return isinstance(self, GroupNode)
 
 
 @dataclass(eq=False, kw_only=True)
-class SignalNodeSignal(SignalNode):
+class SignalNode(TreeNode):
     """A signal node containing waveform data handle and formatting."""
 
     var: "Var" = field(repr=False, compare=False)  # Non-optional, must be provided
@@ -148,7 +148,7 @@ class SignalNodeSignal(SignalNode):
             # signal excluded from comparison
         )
 
-    def deep_copy(self) -> "SignalNodeSignal":
+    def deep_copy(self) -> "SignalNode":
         format_copy = DisplayFormat(
             render_type=self.format.render_type,
             data_format=self.format.data_format,
@@ -156,7 +156,7 @@ class SignalNodeSignal(SignalNode):
             analog_scaling_mode=self.format.analog_scaling_mode,
         )
 
-        return SignalNodeSignal(
+        return SignalNode(
             name=self.name,
             nickname=self.nickname,
             height_scaling=self.height_scaling,
@@ -169,11 +169,11 @@ class SignalNodeSignal(SignalNode):
 
 
 @dataclass(eq=False, kw_only=True)
-class SignalNodeGroup(SignalNode):
+class GroupNode(TreeNode):
     """A group node that can contain child signal or group nodes."""
 
     group_render_mode: Optional[GroupRenderMode] = None
-    children: List["SignalNode"] = field(default_factory=list)
+    children: List["TreeNode"] = field(default_factory=list)
     is_expanded: bool = True
 
     def _comparison_state(self) -> Tuple[Any, ...]:
@@ -187,8 +187,8 @@ class SignalNodeGroup(SignalNode):
             tuple(self.children),
         )
 
-    def deep_copy(self) -> "SignalNodeGroup":
-        new_group = SignalNodeGroup(
+    def deep_copy(self) -> "GroupNode":
+        new_group = GroupNode(
             name=self.name,
             nickname=self.nickname,
             height_scaling=self.height_scaling,
@@ -344,14 +344,14 @@ class SignalRangeCache:
 @dataclass
 class WaveformSession:
     waveform_db: Optional['WaveformDB'] = None  # Pointer to WaveformDB instance
-    root_nodes: List[SignalNode] = field(default_factory=list)
+    root_nodes: List[TreeNode] = field(default_factory=list)
     viewport: Viewport = field(default_factory=Viewport)
     markers: List[Marker] = field(default_factory=list)
     cursor_time: Time = 0
     analysis_mode: AnalysisMode = field(default_factory=AnalysisMode)
-    selected_nodes: List[SignalNode] = field(default_factory=list)  # Currently selected nodes
+    selected_nodes: List[TreeNode] = field(default_factory=list)  # Currently selected nodes
     time_ruler_config: TimeRulerConfig = field(default_factory=TimeRulerConfig)  # Configuration for time ruler display
     timescale: Timescale = field(default_factory=lambda: Timescale(1, TimeUnit.PICOSECONDS))  # Timescale from the waveform file, default 1 ps if waveform not specifies timescale
-    clock_signal: Optional[tuple[Time, Time, SignalNode]] = None  # Clock period, phase offset, and signal node for clock-based grid display
+    clock_signal: Optional[tuple[Time, Time, TreeNode]] = None  # Clock period, phase offset, and signal node for clock-based grid display
     loading_handles: set[SignalHandle] = field(default_factory=set)  # Handles currently being loaded asynchronously
-    sampling_signal: Optional[SignalNode] = None  # Signal used for sampling in signal analysis
+    sampling_signal: Optional[TreeNode] = None  # Signal used for sampling in signal analysis

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from wavescout.waveform_db import Var
     from .canvas_layout import CanvasLayout, GroupContentDescriptor
 
-from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, SignalNode, SignalRangeCache, DataFormat, GroupRenderMode
+from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, TreeNode, SignalRangeCache, DataFormat, GroupRenderMode
 from .signal_sampling import SignalDrawingData, ValueKind
 from . import config
 from .timing_utils import tprint
@@ -61,7 +61,7 @@ class RenderParams(TypedDict, total=False):
     cursor_time: Time
     scroll_value: int
     visible_nodes_info: list[NodeInfo]
-    visible_nodes: list[SignalNode]  # SignalNode objects
+    visible_nodes: list[TreeNode]  # SignalNode objects
     waveform_db: Optional[WaveformDB]
     generation: int
     base_row_height: int

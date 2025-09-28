@@ -7,7 +7,7 @@ from typing import List, Optional, Callable, Union, TYPE_CHECKING, Dict, Any
 from PySide6.QtCore import QPersistentModelIndex
 import json
 from pyrox import SignalHandle
-from .data_model import SignalNode, SignalNodeSignal, SignalNodeGroup, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
+from .data_model import TreeNode, SignalNode, GroupNode, RenderType, AnalogScalingMode, DataFormat, GroupRenderMode
 from .config import RENDERING, UI
 from .clock_utils import is_valid_clock_signal
 from .persistence import _serialize_node, _deserialize_node
@@ -32,7 +32,7 @@ class ScaledHeightDelegate(QStyledItemDelegate):
         
         # Get the signal node from the model
         node = index.data(Qt.ItemDataRole.UserRole)
-        if isinstance(node, SignalNode):
+        if isinstance(node, TreeNode):
             # Scale the height based on height_scaling
             scaled_height = self._base_height * node.height_scaling
             size.setHeight(scaled_height)
@@ -109,20 +109,8 @@ class SignalNamesView(BaseColumnView):
             self.setDropIndicatorShown(True)
             self.setDragEnabled(True)
 
-    def _get_selected_signal_nodes(self) -> List[SignalNodeSignal]:
+    def _get_selected_signal_nodes(self) -> List[SignalNode]:
         """Return a list of selected SignalNode items (excluding groups)."""
-        nodes: List[SignalNodeSignal] = []
-        sel_model = self.selectionModel()
-        if not sel_model:
-            return nodes
-        for idx in sel_model.selectedRows(0):
-            n = self.model().data(idx, Qt.ItemDataRole.UserRole)
-            if isinstance(n, SignalNodeSignal):
-                nodes.append(n)
-        return nodes
-
-    def _get_all_selected_nodes(self) -> List[SignalNode]:
-        """Return a list of all selected SignalNode items (including groups)."""
         nodes: List[SignalNode] = []
         sel_model = self.selectionModel()
         if not sel_model:
@@ -133,7 +121,19 @@ class SignalNamesView(BaseColumnView):
                 nodes.append(n)
         return nodes
 
-    def _apply_to_selected_signals(self, apply_fn: Callable[[SignalNode], None], predicate: Optional[Callable[[SignalNode], bool]] = None) -> None:
+    def _get_all_selected_nodes(self) -> List[TreeNode]:
+        """Return a list of all selected SignalNode items (including groups)."""
+        nodes: List[TreeNode] = []
+        sel_model = self.selectionModel()
+        if not sel_model:
+            return nodes
+        for idx in sel_model.selectedRows(0):
+            n = self.model().data(idx, Qt.ItemDataRole.UserRole)
+            if isinstance(n, TreeNode):
+                nodes.append(n)
+        return nodes
+
+    def _apply_to_selected_signals(self, apply_fn: Callable[[TreeNode], None], predicate: Optional[Callable[[TreeNode], bool]] = None) -> None:
         """Apply a function to all selected signal nodes.
         - apply_fn: callable taking a SignalNode
         - predicate: optional callable taking a SignalNode and returning bool
@@ -151,7 +151,7 @@ class SignalNamesView(BaseColumnView):
             
         # Get the signal node
         node = self.model().data(index, Qt.ItemDataRole.UserRole)
-        if not isinstance(node, SignalNode):
+        if not isinstance(node, TreeNode):
             return
             
         # Create context menu
@@ -166,12 +166,12 @@ class SignalNamesView(BaseColumnView):
             menu.addSeparator()
         
         # For groups, show rename and save as snippet actions
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             # Render Mode submenu for groups
             render_mode_menu = menu.addMenu("Render Mode")
 
             # Determine if group contains subgroups (disable overlapped for nested groups)
-            has_subgroups = any(isinstance(child, SignalNodeGroup) for child in node.children)
+            has_subgroups = any(isinstance(child, GroupNode) for child in node.children)
 
             # Action group for exclusivity
             render_mode_group = QActionGroup(self)
@@ -215,7 +215,7 @@ class SignalNamesView(BaseColumnView):
 
         # For signals, show all options
         # At this point we know node is a signal (groups returned above)
-        assert isinstance(node, SignalNodeSignal)
+        assert isinstance(node, SignalNode)
         # Add data format submenu
         format_menu = menu.addMenu("Data Format")
         
@@ -307,7 +307,7 @@ class SignalNamesView(BaseColumnView):
         menu.addSeparator()
         
         # Add navigate to scope action (only for signals, not groups)
-        if isinstance(node, SignalNodeSignal):
+        if isinstance(node, SignalNode):
             navigate_action = QAction("Navigate to scope", self)
             navigate_action.triggered.connect(self._navigate_to_scope)
             menu.addAction(navigate_action)
@@ -372,7 +372,7 @@ class SignalNamesView(BaseColumnView):
         # Show the menu at the cursor position
         menu.exec(self.viewport().mapToGlobal(position))
         
-    def _set_data_format(self, node: SignalNode, data_format: DataFormat) -> None:
+    def _set_data_format(self, node: TreeNode, data_format: DataFormat) -> None:
         """Set the data format for the given signal node."""
         self._controller.set_node_format(node.instance_id, data_format=data_format)
     
@@ -401,15 +401,15 @@ class SignalNamesView(BaseColumnView):
                     color=color_str
                 )
                     
-    def _set_height_scaling(self, node: SignalNode, height_scaling: int) -> None:
+    def _set_height_scaling(self, node: TreeNode, height_scaling: int) -> None:
         """Set the height scaling for the given signal node."""
         self._controller.set_node_format(node.instance_id, height_scaling=height_scaling)
                     
-    def _set_render_type(self, node: SignalNode, render_type: RenderType) -> None:
+    def _set_render_type(self, node: TreeNode, render_type: RenderType) -> None:
         """Set the render type for the given signal node."""
         self._controller.set_node_format(node.instance_id, render_type=render_type)
                     
-    def _set_render_type_with_scaling(self, node: SignalNode, render_type: RenderType, scaling_mode: AnalogScalingMode) -> None:
+    def _set_render_type_with_scaling(self, node: TreeNode, render_type: RenderType, scaling_mode: AnalogScalingMode) -> None:
         """Set both render type and analog scaling mode for the given signal node.
         Additionally, when switching into Analog mode via this context action,
         set the row height scaling to 3 by default for better analog visibility.
@@ -432,7 +432,7 @@ class SignalNamesView(BaseColumnView):
         if entering_analog and node.height_scaling == 1:
             self._controller.set_node_format(node.instance_id, height_scaling=3)
                     
-    def _find_node_index(self, target_node: SignalNode, parent: QModelIndex = QModelIndex()) -> QModelIndex:
+    def _find_node_index(self, target_node: TreeNode, parent: QModelIndex = QModelIndex()) -> QModelIndex:
         """Find the model index for the given node."""
         model = self.model()
         if not model:
@@ -557,9 +557,9 @@ class SignalNamesView(BaseColumnView):
             GroupRenderMode.SEPARATE_ROWS
         )
     
-    def _save_as_snippet(self, group_node: SignalNode) -> None:
+    def _save_as_snippet(self, group_node: TreeNode) -> None:
         """Save a group as a reusable snippet."""
-        if not isinstance(group_node, SignalNodeGroup):
+        if not isinstance(group_node, GroupNode):
             QMessageBox.warning(self, "Invalid Selection", "Only groups can be saved as snippets.")
             return
 
@@ -690,7 +690,7 @@ class SignalNamesView(BaseColumnView):
         else:
             tprint("[PASTE] No internal format in clipboard")
     
-    def _serialize_nodes(self, nodes: List[SignalNode]) -> str:
+    def _serialize_nodes(self, nodes: List[TreeNode]) -> str:
         """Serialize a list of SignalNode objects to JSON string."""
         data = {
             'version': 1,
@@ -698,7 +698,7 @@ class SignalNamesView(BaseColumnView):
         }
         return json.dumps(data)
     
-    def _deserialize_nodes(self, json_str: str) -> List[SignalNode]:
+    def _deserialize_nodes(self, json_str: str) -> List[TreeNode]:
         """Deserialize JSON string to a list of SignalNode objects with new instance IDs."""
         try:
             data = json.loads(json_str)
@@ -722,17 +722,17 @@ class SignalNamesView(BaseColumnView):
         except Exception:
             return []
     
-    def _nodes_to_plain_text(self, nodes: List[SignalNode]) -> str:
+    def _nodes_to_plain_text(self, nodes: List[TreeNode]) -> str:
         """Convert nodes to plain text format for external paste."""
         lines = []
         
-        def add_node(node: SignalNode, indent: int = 0) -> None:
+        def add_node(node: TreeNode, indent: int = 0) -> None:
             # Use nickname if available, otherwise name
             name = node.nickname if node.nickname else node.name
             lines.append('  ' * indent + name)
             
             # Add children for groups
-            if isinstance(node, SignalNodeGroup) and node.children:
+            if isinstance(node, GroupNode) and node.children:
                 for child in node.children:
                     add_node(child, indent + 1)
         
@@ -741,27 +741,27 @@ class SignalNamesView(BaseColumnView):
         
         return '\n'.join(lines)
     
-    def _validate_nodes(self, nodes: List[SignalNode]) -> List[SignalNode]:
+    def _validate_nodes(self, nodes: List[TreeNode]) -> List[TreeNode]:
         """Validate nodes against current WaveformDB, filtering out invalid handles."""
         if not self._controller.session or not self._controller.session.waveform_db:
             # If no waveform loaded, keep groups but remove signals
-            validated: List[SignalNode] = []
+            validated: List[TreeNode] = []
             for node in nodes:
-                if isinstance(node, SignalNodeGroup):
+                if isinstance(node, GroupNode):
                     # Keep group but validate its children
                     node.children = self._validate_nodes(node.children)
                     validated.append(node)
             return validated
 
         db = self._controller.session.waveform_db
-        validated2: List[SignalNode] = []
+        validated2: List[TreeNode] = []
 
         for node in nodes:
-            if isinstance(node, SignalNodeGroup):
+            if isinstance(node, GroupNode):
                 # Always keep groups, but validate their children
                 node.children = self._validate_nodes(node.children)
                 validated2.append(node)
-            elif isinstance(node, SignalNodeSignal) and node.handle is not None:
+            elif isinstance(node, SignalNode) and node.handle is not None:
                 # Check if handle exists in current DB and populate var
                 try:
                     var = db.get_var(node.handle)

@@ -34,7 +34,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QModelIndex, QItemSelectionModel
 from PySide6.QtTest import QTest
-from wavescout import WaveScoutWidget, SignalNode
+from wavescout import WaveScoutWidget, TreeNode
 
 
 @pytest.fixture

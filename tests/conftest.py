@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from wavescout import create_sample_session, WaveScoutWidget
 from wavescout.waveform_loader import create_signal_node_from_var
-from wavescout.data_model import SignalNodeGroup
+from wavescout.data_model import GroupNode
 from .test_utils import get_test_input_path, TestFiles
 
 
@@ -57,7 +57,7 @@ def add_signals_from_vcd(session, count=10, include_groups=True):
 
     # Add a group with some children if requested
     if include_groups and len(all_handles) > count:
-        group = SignalNodeGroup(name="Test Group", is_expanded=True)
+        group = GroupNode(name="Test Group", is_expanded=True)
 
         # Add 3 children to the group
         for handle in all_handles[count:count + 3]:

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 import pytest
 from PySide6.QtWidgets import QApplication
-from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal, DisplayFormat, DataFormat, RenderType, WaveformSession
+from wavescout.data_model import TreeNode, GroupNode, SignalNode, DisplayFormat, DataFormat, RenderType, WaveformSession
 from .test_utils import MockVar
 from wavescout.waveform_loader import create_signal_node_from_var
 from wavescout.snippet_manager import Snippet, SnippetManager
@@ -95,7 +95,7 @@ def find_test_signals(waveform_db: WaveformDB, scope_prefix: str, count: int = 3
     return signals
 
 
-def create_signal_node_from_handle(waveform_db: WaveformDB, handle: int) -> SignalNodeSignal:
+def create_signal_node_from_handle(waveform_db: WaveformDB, handle: int) -> SignalNode:
     """Create a SignalNode from a handle using real var data."""
     # Get the var from the handle
     var = waveform_db.var_from_handle(handle)
@@ -125,7 +125,7 @@ class TestSnippetSaveLoad:
         
         # Find common parent
         parent_scope = snippet_manager.find_common_parent(
-            SignalNodeGroup(name="group", children=signal_nodes)
+            GroupNode(name="group", children=signal_nodes)
         )
         
         # Create and save snippet
@@ -234,7 +234,7 @@ class TestSnippetInstantiation:
             signal_nodes.append(node)
         
         parent_scope = snippet_manager.find_common_parent(
-            SignalNodeGroup(name="group", children=signal_nodes)
+            GroupNode(name="group", children=signal_nodes)
         )
         
         snippet = Snippet(
@@ -264,9 +264,9 @@ class TestSnippetInstantiation:
                 QApplication.processEvents()
                 # Check if all nodes have loaded signals
                 all_loaded = all(
-                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    isinstance(node, GroupNode) or node.signal.is_loaded()
                     for node in remapped
-                    if isinstance(node, SignalNodeSignal)
+                    if isinstance(node, SignalNode)
                 )
                 if all_loaded:
                     break
@@ -321,9 +321,9 @@ class TestSnippetInstantiation:
                 QApplication.processEvents()
                 # Check if all nodes have loaded signals
                 all_loaded = all(
-                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    isinstance(node, GroupNode) or node.signal.is_loaded()
                     for node in remapped
-                    if isinstance(node, SignalNodeSignal)
+                    if isinstance(node, SignalNode)
                 )
                 if all_loaded:
                     break
@@ -382,7 +382,7 @@ class TestSnippetRoundTrip:
             signal_nodes.append(node)
         
         # Step 3: Create group and find parent scope
-        group = SignalNodeGroup(
+        group = GroupNode(
             name="Test Group",
             children=signal_nodes
         )
@@ -436,9 +436,9 @@ class TestSnippetRoundTrip:
                 QApplication.processEvents()
                 # Check if all nodes have loaded signals
                 all_loaded = all(
-                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    isinstance(node, GroupNode) or node.signal.is_loaded()
                     for node in remapped
-                    if isinstance(node, SignalNodeSignal)
+                    if isinstance(node, SignalNode)
                 )
                 if all_loaded:
                     break
@@ -473,7 +473,7 @@ class TestSnippetRoundTrip:
         
         # Create snippet
         parent_scope = snippet_manager.find_common_parent(
-            SignalNodeGroup(name="group", children=signal_nodes)
+            GroupNode(name="group", children=signal_nodes)
         )
         
         snippet = Snippet(
@@ -518,16 +518,16 @@ class TestSnippetRoundTrip:
                 QApplication.processEvents()
                 # Check if all nodes have loaded signals
                 all_loaded = all(
-                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    isinstance(node, GroupNode) or node.signal.is_loaded()
                     for node in remapped
-                    if isinstance(node, SignalNodeSignal)
+                    if isinstance(node, SignalNode)
                 )
                 if all_loaded:
                     break
                 time.sleep(0.01)
         
         # Wrap in group with custom name as would happen in the UI
-        group_node = SignalNodeGroup(
+        group_node = GroupNode(
             name=custom_name,  # Use custom name
             children=remapped,
             is_expanded=True
@@ -565,7 +565,7 @@ class TestSnippetRoundTrip:
         analog_signal.height_scaling = 2.5
         analog_signal.is_multi_bit = True
         
-        digital_signal = SignalNodeSignal(
+        digital_signal = SignalNode(
             name=test_signals[1][0],
             var=MockVar(test_signals[1][0].split('.')[-1], 1),  # Single bit for clock
             handle=test_signals[1][1],
@@ -579,14 +579,14 @@ class TestSnippetRoundTrip:
             is_multi_bit=False
         )
         
-        subgroup1 = SignalNodeGroup(
+        subgroup1 = GroupNode(
             name="Analog Signals",
             is_expanded=True,  # Expanded
             children=[analog_signal, digital_signal]
         )
         
         # Second subgroup - collapsed, with bus signals
-        bus_signal1 = SignalNodeSignal(
+        bus_signal1 = SignalNode(
             name=test_signals[2][0],
             var=MockVar(test_signals[2][0].split('.')[-1], 32),
             handle=test_signals[2][1],
@@ -600,7 +600,7 @@ class TestSnippetRoundTrip:
             is_multi_bit=True
         )
         
-        bus_signal2 = SignalNodeSignal(
+        bus_signal2 = SignalNode(
             name=test_signals[3][0],
             var=MockVar(test_signals[3][0].split('.')[-1], 32),
             handle=test_signals[3][1],
@@ -614,14 +614,14 @@ class TestSnippetRoundTrip:
             is_multi_bit=True
         )
         
-        subgroup2 = SignalNodeGroup(
+        subgroup2 = GroupNode(
             name="Bus Signals",
             is_expanded=False,  # Collapsed
             children=[bus_signal1, bus_signal2]
         )
         
         # Third subgroup - nested groups
-        nested_signal1 = SignalNodeSignal(
+        nested_signal1 = SignalNode(
             name=test_signals[4][0],
             var=MockVar(test_signals[4][0].split('.')[-1], 1),  # Single bit for control signal
             handle=test_signals[4][1],
@@ -634,7 +634,7 @@ class TestSnippetRoundTrip:
             height_scaling=0.8
         )
         
-        nested_signal2 = SignalNodeSignal(
+        nested_signal2 = SignalNode(
             name=test_signals[5][0],
             var=MockVar(test_signals[5][0].split('.')[-1], 32),  # 32-bit for status bus
             handle=test_signals[5][1],
@@ -647,20 +647,20 @@ class TestSnippetRoundTrip:
             height_scaling=1.0
         )
         
-        inner_group = SignalNodeGroup(
+        inner_group = GroupNode(
             name="Control Signals",
             is_expanded=True,
             children=[nested_signal1, nested_signal2]
         )
         
-        subgroup3 = SignalNodeGroup(
+        subgroup3 = GroupNode(
             name="Nested Group",
             is_expanded=False,
             children=[inner_group]
         )
         
         # Main group containing all subgroups
-        main_group = SignalNodeGroup(
+        main_group = GroupNode(
             name="Complex Test Group",
             is_expanded=True,
             children=[subgroup1, subgroup2, subgroup3]
@@ -757,7 +757,7 @@ class TestSnippetRoundTrip:
             waveform_db.wait_for_signals(handles_to_load1, timeout=5.0)
         
         # Wrap in group with custom name
-        group1 = SignalNodeGroup(
+        group1 = GroupNode(
             name="First Instance",
             children=remapped1,
             is_expanded=True
@@ -791,7 +791,7 @@ class TestSnippetRoundTrip:
             waveform_db.wait_for_signals(handles_to_load2, timeout=5.0)
         
         # Wrap in group with different custom name
-        group2 = SignalNodeGroup(
+        group2 = GroupNode(
             name="Second Instance",
             children=remapped2,
             is_expanded=True
@@ -832,23 +832,23 @@ class TestSnippetRoundTrip:
             pytest.skip("Not enough test signals found")
         
         # Create nested structure
-        subgroup1 = SignalNodeGroup(
+        subgroup1 = GroupNode(
             name="Subgroup 1",
             children=[
-                SignalNodeSignal(name=test_signals[0][0], var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db)),
-                SignalNodeSignal(name=test_signals[1][0], var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
+                SignalNode(name=test_signals[0][0], var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db)),
+                SignalNode(name=test_signals[1][0], var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
             ]
         )
         
-        subgroup2 = SignalNodeGroup(
+        subgroup2 = GroupNode(
             name="Subgroup 2",
             children=[
-                SignalNodeSignal(name=test_signals[2][0], var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db)),
-                SignalNodeSignal(name=test_signals[3][0], var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
+                SignalNode(name=test_signals[2][0], var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db)),
+                SignalNode(name=test_signals[3][0], var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
             ]
         )
         
-        main_group = SignalNodeGroup(
+        main_group = GroupNode(
             name="Main Group",
             children=[subgroup1, subgroup2]
         )
@@ -899,7 +899,7 @@ class TestSnippetBugRegressions:
         signal3 = create_signal_node_from_handle(waveform_db, test_signals[2][1])
         
         # Create a group as would be in a session
-        group = SignalNodeGroup(
+        group = GroupNode(
             name="Session Group",
             children=[signal1, signal2, signal3]
         )
@@ -1022,17 +1022,17 @@ class TestSnippetBugRegressions:
         test_signals = find_test_signals(waveform_db, "TOP", count=1)
         if not test_signals:
             pytest.skip("No test signals found")
-        signal = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        signal = SignalNode(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.module")
         assert result.name == "TOP.module.signal1"
         
         # Test case 2: Nested path
-        signal = SignalNodeSignal(name="sub.module.signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        signal = SignalNode(name="sub.module.signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.parent")
         assert result.name == "TOP.parent.sub.module.signal"
         
         # Test case 3: Empty parent scope
-        signal = SignalNodeSignal(name="signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        signal = SignalNode(name="signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "")
         assert result.name == "signal"  # Should keep as-is
         
@@ -1041,9 +1041,9 @@ class TestSnippetBugRegressions:
         test_signals2 = find_test_signals(waveform_db, "TOP", count=2)
         if len(test_signals2) < 2:
             pytest.skip("Not enough test signals found")
-        child1 = SignalNodeSignal(name="sig1", var=MockVar("sig1"), handle=test_signals2[0][1], signal=create_async_signal(test_signals2[0][1], waveform_db))
-        child2 = SignalNodeSignal(name="sig2", var=MockVar("sig2"), handle=test_signals2[1][1], signal=create_async_signal(test_signals2[1][1], waveform_db))
-        group = SignalNodeGroup(
+        child1 = SignalNode(name="sig1", var=MockVar("sig1"), handle=test_signals2[0][1], signal=create_async_signal(test_signals2[0][1], waveform_db))
+        child2 = SignalNode(name="sig2", var=MockVar("sig2"), handle=test_signals2[1][1], signal=create_async_signal(test_signals2[1][1], waveform_db))
+        group = GroupNode(
             name="MyGroup",
             children=[child1, child2]
         )
@@ -1074,24 +1074,24 @@ class TestSnippetBugRegressions:
         if len(test_signals) < 4:
             pytest.skip("Not enough test signals found")
 
-        leaf1 = SignalNodeSignal(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
-        leaf2 = SignalNodeSignal(name="signal2", var=MockVar("signal2"), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
-        leaf3 = SignalNodeSignal(name="signal3", var=MockVar("signal3"), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db))
-        leaf4 = SignalNodeSignal(name="signal4", var=MockVar("signal4"), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
+        leaf1 = SignalNode(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        leaf2 = SignalNode(name="signal2", var=MockVar("signal2"), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
+        leaf3 = SignalNode(name="signal3", var=MockVar("signal3"), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db))
+        leaf4 = SignalNode(name="signal4", var=MockVar("signal4"), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
         
-        inner_group1 = SignalNodeGroup(
+        inner_group1 = GroupNode(
             name="Inner1",
             is_expanded=False,
             children=[leaf1, leaf2]
         )
 
-        inner_group2 = SignalNodeGroup(
+        inner_group2 = GroupNode(
             name="Inner2", 
             is_expanded=True,
             children=[leaf3, leaf4]
         )
 
-        outer_group = SignalNodeGroup(
+        outer_group = GroupNode(
             name="Outer",
             is_expanded=True,
             children=[inner_group1, inner_group2]
@@ -1155,7 +1155,7 @@ class TestSnippetBugRegressions:
         # Get the actual handle for the real signal
         real_handle = waveform_db.find_handle_by_path(real_signal_path)
         assert real_handle is not None
-        valid_node = SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))
+        valid_node = SignalNode(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))
         
         validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [valid_node], waveform_db
@@ -1171,9 +1171,9 @@ class TestSnippetBugRegressions:
                 QApplication.processEvents()
                 # Check if all nodes have loaded signals
                 all_loaded = all(
-                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    isinstance(node, GroupNode) or node.signal.is_loaded()
                     for node in validated
-                    if isinstance(node, SignalNodeSignal)
+                    if isinstance(node, SignalNode)
                 )
                 if all_loaded:
                     break
@@ -1186,7 +1186,7 @@ class TestSnippetBugRegressions:
         # Test case 2: Invalid signal should raise ValueError
         # For invalid node, use a dummy handle but still need waveform_db
         # Use a large handle number that doesn't exist
-        invalid_node = SignalNodeSignal(name="TOP.does.not.exist", var=MockVar("exist"), handle=-1, signal=create_async_signal(999999, waveform_db))
+        invalid_node = SignalNode(name="TOP.does.not.exist", var=MockVar("exist"), handle=-1, signal=create_async_signal(999999, waveform_db))
         
         with pytest.raises(ValueError) as exc_info:
             InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1195,9 +1195,9 @@ class TestSnippetBugRegressions:
         assert "not found in waveform" in str(exc_info.value)
         
         # Test case 3: Group with valid child
-        group_node = SignalNodeGroup(
+        group_node = GroupNode(
             name="TestGroup",
-            children=[SignalNodeSignal(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))]
+            children=[SignalNode(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))]
         )
         
         validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1214,9 +1214,9 @@ class TestSnippetBugRegressions:
                 QApplication.processEvents()
                 # Check if all nodes have loaded signals
                 all_loaded = all(
-                    isinstance(node, SignalNodeGroup) or node.signal.is_loaded()
+                    isinstance(node, GroupNode) or node.signal.is_loaded()
                     for node in remapped
-                    if isinstance(node, SignalNodeSignal)
+                    if isinstance(node, SignalNode)
                 )
                 if all_loaded:
                     break
@@ -1272,7 +1272,7 @@ class TestSnippetAPBScenario:
         session.selected_nodes = [apb_addr_node]
 
         # Create a group containing just this signal (simulating UI interaction)
-        group_node = SignalNodeGroup(
+        group_node = GroupNode(
             name="APB_ADDR",
             children=[apb_addr_node]
         )
@@ -1329,7 +1329,7 @@ class TestSnippetAPBScenario:
             db.wait_for_signals(handles_to_load1, timeout=5.0)
 
         # Create first instantiation group
-        first_instance = SignalNodeGroup(
+        first_instance = GroupNode(
             name="APB_ADDR_1",
             children=validated_nodes1
         )
@@ -1349,7 +1349,7 @@ class TestSnippetAPBScenario:
             db.wait_for_signals(handles_to_load2, timeout=5.0)
 
         # Create second instantiation group
-        second_instance = SignalNodeGroup(
+        second_instance = GroupNode(
             name="APB_ADDR_2",
             children=validated_nodes2
         )
@@ -1433,7 +1433,7 @@ class TestSnippetAPBScenario:
         # Step 3: Select apb_testbench.paddr and create group APB_ADDR
         session.selected_nodes = [apb_addr_node]
 
-        group_node = SignalNodeGroup(
+        group_node = GroupNode(
             name="APB_ADDR",
             children=[apb_addr_node]
         )
@@ -1589,7 +1589,7 @@ class TestSnippetAPBScenario:
 
         # Step 4: Simulate the instantiation workflow
         # First add to session without async loading (like original bug)
-        group_node = SignalNodeGroup(
+        group_node = GroupNode(
             name="ASYNC_TEST_GROUP",
             children=remapped_nodes,
             is_expanded=True
@@ -1636,9 +1636,9 @@ class TestSnippetAPBScenario:
         def find_signal_nodes_with_handle(nodes, target_handle):
             found = []
             for node in nodes:
-                if isinstance(node, SignalNodeSignal) and node.handle == target_handle:
+                if isinstance(node, SignalNode) and node.handle == target_handle:
                     found.append(node)
-                elif isinstance(node, SignalNodeGroup):
+                elif isinstance(node, GroupNode):
                     found.extend(find_signal_nodes_with_handle(node.children, target_handle))
             return found
 

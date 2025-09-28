@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIntValidator, QKeySequence, QClipboard
 from PySide6.QtWidgets import QApplication
 
-from .data_model import SignalNode, Time
+from .data_model import TreeNode, Time
 from .waveform_controller import WaveformController
 from .analysis_engine import (
     compute_signal_statistics,
@@ -38,9 +38,9 @@ class SignalAnalysisWorker(QThread):
     def __init__(
         self,
         waveform_db: Any,
-        signals: List[SignalNode],
+        signals: List[TreeNode],
         sampling_mode: str,  # "signal" or "period"
-        sampling_signal: Optional[SignalNode],
+        sampling_signal: Optional[TreeNode],
         sampling_period: int,
         start_time: Time,
         end_time: Time
@@ -119,7 +119,7 @@ class SignalAnalysisWindow(QDialog):
     def __init__(
         self,
         controller: WaveformController,
-        selected_signals: List[SignalNode],
+        selected_signals: List[TreeNode],
         parent: Optional[Any] = None
     ):
         super().__init__(parent)
@@ -275,7 +275,7 @@ class SignalAnalysisWindow(QDialog):
         self._signal_combo.clear()
         
         # Add all signals from the session
-        def add_signals(nodes: List[SignalNode], prefix: str = "") -> None:
+        def add_signals(nodes: List[TreeNode], prefix: str = "") -> None:
             for node in nodes:
                 if node.is_group:
                     # Recursively add signals from groups

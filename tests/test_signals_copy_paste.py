@@ -356,9 +356,9 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
     all_ids = set()
     
     def collect_ids(node):
-        from wavescout import SignalNodeGroup
+        from wavescout import GroupNode
         all_ids.add(node.instance_id)
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             for child in node.children:
                 collect_ids(child)
     
@@ -494,9 +494,9 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     all_ids = set()
     
     def collect_ids(node):
-        from wavescout import SignalNodeGroup
+        from wavescout import GroupNode
         all_ids.add(node.instance_id)
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             for child in node.children:
                 collect_ids(child)
     
@@ -531,9 +531,9 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     
     # Verify parent references are correct
     def verify_parent_refs(node, expected_parent=None):
-        from wavescout import SignalNodeGroup
+        from wavescout import GroupNode
         assert node.parent == expected_parent, f"Node {node.name} parent reference incorrect"
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             for child in node.children:
                 verify_parent_refs(child, node)
     
@@ -655,7 +655,7 @@ def test_copy_paste_recursion_regression(qtbot):
     - Equality comparisons that would trigger infinite recursion
     """
 
-    from wavescout.data_model import SignalNodeGroup, SignalNodeSignal, DisplayFormat, RenderType
+    from wavescout.data_model import GroupNode, SignalNode, DisplayFormat, RenderType
     from wavescout.persistence import _serialize_node, _deserialize_node
     import json
 
@@ -673,20 +673,20 @@ def test_copy_paste_recursion_regression(qtbot):
         return
 
     # Create a deeply nested structure with real signals
-    root = SignalNodeGroup(name="ROOT")
+    root = GroupNode(name="ROOT")
 
     # Level 1
-    level1 = SignalNodeGroup(name="L1")
+    level1 = GroupNode(name="L1")
     level1.parent = root
     root.children.append(level1)
 
     # Level 2
-    level2 = SignalNodeGroup(name="L2")
+    level2 = GroupNode(name="L2")
     level2.parent = level1
     level1.children.append(level2)
 
     # Level 3
-    level3 = SignalNodeGroup(name="L3")
+    level3 = GroupNode(name="L3")
     level3.parent = level2
     level2.children.append(level3)
 

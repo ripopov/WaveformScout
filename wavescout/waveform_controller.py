@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 from .data_model import (
     WaveformSession,
     Viewport,
+    TreeNode,
+    GroupNode,
     SignalNode,
-    SignalNodeGroup,
-    SignalNodeSignal,
     Marker,
     Time,
     SignalNodeID,
@@ -165,7 +165,7 @@ class WaveformController:
         old_ids = list(self._selected_ids)
         self._selected_ids = new_ids
         # Rebuild session.selected_nodes in document order
-        selected: List[SignalNode] = []
+        selected: List[TreeNode] = []
         for node in self._iter_all_nodes():
             if node.instance_id in self._selected_ids:
                 selected.append(node)
@@ -475,12 +475,12 @@ class WaveformController:
         self._emit("viewport_changed")
 
     # ---- Helpers ----
-    def _iter_all_nodes(self) -> Iterable[SignalNode]:
+    def _iter_all_nodes(self) -> Iterable[TreeNode]:
         if not self.session:
             return
-        def walk(node: SignalNode) -> Iterable[SignalNode]:
+        def walk(node: TreeNode) -> Iterable[TreeNode]:
             yield node
-            if isinstance(node, SignalNodeGroup):
+            if isinstance(node, GroupNode):
                 for ch in node.children:
                     yield from walk(ch)
         for root in list(self.session.root_nodes):
@@ -497,7 +497,7 @@ class WaveformController:
         timescale_min_width = (1.0 / vp.total_duration) * 2
         return max(min_width, timescale_min_width)
     
-    def _find_node_by_id(self, node_id: SignalNodeID) -> Optional[SignalNode]:
+    def _find_node_by_id(self, node_id: SignalNodeID) -> Optional[TreeNode]:
         """Find a node by its instance ID."""
         for node in self._iter_all_nodes():
             if node.instance_id == node_id:
@@ -541,7 +541,7 @@ class WaveformController:
         if set(ids_list) & self._selected_ids:
             self._emit("selection_changed")
     
-    def filter_nodes_for_grouping(self, nodes: List[SignalNode]) -> List[SignalNode]:
+    def filter_nodes_for_grouping(self, nodes: List[TreeNode]) -> List[TreeNode]:
         """Filter out nodes whose parent is also in the list.
         
         This prevents flattening when grouping groups - if a parent group
@@ -581,7 +581,7 @@ class WaveformController:
     
     def create_group_from_nodes(
         self,
-        nodes: List[SignalNode],
+        nodes: List[TreeNode],
         group_name: Optional[str] = None,
         mode: GroupRenderMode = GroupRenderMode.SEPARATE_ROWS
     ) -> SignalNodeID:
@@ -639,7 +639,7 @@ class WaveformController:
             return -1
         
         # Create new group
-        group = SignalNodeGroup(
+        group = GroupNode(
             name=group_name,
             group_render_mode=mode,
             children=[]
@@ -703,7 +703,7 @@ class WaveformController:
         target_parent = None
         if target_parent_id is not None:
             target_parent = self._find_node_by_id(target_parent_id)
-            if not target_parent or not isinstance(target_parent, SignalNodeGroup):
+            if not target_parent or not isinstance(target_parent, GroupNode):
                 return  # Invalid target
         
         # Remove nodes from current positions
@@ -716,7 +716,7 @@ class WaveformController:
         # Insert at new position
         if target_parent:
             # Insert into group
-            assert isinstance(target_parent, SignalNodeGroup)  # We checked this above
+            assert isinstance(target_parent, GroupNode)  # We checked this above
             for i, node in enumerate(nodes_to_move):
                 node.parent = target_parent
                 target_parent.children.insert(insert_row + i, node)
@@ -735,7 +735,7 @@ class WaveformController:
         ))
         self._emit("session_changed")
     
-    def insert_nodes(self, nodes: List[SignalNode], after_id: Optional[SignalNodeID] = None) -> None:
+    def insert_nodes(self, nodes: List[TreeNode], after_id: Optional[SignalNodeID] = None) -> None:
         """Insert nodes after specified node ID.
 
         Args:
@@ -794,7 +794,7 @@ class WaveformController:
     
     def instantiate_snippet(
         self, 
-        snippet_nodes: List[SignalNode], 
+        snippet_nodes: List[TreeNode],
         after_id: Optional[SignalNodeID] = None
     ) -> bool:
         """
@@ -813,7 +813,7 @@ class WaveformController:
         try:
             # Ensure all nodes have valid handles and unique instance IDs
             for node in snippet_nodes:
-                if isinstance(node, SignalNodeSignal) and node.handle == -1:
+                if isinstance(node, SignalNode) and node.handle == -1:
                     tprint(f"Warning: Signal {node.name} has invalid handle")
                     return False
             
@@ -832,11 +832,11 @@ class WaveformController:
             return
         
         ids_list = list(group_ids)
-        groups_to_ungroup: List[SignalNodeGroup] = []
+        groups_to_ungroup: List[GroupNode] = []
 
         for node_id in ids_list:
             node = self._find_node_by_id(node_id)
-            if node and isinstance(node, SignalNodeGroup):
+            if node and isinstance(node, GroupNode):
                 groups_to_ungroup.append(node)
 
         for group in groups_to_ungroup:
@@ -874,7 +874,7 @@ class WaveformController:
             return
 
         # Groups don't have format
-        if not isinstance(node, SignalNodeSignal):
+        if not isinstance(node, SignalNode):
             return
 
         changes: FormatChanges = {}
@@ -954,7 +954,7 @@ class WaveformController:
     def set_node_expanded(self, node_id: SignalNodeID, expanded: bool) -> None:
         """Set whether a group node is expanded."""
         node = self._find_node_by_id(node_id)
-        if not node or not isinstance(node, SignalNodeGroup):
+        if not node or not isinstance(node, GroupNode):
             return
 
         if node.is_expanded != expanded:
@@ -974,12 +974,12 @@ class WaveformController:
         from .color_utils import generate_rainbow_colors
 
         node = self._find_node_by_id(node_id)
-        if not node or not isinstance(node, SignalNodeGroup):
+        if not node or not isinstance(node, GroupNode):
             return
 
         # Validate flat group for OVERLAPPED
         if mode == GroupRenderMode.OVERLAPPED:
-            if any(isinstance(child, SignalNodeGroup) for child in node.children):
+            if any(isinstance(child, GroupNode) for child in node.children):
                 # Disallow overlapped on nested groups; keep or reset to SEPARATE_ROWS
                 mode = GroupRenderMode.SEPARATE_ROWS
 
@@ -991,7 +991,7 @@ class WaveformController:
         # Apply side effects when enabling OVERLAPPED
         if mode == GroupRenderMode.OVERLAPPED:
             # Collect direct child signals
-            child_signals = [c for c in node.children if isinstance(c, SignalNodeSignal) and c.handle is not None]
+            child_signals = [c for c in node.children if isinstance(c, SignalNode) and c.handle is not None]
             # Assign rainbow colors deterministically
             colors = generate_rainbow_colors(len(child_signals)) if child_signals else []
             for idx, child in enumerate(child_signals):
@@ -1018,7 +1018,7 @@ class WaveformController:
     
     # ---- Clock Signal Management ----
     
-    def set_clock_signal(self, node: Optional[SignalNode]) -> None:
+    def set_clock_signal(self, node: Optional[TreeNode]) -> None:
         """Set a signal as the clock for grid display.
 
         Calculates the clock period based on signal type and updates
@@ -1032,7 +1032,7 @@ class WaveformController:
             return
 
         # Groups can't be clock signals
-        if not isinstance(node, SignalNodeSignal):
+        if not isinstance(node, SignalNode):
             return
 
         # Get the waveform database
@@ -1076,7 +1076,7 @@ class WaveformController:
             self.session.clock_signal = None
             self._emit("viewport_changed")
     
-    def is_clock_signal(self, node: SignalNode) -> bool:
+    def is_clock_signal(self, node: TreeNode) -> bool:
         """Check if a node is the current clock signal."""
         if not self.session or not self.session.clock_signal:
             return False
@@ -1086,7 +1086,7 @@ class WaveformController:
     
     # ---- Sampling Signal Management (for Signal Analysis) ----
     
-    def set_sampling_signal(self, node: Optional[SignalNode]) -> None:
+    def set_sampling_signal(self, node: Optional[TreeNode]) -> None:
         """Set the signal to be used for sampling in signal analysis."""
         if not self.session:
             return
@@ -1103,7 +1103,7 @@ class WaveformController:
         self._emit("sampling_signal_changed")
         self._emit("session_changed")
     
-    def get_sampling_signal(self) -> Optional[SignalNode]:
+    def get_sampling_signal(self) -> Optional[TreeNode]:
         """Get the current sampling signal."""
         if not self.session:
             return None
@@ -1113,7 +1113,7 @@ class WaveformController:
         """Clear the current sampling signal."""
         self.set_sampling_signal(None)
     
-    def is_sampling_signal(self, node: SignalNode) -> bool:
+    def is_sampling_signal(self, node: TreeNode) -> bool:
         """Check if a node is the current sampling signal."""
         if not self.session or not self.session.sampling_signal:
             return False
@@ -1206,7 +1206,7 @@ class WaveformController:
         # Navigate to calculated time
         self.navigate_to_time(time, pixel_offset, canvas_width)
     
-    def get_clock_info(self) -> Optional[tuple[Time, Time, SignalNode]]:
+    def get_clock_info(self) -> Optional[tuple[Time, Time, TreeNode]]:
         """Get the current clock signal information.
 
         Returns:

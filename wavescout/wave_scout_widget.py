@@ -10,7 +10,7 @@ import time
 from .timing_utils import tprint
 from .waveform_item_model import WaveformItemModel
 from .waveform_canvas import WaveformCanvas
-from .data_model import WaveformSession, SignalNode, SignalNodeGroup, GroupRenderMode
+from .data_model import WaveformSession, TreeNode, GroupNode, GroupRenderMode
 from .waveform_controller import WaveformController
 from .signal_names_view import SignalNamesView, BaseColumnView
 from .config import RENDERING, UI
@@ -349,7 +349,7 @@ class WaveScoutWidget(QWidget):
         # Update the data model
         if self.model is not None:
             node = self.model.data(index, Qt.ItemDataRole.UserRole)
-            if isinstance(node, SignalNode) and node.is_group:
+            if isinstance(node, TreeNode) and node.is_group:
                 self.controller.set_node_expanded(node.instance_id, is_expanded)
         
         # Sync to other views
@@ -365,15 +365,15 @@ class WaveScoutWidget(QWidget):
         if self.model:
             self.model.layoutChanged.emit()
     
-    def _iter_all_nodes(self) -> List[SignalNode]:
+    def _iter_all_nodes(self) -> List[TreeNode]:
         """Iterate through all nodes in the session."""
         if not self.session:
             return []
         
         nodes = []
-        def walk(node: SignalNode) -> None:
+        def walk(node: TreeNode) -> None:
             nodes.append(node)
-            if isinstance(node, SignalNodeGroup):
+            if isinstance(node, GroupNode):
                 for child in node.children:
                     walk(child)
         
@@ -393,7 +393,7 @@ class WaveScoutWidget(QWidget):
             index = self.model.index(row, 0, parent_index)
             node = self.model.data(index, Qt.ItemDataRole.UserRole)
             
-            if isinstance(node, SignalNode) and node.is_group:
+            if isinstance(node, TreeNode) and node.is_group:
                 if node.is_expanded:  # type: ignore[attr-defined]
                     self._names_view.expand(index)
                     self._values_view.expand(index)
@@ -534,7 +534,7 @@ class WaveScoutWidget(QWidget):
             return
             
         # Get selected nodes from the selection model
-        selected_nodes: List[SignalNode] = []
+        selected_nodes: List[TreeNode] = []
         selected_indexes = self._selection_model.selectedIndexes()
         
         # Filter to only column 0 (to avoid duplicates) and extract nodes
@@ -542,7 +542,7 @@ class WaveScoutWidget(QWidget):
         for index in selected_indexes:
             if index.column() == 0:
                 node = self.model.data(index, Qt.ItemDataRole.UserRole)
-                if isinstance(node, SignalNode):
+                if isinstance(node, TreeNode):
                     node_id = node.instance_id
                     if node_id not in processed_node_ids:
                         selected_nodes.append(node)

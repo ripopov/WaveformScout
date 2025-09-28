@@ -22,7 +22,7 @@ import pyrox
 
 from pyrox import SignalHandle
 
-from .data_model import SignalNode, SignalNodeSignal, RenderType, DisplayFormat
+from .data_model import TreeNode, SignalNode, RenderType, DisplayFormat
 from .settings_manager import SettingsManager
 from .scope_tree_model import ScopeTreeModel, DesignTreeNode
 from .vars_view import VarsView
@@ -132,7 +132,7 @@ class DesignTreeView(QWidget):
 
         tprint(f"  DesignTreeView.set_waveform_db completed (total: {time.time() - start_time:.3f}s)")
     
-    def _create_signal_node(self, node: DesignTreeNode) -> Optional[SignalNode]:
+    def _create_signal_node(self, node: DesignTreeNode) -> Optional[TreeNode]:
         """Create a SignalNode from a tree node"""
         if node.is_scope or not self.waveform_db:
             return None
@@ -195,7 +195,7 @@ class DesignTreeView(QWidget):
 
         signal = self.waveform_db.load_signal(handle)
 
-        signal_node = SignalNodeSignal(
+        signal_node = SignalNode(
             name=full_path,
             handle=handle,
             signal=signal,
@@ -435,7 +435,7 @@ class DesignTreeView(QWidget):
             if signal_node:
                 signal_nodes.append(signal_node)
                 # Collect uncached handles for async loading
-                if isinstance(signal_node, SignalNodeSignal) and signal_node.handle is not None:
+                if isinstance(signal_node, SignalNode) and signal_node.handle is not None:
                     if signal_node.signal is None:  # Not cached
                         handles_to_load.append(signal_node.handle)
 
@@ -491,7 +491,7 @@ class DesignTreeView(QWidget):
                 is_single_bit = True
         return is_single_bit
     
-    def _create_signal_node_from_var(self, var_data: 'VariableData') -> Optional[SignalNode]:
+    def _create_signal_node_from_var(self, var_data: 'VariableData') -> Optional[TreeNode]:
         """Create a SignalNode from variable data."""
         if not var_data or not self.waveform_db:
             return None
@@ -536,7 +536,7 @@ class DesignTreeView(QWidget):
 
         signal = self.waveform_db.load_signal(handle)
 
-        signal_node = SignalNodeSignal(
+        signal_node = SignalNode(
             name=full_path,
             handle=handle,
             signal=signal,

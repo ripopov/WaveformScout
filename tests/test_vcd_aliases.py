@@ -18,7 +18,7 @@ import pytest
 from pathlib import Path
 from wavescout import create_sample_session, WaveScoutWidget, save_session, load_session
 from wavescout.waveform_loader import create_signal_node_from_var
-from wavescout.data_model import SignalNode
+from wavescout.data_model import TreeNode
 import tempfile
 from .test_utils import get_test_input_path, TestFiles
 

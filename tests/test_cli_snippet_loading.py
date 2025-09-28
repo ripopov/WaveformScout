@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QStandardPaths
 from wavescout.snippet_manager import Snippet
-from wavescout.data_model import SignalNodeGroup, SignalNodeSignal
+from wavescout.data_model import GroupNode, SignalNode
 from wavescout.waveform_db import AsyncLoadedSignal, WaveformDB
 from wavescout.application.event_bus import EventBus
 from .test_utils import MockVar, get_test_input_path
@@ -164,13 +164,13 @@ def test_validate_and_resolve_nodes():
 
     # Create test nodes with real AsyncLoadedSignal instances
     nodes = [
-        SignalNodeSignal(
+        SignalNode(
             name="apb_testbench.pclk",
             var=pclk_var,
             handle=-1,  # Will be resolved
             signal=AsyncLoadedSignal(pclk_handle, db)
         ),
-        SignalNodeSignal(
+        SignalNode(
             name="apb_testbench.paddr",
             var=paddr_var,
             handle=-1,  # Will be resolved
@@ -189,7 +189,7 @@ def test_validate_and_resolve_nodes():
     # Create a placeholder signal for a non-existent path
     # We need to use a dummy handle since AsyncLoadedSignal requires one
     bad_nodes = [
-        SignalNodeSignal(
+        SignalNode(
             name="non_existent.signal",
             var=MockVar("signal"),
             handle=-1,
@@ -252,16 +252,16 @@ def test_snippet_node_hierarchy():
     preset_var = db.get_var(preset_handle)
 
     # Create hierarchical nodes with renamed paths for the test
-    group_node = SignalNodeGroup(
+    group_node = GroupNode(
         name="group1",
         children=[
-            SignalNodeSignal(
+            SignalNode(
                 name="apb_testbench.pclk",  # Using actual signal path
                 var=pclk_var,
                 handle=-1,
                 signal=AsyncLoadedSignal(pclk_handle, db)
             ),
-            SignalNodeSignal(
+            SignalNode(
                 name="apb_testbench.preset_n",  # Using actual signal path
                 var=preset_var,
                 handle=-1,
@@ -301,7 +301,7 @@ def test_exit_codes_simulation():
 
 def test_snippet_instantiation_order():
     """Test that snippets are instantiated in the order specified."""
-    from wavescout.data_model import SignalNodeGroup
+    from wavescout.data_model import GroupNode
     
     # Create a list to track instantiation order
     instantiation_order = []
@@ -317,7 +317,7 @@ def test_snippet_instantiation_order():
     # Create snippet nodes
     snippets = ["snippet_a", "snippet_b", "snippet_c"]
     for name in snippets:
-        group = SignalNodeGroup(name=name)
+        group = GroupNode(name=name)
         controller = MockController()
         controller.instantiate_snippet([group])
     

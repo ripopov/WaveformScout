@@ -9,9 +9,9 @@ from dataclasses import dataclass, field
 from pyrox import SignalHandle
 
 from .data_model import (
+    TreeNode,
+    GroupNode,
     SignalNode,
-    SignalNodeGroup,
-    SignalNodeSignal,
     SignalNodeID,
     Time,
     TimeUnit,
@@ -598,7 +598,7 @@ class WaveformCanvas(QWidget):
 
             node = row.source
             # Skip groups - they don't have values
-            if not isinstance(node, SignalNodeSignal):
+            if not isinstance(node, SignalNode):
                 continue
 
             signal_node = node
@@ -700,11 +700,11 @@ class WaveformCanvas(QWidget):
         # Include node handles, height scaling, data format, and COLOR to detect changes
         if 'visible_nodes' in params:
             key_params.append(
-                tuple((node.handle if isinstance(node, SignalNodeSignal) else None,
+                tuple((node.handle if isinstance(node, SignalNode) else None,
                        node.name,
                        node.height_scaling,
-                       node.format.data_format if isinstance(node, SignalNodeSignal) else None,
-                       node.format.color if isinstance(node, SignalNodeSignal) else None)  # Include color for theme changes
+                       node.format.data_format if isinstance(node, SignalNode) else None,
+                       node.format.color if isinstance(node, SignalNode) else None)  # Include color for theme changes
                       for node in params['visible_nodes'])
             )
         
@@ -722,7 +722,7 @@ class WaveformCanvas(QWidget):
         if self._model and self._model._controller:
             selected_ids = self._model._controller._selected_ids
 
-        visible_nodes: List[SignalNode] = []
+        visible_nodes: List[TreeNode] = []
         for row in self._layout.rows:
             node = row.source
             visible_nodes.append(node)
@@ -794,7 +794,7 @@ class WaveformCanvas(QWidget):
                     if not (row_bottom < render_top or y > render_bottom):
                         if row.kind == 'signal':
                             node = row.source
-                            if isinstance(node, SignalNodeSignal) and node.handle is not None:
+                            if isinstance(node, SignalNode) and node.handle is not None:
                                 signals_to_render.append(node)
                         elif row.kind == 'group_content' and row.descriptor:
                             # Add all child signals from the group
@@ -1062,7 +1062,7 @@ class WaveformCanvas(QWidget):
         elif row.kind == 'signal':
             # Draw a regular signal
             node = row.source
-            if isinstance(node, SignalNodeSignal) and node.handle is not None:
+            if isinstance(node, SignalNode) and node.handle is not None:
                 # Check if signal is loading
                 if not node.signal.is_loaded():
                     # Draw loading placeholder
@@ -1180,7 +1180,7 @@ class WaveformCanvas(QWidget):
 
 
     
-    def _generate_all_draw_commands(self, signal_nodes: List[SignalNodeSignal], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDB) -> CachedWaveDrawData:
+    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDB) -> CachedWaveDrawData:
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"

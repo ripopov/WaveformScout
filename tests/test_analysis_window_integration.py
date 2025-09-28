@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from wavescout.waveform_db import WaveformDB
-from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
+from wavescout.data_model import TreeNode, SignalNode, DisplayFormat
 from wavescout.waveform_controller import WaveformController
 from wavescout.analysis_engine import (
     compute_signal_statistics,
@@ -45,7 +45,7 @@ def test_analysis_with_analog_signals():
         var = db.var_from_handle(handle)
         if var:
             name = var.full_name(db.hierarchy)
-            signal = SignalNodeSignal(
+            signal = SignalNode(
                 name=name,
                 var=var,  # Use the actual var from waveform_db
                 handle=handle,

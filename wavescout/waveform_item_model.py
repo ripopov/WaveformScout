@@ -5,7 +5,7 @@ from typing import overload, List, Optional, Union, Any, Sequence, TYPE_CHECKING
 import json
 import time
 from .timing_utils import tprint
-from .data_model import WaveformSession, SignalNode, SignalNodeGroup, SignalNodeSignal
+from .data_model import WaveformSession, TreeNode, GroupNode, SignalNode
 from .signal_sampling import parse_signal_value
 from .application.events import StructureChangedEvent, FormatChangedEvent
 from .settings_manager import SettingsManager
@@ -69,7 +69,7 @@ class WaveformItemModel(QAbstractItemModel):
             return len(self._session.root_nodes)
         
         node = parent.internalPointer()
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             return len(node.children)
         return 0
 
@@ -84,7 +84,7 @@ class WaveformItemModel(QAbstractItemModel):
                 return self.createIndex(row, col, self._session.root_nodes[row])
         else:
             parent_node = parent.internalPointer()
-            if isinstance(parent_node, SignalNodeGroup) and 0 <= row < len(parent_node.children):
+            if isinstance(parent_node, GroupNode) and 0 <= row < len(parent_node.children):
                 return self.createIndex(row, col, parent_node.children[row])
         
         return QModelIndex()
@@ -129,7 +129,7 @@ class WaveformItemModel(QAbstractItemModel):
             return None
         
         node = index.internalPointer()
-        if not isinstance(node, SignalNode):
+        if not isinstance(node, TreeNode):
             return None
 
         if role == Qt.ItemDataRole.DisplayRole:
@@ -145,7 +145,7 @@ class WaveformItemModel(QAbstractItemModel):
             elif col == 3:
                 return ""  # Waveform painted by canvas
         elif role == Qt.ItemDataRole.ForegroundRole:
-            if isinstance(node, SignalNodeSignal):
+            if isinstance(node, SignalNode):
                 return node.format.color
             return None
         elif role == Qt.ItemDataRole.UserRole:
@@ -167,7 +167,7 @@ class WaveformItemModel(QAbstractItemModel):
         
         # Enable drag for valid items
         node = index.internalPointer()
-        if node and isinstance(node, SignalNode):
+        if node and isinstance(node, TreeNode):
             return default_flags | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled
         
         return default_flags
@@ -177,9 +177,9 @@ class WaveformItemModel(QAbstractItemModel):
             return len(self._session.root_nodes) > 0
         
         node = parent.internalPointer()
-        return isinstance(node, SignalNodeGroup) and len(node.children) > 0
+        return isinstance(node, GroupNode) and len(node.children) > 0
 
-    def _format_signal_name(self, node: SignalNode) -> str:
+    def _format_signal_name(self, node: TreeNode) -> str:
         # Nickname takes precedence, else use hierarchical display mode
         if node.nickname:
             return node.nickname
@@ -193,13 +193,13 @@ class WaveformItemModel(QAbstractItemModel):
             n = self._cached_hierarchy_levels
             return '.'.join(parts[-n:]) if len(parts) > n else node.name
     
-    def _value_at_cursor(self, node: SignalNode) -> str:
+    def _value_at_cursor(self, node: TreeNode) -> str:
         # Query WaveformDB for signal value at cursor time and format it according to node.format.data_format
-        if isinstance(node, SignalNodeGroup) or not self._session.waveform_db:
+        if isinstance(node, GroupNode) or not self._session.waveform_db:
             return ""
 
         # Now we know it's a SignalNodeSignal
-        assert isinstance(node, SignalNodeSignal)  # Help type checker
+        assert isinstance(node, SignalNode)  # Help type checker
         signal_node = node
         if signal_node.handle is None:
             return ""
@@ -224,13 +224,13 @@ class WaveformItemModel(QAbstractItemModel):
         except Exception:
             return ""
     
-    def _format_at_cursor(self, node: SignalNode) -> str:
+    def _format_at_cursor(self, node: TreeNode) -> str:
         # Return the data format for the signal
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             return ""
 
         # Now we know it's a SignalNodeSignal
-        assert isinstance(node, SignalNodeSignal)  # Help type checker
+        assert isinstance(node, SignalNode)  # Help type checker
         signal_node = node
         if signal_node.handle is None:
             return ""
@@ -316,20 +316,20 @@ class WaveformItemModel(QAbstractItemModel):
             # Model already deleted, ignore
             pass
     
-    def _find_node_by_id(self, node_id: int) -> Optional[SignalNode]:
+    def _find_node_by_id(self, node_id: int) -> Optional[TreeNode]:
         """Find a node by its instance ID."""
-        def search(nodes: List[SignalNode]) -> Optional[SignalNode]:
+        def search(nodes: List[TreeNode]) -> Optional[TreeNode]:
             for node in nodes:
                 if node.instance_id == node_id:
                     return node
-                if isinstance(node, SignalNodeGroup):
+                if isinstance(node, GroupNode):
                     found = search(node.children)
                     if found:
                         return found
             return None
         return search(self._session.root_nodes)
     
-    def _create_index_for_node(self, target_node: SignalNode) -> QModelIndex:
+    def _create_index_for_node(self, target_node: TreeNode) -> QModelIndex:
         """Create a QModelIndex for a given node."""
         # Find the path from root to node
         path = []
@@ -353,7 +353,7 @@ class WaveformItemModel(QAbstractItemModel):
             else:
                 # Child level
                 parent_node = path[i-1]
-                if not isinstance(parent_node, SignalNodeGroup):
+                if not isinstance(parent_node, GroupNode):
                     return QModelIndex()
                 try:
                     row = parent_node.children.index(node)
@@ -422,7 +422,7 @@ class WaveformItemModel(QAbstractItemModel):
             # Dropped directly on an item
             target_node = parent.internalPointer()
             
-            if isinstance(target_node, SignalNodeGroup):
+            if isinstance(target_node, GroupNode):
                 # Dropped on a group - insert at the beginning of the group
                 parent_node = target_node
                 target_list = target_node.children
@@ -431,7 +431,7 @@ class WaveformItemModel(QAbstractItemModel):
                 # Dropped on a non-group item - insert after it in the same parent
                 parent_node = target_node.parent
                 
-                if isinstance(parent_node, SignalNodeGroup):
+                if isinstance(parent_node, GroupNode):
                     target_list = parent_node.children
                     # Find the position of the target item and insert after it
                     try:
@@ -451,7 +451,7 @@ class WaveformItemModel(QAbstractItemModel):
         elif parent.isValid():
             # Dropped between items in a group
             parent_node = parent.internalPointer()
-            if isinstance(parent_node, SignalNodeGroup):
+            if isinstance(parent_node, GroupNode):
                 target_list = parent_node.children
             else:
                 parent_node = None
@@ -482,16 +482,16 @@ class WaveformItemModel(QAbstractItemModel):
             traceback.print_exc()
             return False
     
-    def _get_node_path(self, node: SignalNode) -> List[str]:
+    def _get_node_path(self, node: TreeNode) -> List[str]:
         """Get the path from root to this node."""
         path = []
-        current: Optional[SignalNode] = node
+        current: Optional[TreeNode] = node
         while current:
             path.append(current.name)
             current = current.parent
         return list(reversed(path))
     
-    def _find_node_by_path(self, path: List[str]) -> Optional[SignalNode]:
+    def _find_node_by_path(self, path: List[str]) -> Optional[TreeNode]:
         """Find a node by its path from root."""
         if not path:
             return None
@@ -505,7 +505,7 @@ class WaveformItemModel(QAbstractItemModel):
             for node in current_list:
                 if node.name == name:
                     current_node = node
-                    current_list = node.children if isinstance(node, SignalNodeGroup) else []
+                    current_list = node.children if isinstance(node, GroupNode) else []
                     found = True
                     break
             if not found:
@@ -513,7 +513,7 @@ class WaveformItemModel(QAbstractItemModel):
         
         return current_node
     
-    def _move_nodes(self, nodes: List[SignalNode], new_parent: Optional[SignalNode], insert_row: int) -> bool:
+    def _move_nodes(self, nodes: List[TreeNode], new_parent: Optional[TreeNode], insert_row: int) -> bool:
         """Move nodes to a new parent at the specified position."""
         # Validate the move operation
         if not self._validate_move(nodes, new_parent):
@@ -524,18 +524,18 @@ class WaveformItemModel(QAbstractItemModel):
         self._controller.move_nodes(node_ids, parent_id, insert_row)
         return True
     
-    def _validate_move(self, nodes: List[SignalNode], new_parent: Optional[SignalNode]) -> bool:
+    def _validate_move(self, nodes: List[TreeNode], new_parent: Optional[TreeNode]) -> bool:
         """Validate that the move operation is allowed."""
         # Prevent moving a node into itself or its descendants
         for node in nodes:
             if new_parent:
-                ancestor: Optional[SignalNode] = new_parent
+                ancestor: Optional[TreeNode] = new_parent
                 while ancestor:
                     if ancestor == node:
                         return False
                     ancestor = ancestor.parent
         return True
-    def _find_index_for_node(self, node: SignalNode) -> QModelIndex:
+    def _find_index_for_node(self, node: TreeNode) -> QModelIndex:
         """Find the QModelIndex for a given node."""
         if not node.parent:
             # Root node
@@ -548,7 +548,7 @@ class WaveformItemModel(QAbstractItemModel):
             # Non-root node
             try:
                 parent = node.parent
-                if not isinstance(parent, SignalNodeGroup):
+                if not isinstance(parent, GroupNode):
                     return QModelIndex()
                 row = parent.children.index(node)
                 parent_index = self._find_index_for_node(parent)

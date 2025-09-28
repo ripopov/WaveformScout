@@ -4,11 +4,11 @@ from typing import cast, Optional
 import pyrox
 from pyrox import SignalHandle
 
-from .data_model import SignalNode, SignalNodeSignal, DisplayFormat, DataFormat, WaveformSession, RenderType
+from .data_model import TreeNode, SignalNode, DisplayFormat, DataFormat, WaveformSession, RenderType
 from .waveform_db import WaveformDB, AsyncLoadedSignal, Var
 
 
-def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: SignalHandle, waveform_db: WaveformDB) -> SignalNode:
+def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: SignalHandle, waveform_db: WaveformDB) -> TreeNode:
     """Create a SignalNode from a backend variable."""
     # Get variable info
     full_name = var.full_name(hierarchy)
@@ -47,7 +47,7 @@ def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: Si
     
     async_signal = AsyncLoadedSignal(handle, waveform_db)
 
-    node = SignalNodeSignal(
+    node = SignalNode(
         name=full_name,
         var=var,  # Pass the var object directly
         handle=handle,

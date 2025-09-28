@@ -10,7 +10,7 @@ from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat, RenderType, DataFormat
+from wavescout.data_model import TreeNode, SignalNode, DisplayFormat, RenderType, DataFormat
 from wavescout.waveform_db import WaveformDB
 from .test_utils import get_test_input_path, TestFiles, MockVar
 from wavescout.waveform_loader import create_signal_node_from_var
@@ -124,20 +124,20 @@ class TestReloadFeature:
 
         return added_signals
     
-    def _get_signal_properties(self, node: SignalNode) -> Dict[str, Any]:
+    def _get_signal_properties(self, node: TreeNode) -> Dict[str, Any]:
         """Extract all relevant properties from a SignalNode for comparison."""
-        from wavescout import SignalNodeSignal, SignalNodeGroup
+        from wavescout import SignalNode, GroupNode
 
         props = {
             'name': node.name,
             'nickname': node.nickname,
-            'is_group': isinstance(node, SignalNodeGroup),
+            'is_group': isinstance(node, GroupNode),
             'height_scaling': node.height_scaling,
             'instance_id': node.instance_id,
         }
 
         # Add signal-specific properties
-        if isinstance(node, SignalNodeSignal):
+        if isinstance(node, SignalNode):
             props['handle'] = node.handle
             props['is_multi_bit'] = node.is_multi_bit
             # Add format properties
@@ -157,13 +157,13 @@ class TestReloadFeature:
                 props['format'] = None
 
         # Add group-specific properties
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             props['is_expanded'] = node.is_expanded
             props['group_render_mode'] = node.group_render_mode
 
         return props
     
-    def _compare_signal_nodes(self, nodes_before: List[SignalNode], nodes_after: List[SignalNode]) -> bool:
+    def _compare_signal_nodes(self, nodes_before: List[TreeNode], nodes_after: List[TreeNode]) -> bool:
         """Compare two lists of SignalNodes for equality of all properties."""
         if len(nodes_before) != len(nodes_after):
             print(f"Node count mismatch: {len(nodes_before)} vs {len(nodes_after)}")

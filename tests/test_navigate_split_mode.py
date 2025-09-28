@@ -7,7 +7,7 @@ from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
+from wavescout.data_model import TreeNode, SignalNode, DisplayFormat
 from wavescout import create_sample_session
 from wavescout.waveform_loader import create_signal_node_from_var
 from tests.test_utils import get_test_input_path, TestFiles

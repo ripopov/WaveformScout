@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 from wavescout.persistence import load_session, save_session
-from wavescout.data_model import WaveformSession, SignalNode, DisplayFormat
+from wavescout.data_model import WaveformSession, TreeNode, DisplayFormat
 from wavescout.waveform_db import WaveformDB
 from wavescout.application.event_bus import EventBus
 from .test_utils import get_test_input_path, TestFiles

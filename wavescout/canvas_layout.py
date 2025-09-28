@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from wavescout.data_model import SignalNodeID
-from wavescout.data_model import GroupRenderMode, SignalNode, SignalNodeGroup, SignalNodeSignal
+from wavescout.data_model import GroupRenderMode, TreeNode, GroupNode, SignalNode
 from wavescout.waveform_item_model import WaveformItemModel
 
 __all__ = [
@@ -26,9 +26,9 @@ VisibleRowKind = Literal['group_header', 'signal', 'group_content']
 @dataclass(frozen=True)
 class GroupContentDescriptor:
     """Descriptor for group content rows that are rendered together."""
-    group: SignalNodeGroup
+    group: GroupNode
     mode: GroupRenderMode
-    children: list[SignalNodeSignal]
+    children: list[SignalNode]
     height_scaling: int  # sum of child scalings, pre-clamped to >= 1
     cache_key: SignalNodeID  # use group.instance_id for range caching
 
@@ -37,7 +37,7 @@ class GroupContentDescriptor:
 class VisibleRow:
     """Represents a single row in the canvas layout."""
     kind: VisibleRowKind
-    source: SignalNode  # group header or concrete signal
+    source: TreeNode  # group header or concrete signal
     descriptor: Optional[GroupContentDescriptor] = None  # populated for group_content rows
     height_px: int = 20  # will be computed based on scaling
 
@@ -81,25 +81,25 @@ class CanvasLayout:
         return None
 
 
-def _collect_visible_signals(group: SignalNodeGroup) -> list[SignalNodeSignal]:
+def _collect_visible_signals(group: GroupNode) -> list[SignalNode]:
     """Collect all visible signal children of a group (not nested groups)."""
-    signals: list[SignalNodeSignal] = []
+    signals: list[SignalNode] = []
     for child in group.children:
-        if isinstance(child, SignalNodeSignal):
+        if isinstance(child, SignalNode):
             signals.append(child)
         # Skip nested groups for group render modes
     return signals
 
 
 def _walk_tree(
-    node: SignalNode,
+    node: TreeNode,
     model: WaveformItemModel,
     base_row_height: int,
 ) -> list[VisibleRow]:
     """Recursively walk the tree and generate visible rows."""
     rows: list[VisibleRow] = []
 
-    if isinstance(node, SignalNodeGroup):
+    if isinstance(node, GroupNode):
         # Always emit group header
         header_row = VisibleRow(
             kind='group_header',
@@ -139,7 +139,7 @@ def _walk_tree(
                     )
                     rows.append(content_row)
 
-    elif isinstance(node, SignalNodeSignal):
+    elif isinstance(node, SignalNode):
         # Regular signal row
         signal_row = VisibleRow(
             kind='signal',

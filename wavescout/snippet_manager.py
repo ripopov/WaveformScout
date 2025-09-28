@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, TypeAlias, Any
 from PySide6.QtCore import QStandardPaths, QObject, Signal
 
-from wavescout.data_model import SignalNode, SignalNodeGroup, SignalNodeSignal
+from wavescout.data_model import TreeNode, GroupNode, SignalNode
 from wavescout.timing_utils import tprint
 
 SnippetDict: TypeAlias = dict[str, "Snippet"]
@@ -21,7 +21,7 @@ class Snippet:
     name: str
     parent_name: str
     num_nodes: int
-    nodes: list[SignalNode]
+    nodes: list[TreeNode]
     description: str = ""
     created_at: datetime = field(default_factory=datetime.now)
     
@@ -131,7 +131,7 @@ class SnippetManager(QObject):
             
             # Set all handles to -1 before saving (snippets are waveform-agnostic)
             for node in self._walk_nodes(nodes_copy):
-                if isinstance(node, SignalNodeSignal):
+                if isinstance(node, SignalNode):
                     node.handle = -1
             
             # Create a new snippet with the copied nodes for saving
@@ -212,14 +212,14 @@ class SnippetManager(QObject):
             tprint(f"Error renaming snippet: {e}")
             return False
     
-    def find_common_parent(self, group_node: SignalNode) -> str:
+    def find_common_parent(self, group_node: TreeNode) -> str:
         """Find common parent scope for all signals in a group."""
         all_paths: list[str] = []
 
-        def collect_paths(node: SignalNode) -> None:
+        def collect_paths(node: TreeNode) -> None:
             if not node.is_group:
                 all_paths.append(node.name)
-            elif isinstance(node, SignalNodeGroup):
+            elif isinstance(node, GroupNode):
                 for child in node.children:
                     collect_paths(child)
 
@@ -254,13 +254,13 @@ class SnippetManager(QObject):
 
         return '.'.join(common)
     
-    def _walk_nodes(self, nodes: list[SignalNode]) -> list[SignalNode]:
+    def _walk_nodes(self, nodes: list[TreeNode]) -> list[TreeNode]:
         """Walk all nodes in tree recursively."""
-        result: list[SignalNode] = []
+        result: list[TreeNode] = []
         
-        def walk(node: SignalNode) -> None:
+        def walk(node: TreeNode) -> None:
             result.append(node)
-            if isinstance(node, SignalNodeGroup):
+            if isinstance(node, GroupNode):
                 for child in node.children:
                     walk(child)
         

@@ -5,11 +5,11 @@ from PySide6.QtCore import QModelIndex, Qt, QItemSelectionModel
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, SignalNodeSignal
+from wavescout.data_model import TreeNode, SignalNode
 from wavescout.waveform_db import AsyncLoadedSignal
 
 
-def add_signals_from_split_mode(window: WaveScoutMainWindow, count: int = 5) -> List[SignalNode]:
+def add_signals_from_split_mode(window: WaveScoutMainWindow, count: int = 5) -> List[TreeNode]:
     """
     Helper to add signals from the design tree in split mode.
 
@@ -110,7 +110,7 @@ def add_signals_from_split_mode(window: WaveScoutMainWindow, count: int = 5) -> 
     return signals_added
 
 
-def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3) -> List[SignalNode]:
+def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3) -> List[TreeNode]:
     """
     Alternative helper that adds signals directly if the UI method fails.
     This is a fallback for when the split view isn't working as expected.
@@ -150,7 +150,7 @@ def add_signals_by_double_click_vars(window: WaveScoutMainWindow, count: int = 3
                     handle = var.signal_handle()
                     if handle is not None:
                         # Create signal node
-                        signal_node = SignalNodeSignal(
+                        signal_node = SignalNode(
                             name=var.name(waveform_db.hierarchy),
                             handle=handle,
                             var=var,

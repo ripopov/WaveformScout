@@ -4,7 +4,7 @@ import math
 from typing import List, Optional, Tuple, Any
 from dataclasses import dataclass
 
-from .data_model import SignalNodeSignal, Time
+from .data_model import SignalNode, Time
 from .signal_sampling import parse_signal_value
 
 
@@ -21,7 +21,7 @@ class SignalStatistics:
 
 def compute_signal_statistics(
     waveform_db: Any,  # WaveformDB instance
-    signal_node: SignalNodeSignal,
+    signal_node: SignalNode,
     sampling_times: List[Time],
     start_time: Time,
     end_time: Time
@@ -147,7 +147,7 @@ def generate_sampling_times_period(
 
 def generate_sampling_times_signal(
     waveform_db: Any,  # WaveformDB instance
-    sampling_signal: SignalNodeSignal,
+    sampling_signal: SignalNode,
     start_time: Time,
     end_time: Time
 ) -> List[Time]:
@@ -191,7 +191,7 @@ def generate_sampling_times_signal(
 
 def sample_signal_value(
     waveform_db: Any,  # WaveformDB instance
-    signal_node: SignalNodeSignal,
+    signal_node: SignalNode,
     time: Time
 ) -> Tuple[Optional[str], Optional[float], Optional[bool]]:
     """

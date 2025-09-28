@@ -36,7 +36,7 @@ from PySide6.QtTest import QTest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import SignalNode, SignalNodeSignal, Marker
+from wavescout.data_model import TreeNode, SignalNode, Marker
 from tests.conftest import TestFiles, get_test_input_path
 
 class TestPaths:
@@ -74,7 +74,7 @@ class MarkerTestHelper:
         raise TimeoutError(f"Session failed to load within {timeout}ms")
 
     @staticmethod
-    def find_and_add_first_signal(window: WaveScoutMainWindow) -> Optional[SignalNode]:
+    def find_and_add_first_signal(window: WaveScoutMainWindow) -> Optional[TreeNode]:
         """
         Find and add the first signal from the design tree using split view.
 
@@ -253,7 +253,7 @@ def test_marker_integration(qtbot):
                     for var in scope.vars(waveform_db.hierarchy):
                         handle = var.signal_handle()
                         if handle is not None:
-                            signal_node = SignalNodeSignal(
+                            signal_node = SignalNode(
                                 name=var.name(waveform_db.hierarchy),
                                 handle=handle
                             )

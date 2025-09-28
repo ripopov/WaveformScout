@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 
 from wavescout.data_model import (
     WaveformSession,
-    SignalNodeSignal,
+    SignalNode,
     DataFormat,
     DisplayFormat,
     RenderType,

@@ -7,9 +7,9 @@ from PySide6.QtTest import QTest
 from wavescout import (
     WaveScoutWidget,
     WaveformItemModel,
+    TreeNode,
+    GroupNode,
     SignalNode,
-    SignalNodeGroup,
-    SignalNodeSignal,
     DisplayFormat,
     GroupRenderMode,
 )
@@ -156,7 +156,7 @@ def test_signal_formats(wave_widget):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and not node.is_group:
+        if isinstance(node, TreeNode) and not node.is_group:
             formats_found.add(node.format.data_format)
     
     print(f"\nDisplay formats found: {formats_found}")
@@ -172,7 +172,7 @@ def test_group_handling(wave_widget):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and node.is_group:
+        if isinstance(node, TreeNode) and node.is_group:
             group_found = True
             # Check group has children
             child_count = model.rowCount(index)
@@ -193,7 +193,7 @@ def test_expansion_sync(wave_widget, qtbot):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and node.is_group:
+        if isinstance(node, TreeNode) and node.is_group:
             group_index = index
             group_node = node
             break
@@ -232,7 +232,7 @@ def test_canvas_collapsed_groups(wave_widget, qtbot):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and node.is_group:
+        if isinstance(node, TreeNode) and node.is_group:
             group_index = index
             group_node = node
             break
@@ -292,7 +292,7 @@ def test_create_group_from_selected(wave_widget, monkeypatch):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and not node.is_group:
+        if isinstance(node, TreeNode) and not node.is_group:
             signal_nodes.append(node)
             if len(signal_nodes) >= 2:
                 break
@@ -342,7 +342,7 @@ def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
 
     # Create two groups with children using real signals
     # Group 1: G1 with first two signals
-    g1 = SignalNodeGroup(name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
+    g1 = GroupNode(name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
     signal1 = existing_signals[0]
     signal2 = existing_signals[1]
     signal1.parent = g1
@@ -350,7 +350,7 @@ def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
     g1.children = [signal1, signal2]
 
     # Group 2: G2 with next three signals
-    g2 = SignalNodeGroup(name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
+    g2 = GroupNode(name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
     signal3 = existing_signals[2]
     signal4 = existing_signals[3]
     signal5 = existing_signals[4]
@@ -415,7 +415,7 @@ def test_create_group_cancel_dialog(wave_widget, monkeypatch):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and not node.is_group:
+        if isinstance(node, TreeNode) and not node.is_group:
             signal_nodes.append(node)
             if len(signal_nodes) >= 2:
                 break
@@ -453,7 +453,7 @@ def test_create_group_empty_name_uses_default(wave_widget, monkeypatch):
     for i in range(model.rowCount()):
         index = model.index(i, 0)
         node = model.data(index, Qt.UserRole)
-        if isinstance(node, SignalNode) and not node.is_group:
+        if isinstance(node, TreeNode) and not node.is_group:
             signal_nodes.append(node)
             if len(signal_nodes) >= 2:
                 break

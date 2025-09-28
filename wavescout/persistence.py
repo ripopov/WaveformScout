@@ -12,9 +12,9 @@ import pyrox
 from .waveform_db import WaveformDB
 from .data_model import (
     WaveformSession,
+    TreeNode,
+    GroupNode,
     SignalNode,
-    SignalNodeGroup,
-    SignalNodeSignal,
     DisplayFormat,
     DataFormat,
     GroupRenderMode,
@@ -27,7 +27,7 @@ from .data_model import (
 from .waveform_db import WaveformDB
 
 
-def _serialize_node(node: SignalNode) -> Dict[str, Any]:
+def _serialize_node(node: TreeNode) -> Dict[str, Any]:
     """Serialize a SignalNode to a dictionary, handling nested children."""
     data: Dict[str, Any] = {
         'name': node.name,
@@ -37,7 +37,7 @@ def _serialize_node(node: SignalNode) -> Dict[str, Any]:
         'instance_id': node.instance_id,
     }
 
-    if isinstance(node, SignalNodeSignal):
+    if isinstance(node, SignalNode):
         format_dict = asdict(node.format)
         if 'data_format' in format_dict and isinstance(format_dict['data_format'], Enum):
             format_dict['data_format'] = format_dict['data_format'].value
@@ -53,7 +53,7 @@ def _serialize_node(node: SignalNode) -> Dict[str, Any]:
             'group_render_mode': None,
             'is_expanded': True,
         })
-    elif isinstance(node, SignalNodeGroup):
+    elif isinstance(node, GroupNode):
         data.update({
             'handle': None,
             'format': None,
@@ -71,13 +71,13 @@ def _serialize_node(node: SignalNode) -> Dict[str, Any]:
             'is_expanded': True,
         })
 
-    if isinstance(node, SignalNodeGroup) and node.children:
+    if isinstance(node, GroupNode) and node.children:
         data['children'] = [_serialize_node(child) for child in node.children]
     
     return data
 
 
-def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) -> List[int]:
+def _resolve_signal_handles(nodes: List[TreeNode], waveform_db: WaveformDB) -> List[int]:
     """Resolve signal handles for all nodes to ensure they're correct for the current backend.
 
     This is crucial when loading sessions across different backends (pylibfst vs pyrox)
@@ -92,8 +92,8 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) ->
     handles_to_load: List[int] = []
 
     # Recursively resolve handles using the current backend's find_handle_by_path
-    def resolve_node(node: SignalNode) -> None:
-        if isinstance(node, SignalNodeSignal):
+    def resolve_node(node: TreeNode) -> None:
+        if isinstance(node, SignalNode):
             # Always try to resolve the handle by name to ensure it's correct for this backend
             # First try with the exact name
             handle = waveform_db.find_handle_by_path(node.name)
@@ -121,7 +121,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) ->
                     node.var = var
             # If still None, keep the existing handle (may work for aliases)
 
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             for child in node.children:
                 resolve_node(child)
 
@@ -132,7 +132,7 @@ def _resolve_signal_handles(nodes: List[SignalNode], waveform_db: WaveformDB) ->
     return handles_to_load
 
 
-def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], parent: Optional[SignalNodeGroup]) -> SignalNode:
+def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], parent: Optional[GroupNode]) -> TreeNode:
     """Deserialize a dictionary to a SignalNode, handling nested children."""
     # Create display format if present
     format_data = data.get('format')
@@ -159,10 +159,10 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
         instance_id = data['instance_id']
     else:
         # For backward compatibility, generate a new ID
-        instance_id = SignalNode._generate_id()
+        instance_id = TreeNode._generate_id()
 
     if data.get('is_group', False):
-        group_node = SignalNodeGroup(
+        group_node = GroupNode(
             name=data['name'],
             nickname=data.get('nickname', ''),
             parent=parent,
@@ -194,7 +194,7 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
         var = Var.placeholder()
         signal = AsyncLoadedSignal.placeholder(handle if handle is not None else -1)
 
-    signal_node = SignalNodeSignal(
+    signal_node = SignalNode(
         name=data['name'],
         nickname=data.get('nickname', ''),
         parent=parent,
@@ -210,7 +210,7 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
     return signal_node
 
 
-def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[Dict[str, Any]]:
+def serialize_snippet_nodes(nodes: List[TreeNode], parent_scope: str) -> List[Dict[str, Any]]:
     """
     Serialize nodes for snippet storage, stripping absolute paths and setting handles to -1.
     
@@ -223,10 +223,10 @@ def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[
     """
     serialized_nodes = []
     
-    def serialize_for_snippet(node: SignalNode) -> Dict[str, Any]:
+    def serialize_for_snippet(node: TreeNode) -> Dict[str, Any]:
         """Serialize a single node for snippet storage."""
         format_dict = None
-        if isinstance(node, SignalNodeSignal):
+        if isinstance(node, SignalNode):
             format_dict = asdict(node.format)
             if 'data_format' in format_dict and isinstance(format_dict['data_format'], Enum):
                 format_dict['data_format'] = format_dict['data_format'].value
@@ -236,23 +236,23 @@ def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[
                 format_dict['analog_scaling_mode'] = format_dict['analog_scaling_mode'].value
         
         name = node.name
-        if isinstance(node, SignalNodeSignal) and parent_scope:
+        if isinstance(node, SignalNode) and parent_scope:
             if name.startswith(parent_scope + "."):
                 name = name[len(parent_scope) + 1:]
         
         data: Dict[str, Any] = {
             'name': name,
-            'handle': -1 if isinstance(node, SignalNodeSignal) else None,
+            'handle': -1 if isinstance(node, SignalNode) else None,
             'format': format_dict,
             'nickname': node.nickname,
             'is_group': node.is_group,
-            'group_render_mode': node.group_render_mode.value if isinstance(node, SignalNodeGroup) and node.group_render_mode else None,
-            'is_expanded': node.is_expanded if isinstance(node, SignalNodeGroup) else True,
+            'group_render_mode': node.group_render_mode.value if isinstance(node, GroupNode) and node.group_render_mode else None,
+            'is_expanded': node.is_expanded if isinstance(node, GroupNode) else True,
             'height_scaling': node.height_scaling,
-            'is_multi_bit': node.is_multi_bit if isinstance(node, SignalNodeSignal) else False,
+            'is_multi_bit': node.is_multi_bit if isinstance(node, SignalNode) else False,
         }
         
-        if isinstance(node, SignalNodeGroup) and node.children:
+        if isinstance(node, GroupNode) and node.children:
             data['children'] = [serialize_for_snippet(child) for child in node.children]
         
         return data
@@ -263,7 +263,7 @@ def serialize_snippet_nodes(nodes: List[SignalNode], parent_scope: str) -> List[
     return serialized_nodes
 
 
-def deserialize_snippet_nodes_simple(data: List[Dict[str, Any]]) -> List[SignalNode]:
+def deserialize_snippet_nodes_simple(data: List[Dict[str, Any]]) -> List[TreeNode]:
     """
     Deserialize snippet nodes without handle resolution (for loading snippets from disk).
 
@@ -284,7 +284,7 @@ def deserialize_snippet_nodes(
     data: List[Dict[str, Any]],
     parent_scope: str,
     waveform_db: Optional[WaveformDB]
-) -> Optional[tuple[List[SignalNode], List[int]]]:
+) -> Optional[tuple[List[TreeNode], List[int]]]:
     """
     Deserialize snippet nodes with scope remapping and handle resolution.
 
@@ -304,8 +304,8 @@ def deserialize_snippet_nodes(
     
     def deserialize_snippet_node(
         node_data: Dict[str, Any],
-        parent: Optional[SignalNodeGroup] = None
-    ) -> Optional[SignalNode]:
+        parent: Optional[GroupNode] = None
+    ) -> Optional[TreeNode]:
         """Deserialize a single snippet node with remapping."""
         # Create display format if present
         format_data = node_data.get('format')
@@ -344,14 +344,14 @@ def deserialize_snippet_nodes(
             handle = resolved_handle
 
         if is_group:
-            group_node = SignalNodeGroup(
+            group_node = GroupNode(
                 name=name,
                 nickname=node_data.get('nickname', ''),
                 parent=parent,
                 height_scaling=node_data.get('height_scaling', 1),
                 group_render_mode=group_render_mode,
                 is_expanded=node_data.get('is_expanded', True),
-                instance_id=SignalNode._generate_id(),
+                instance_id=TreeNode._generate_id(),
             )
 
             children_data = node_data.get('children', [])
@@ -379,7 +379,7 @@ def deserialize_snippet_nodes(
         assert handle is not None
         signal = waveform_db.load_signal(handle)
 
-        signal_node = SignalNodeSignal(
+        signal_node = SignalNode(
             name=name,
             nickname=node_data.get('nickname', ''),
             parent=parent,
@@ -388,7 +388,7 @@ def deserialize_snippet_nodes(
             signal=signal,
             format=display_format if display_format is not None else DisplayFormat(),
             is_multi_bit=node_data.get('is_multi_bit', False),
-            instance_id=SignalNode._generate_id(),
+            instance_id=TreeNode._generate_id(),
             var=var,
         )
 
@@ -398,16 +398,16 @@ def deserialize_snippet_nodes(
     result_nodes = []
     handles_to_load = []
 
-    def collect_handles(node: SignalNode) -> None:
+    def collect_handles(node: TreeNode) -> None:
         """Collect handles that need async loading."""
-        if isinstance(node, SignalNodeSignal) and node.handle is not None:
+        if isinstance(node, SignalNode) and node.handle is not None:
             # Create AsyncLoadedSignal for the handle
             if waveform_db:
                 node.signal = waveform_db.load_signal(node.handle)
                 # Track handles that need async loading
                 if not node.signal.is_loaded():
                     handles_to_load.append(node.handle)
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             for child in node.children:
                 collect_handles(child)
 
@@ -585,18 +585,18 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     
     # Update the SignalNode counter to avoid ID conflicts
     # Find the maximum instance_id in all loaded nodes
-    def find_max_instance_id(nodes: List[SignalNode]) -> int:
+    def find_max_instance_id(nodes: List[TreeNode]) -> int:
         max_id = 0
         for node in nodes:
             if getattr(node, 'instance_id', None) is not None:
                 max_id = max(max_id, node.instance_id)
-            if isinstance(node, SignalNodeGroup):
+            if isinstance(node, GroupNode):
                 max_id = max(max_id, find_max_instance_id(node.children))
         return max_id
     
     max_instance_id = find_max_instance_id(root_nodes)
     if max_instance_id > 0:
-        SignalNode._id_counter = max_instance_id
+        TreeNode._id_counter = max_instance_id
     
     # Restore clock signal if available
     clock_data = data.get('clock_signal')
@@ -626,12 +626,12 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     return session
 
 
-def _find_node_by_id(nodes: List[SignalNode], node_id: int) -> Optional[SignalNode]:
+def _find_node_by_id(nodes: List[TreeNode], node_id: int) -> Optional[TreeNode]:
     """Find a node by its instance ID in a tree of nodes."""
     for node in nodes:
         if node.instance_id == node_id:
             return node
-        if isinstance(node, SignalNodeGroup):
+        if isinstance(node, GroupNode):
             found = _find_node_by_id(node.children, node_id)
             if found:
                 return found

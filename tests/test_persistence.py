@@ -6,9 +6,9 @@ import pathlib
 from wavescout import save_session, load_session, create_sample_session
 from wavescout.data_model import (
     WaveformSession,
+    TreeNode,
+    GroupNode,
     SignalNode,
-    SignalNodeGroup,
-    SignalNodeSignal,
     DisplayFormat,
     DataFormat,
     Viewport,
@@ -48,7 +48,7 @@ def create_test_session():
 
     # Add group with children
     if len(all_handles) >= 3:
-        group = SignalNodeGroup(
+        group = GroupNode(
             name="CPU",
             group_render_mode=GroupRenderMode.OVERLAPPED,
             is_expanded=False
@@ -204,9 +204,9 @@ def test_save_session_with_waveform_db():
             handles = []
             def collect_handles(nodes):
                 for node in nodes:
-                    if isinstance(node, SignalNodeSignal) and node.handle is not None:
+                    if isinstance(node, SignalNode) and node.handle is not None:
                         handles.append(node.handle)
-                    if isinstance(node, SignalNodeGroup):
+                    if isinstance(node, GroupNode):
                         collect_handles(node.children)
             collect_handles(loaded_session.root_nodes)
 
@@ -311,7 +311,7 @@ def test_sampling_signal_in_nested_group():
 
     if len(all_handles) >= 1:
         # Create group with a child from real signal
-        group = SignalNodeGroup(name='GROUP', instance_id=1000)
+        group = GroupNode(name='GROUP', instance_id=1000)
 
         var = db.get_var(all_handles[0])
         if var:
