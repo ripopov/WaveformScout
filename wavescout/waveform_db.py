@@ -91,16 +91,20 @@ class AsyncLoadedSignal:
         """Get the signal handle."""
         return self._handle
 
-    # @classmethod
-    # def placeholder(cls, handle: SignalHandle) -> "AsyncLoadedSignal":
-    #     """Create a placeholder AsyncLoadedSignal for uninitialized nodes."""
-    #     instance = cls.__new__(cls)
-    #     instance._handle = handle
-    #     instance._signal = None
-    #     instance._loaded = threading.Event()
-    #     instance._loading = False
-    #     instance._error = None
-    #     return instance
+    @classmethod
+    def placeholder(cls, handle: SignalHandle) -> "AsyncLoadedSignal":
+        """Create a placeholder AsyncLoadedSignal for uninitialized nodes.
+        
+        Used by unit tests and snippet JSON deserialization where we want a benign
+        AsyncLoadedSignal without triggering background loads.
+        """
+        instance = cls.__new__(cls)
+        instance._handle = handle
+        instance._signal = None
+        instance._loaded = threading.Event()
+        instance._loading = False
+        instance._error = None
+        return instance
 
     def __repr__(self) -> str:
         status = "loaded" if self._loaded.is_set() else "loading" if self._loading else "pending"

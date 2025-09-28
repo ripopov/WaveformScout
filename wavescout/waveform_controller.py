@@ -737,12 +737,16 @@ class WaveformController:
     
     def insert_nodes(self, nodes: List[SignalNode], after_id: Optional[SignalNodeID] = None) -> None:
         """Insert nodes after specified node ID.
-        
+
         Args:
             nodes: List of SignalNode objects to insert (should have new instance IDs)
             after_id: ID of node to insert after. If None, append to end of root_nodes
         """
+        from wavescout.timing_utils import tprint
+        tprint(f"[CONTROLLER] insert_nodes called with {len(nodes) if nodes else 0} nodes, after_id={after_id}")
+
         if not self.session or not nodes:
+            tprint(f"[CONTROLLER] Early return: session={self.session is not None}, nodes={len(nodes) if nodes else 0}")
             return
         
         # Find insertion point
@@ -780,6 +784,7 @@ class WaveformController:
         self.set_selection_by_ids(new_ids)
         
         # Emit events
+        tprint(f"[CONTROLLER] Successfully inserted {len(nodes)} nodes, new count: {len(self.session.root_nodes)}")
         self.event_bus.publish(StructureChangedEvent(
             change_kind='insert',
             affected_ids=new_ids,

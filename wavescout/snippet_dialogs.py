@@ -402,3 +402,7 @@ class InstantiateSnippetDialog(QDialog):
     def get_group_name(self) -> str:
         """Get the user-specified group name."""
         return self.group_name
+
+    def get_handles_to_load(self) -> list[int]:
+        """Return handles that should be loaded asynchronously after instantiation."""
+        return self.handles_to_load

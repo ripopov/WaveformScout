@@ -598,24 +598,30 @@ class SignalNamesView(BaseColumnView):
     
     def _copy_selected_nodes(self) -> None:
         """Copy selected nodes to clipboard in both internal and plain text formats."""
+        from wavescout.timing_utils import tprint
         nodes = self._get_all_selected_nodes()
         if not nodes:
+            tprint("[COPY] No nodes selected")
             return
-        
+
+        tprint(f"[COPY] Copying {len(nodes)} nodes")
+
         # Serialize nodes for internal format
         json_str = self._serialize_nodes(nodes)
-        
+        tprint(f"[COPY] Serialized to {len(json_str)} bytes")
+
         # Create plain text format
         plain_text = self._nodes_to_plain_text(nodes)
-        
+
         # Set both formats on clipboard
         mime_data = QMimeData()
         mime_data.setData(self.SIGNAL_NODE_MIME_TYPE, json_str.encode('utf-8'))
         mime_data.setText(plain_text)
-        
+
         clipboard = QApplication.clipboard()
         clipboard.setMimeData(mime_data)
-        
+        tprint("[COPY] Data set on clipboard")
+
         # Show status message
         count = len(nodes)
         self._controller.event_bus.publish(
@@ -624,13 +630,15 @@ class SignalNamesView(BaseColumnView):
     
     def _paste_nodes(self) -> None:
         """Paste nodes from clipboard at the insertion point."""
+        from wavescout.timing_utils import tprint
         clipboard = QApplication.clipboard()
         mime_data = clipboard.mimeData()
-        
+
         # Check if clipboard has any data
         if not mime_data:
+            tprint("[PASTE] No clipboard data")
             return
-        
+
         # Check for internal format first
         if mime_data.hasFormat(self.SIGNAL_NODE_MIME_TYPE):
             data = mime_data.data(self.SIGNAL_NODE_MIME_TYPE).data()
@@ -640,35 +648,47 @@ class SignalNamesView(BaseColumnView):
                     json_str = data.decode('utf-8')
                 else:
                     json_str = bytes(data).decode('utf-8')
+
+                tprint(f"[PASTE] Deserializing {len(json_str)} bytes")
                 nodes = self._deserialize_nodes(json_str)
-                
+                tprint(f"[PASTE] Deserialized {len(nodes)} nodes")
+
                 if nodes:
                     # Validate nodes against current WaveformDB
                     validated_nodes = self._validate_nodes(nodes)
-                    
+                    tprint(f"[PASTE] Validated {len(validated_nodes)} nodes")
+
                     if validated_nodes:
                         # Get insertion point from current selection
                         selected = self._get_all_selected_nodes()
                         after_id = selected[0].instance_id if selected else None
-                        
+                        tprint(f"[PASTE] Inserting after node ID: {after_id}")
+
                         # Insert nodes using controller
                         self._controller.insert_nodes(validated_nodes, after_id)
-                        
+
                         # Show status message
                         count = len(validated_nodes)
                         self._controller.event_bus.publish(
                             type('StatusMessage', (), {'message': f"Pasted {count} signal{'s' if count != 1 else ''}"})()
                         )
-                        
+
                         # Scroll to first pasted node if possible
                         if validated_nodes and self.model():
                             first_node = validated_nodes[0]
                             index = self._find_node_index(first_node)
                             if index.isValid():
                                 self.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
-            except Exception:
-                # Silently ignore invalid clipboard data
-                pass
+                    else:
+                        tprint("[PASTE] No nodes passed validation")
+                else:
+                    tprint("[PASTE] No nodes deserialized")
+            except Exception as e:
+                tprint(f"[PASTE] Error: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            tprint("[PASTE] No internal format in clipboard")
     
     def _serialize_nodes(self, nodes: List[SignalNode]) -> str:
         """Serialize a list of SignalNode objects to JSON string."""
@@ -693,7 +713,7 @@ class SignalNamesView(BaseColumnView):
             nodes = []
             for node_data in data.get('nodes', []):
                 # Deserialize the node with waveform_db for proper var population
-                node = _deserialize_node(node_data, waveform_db=waveform_db)
+                node = _deserialize_node(node_data, waveform_db=waveform_db, parent=None)
                 # Create a deep copy to ensure new instance IDs
                 node_copy = node.deep_copy()
                 nodes.append(node_copy)

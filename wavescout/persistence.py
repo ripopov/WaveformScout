@@ -181,8 +181,8 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: WaveformDB, parent: Opt
 
     # Get var from waveform_db if available
     handle = data.get('handle')
-    var = var = waveform_db.get_var(handle)
-    signal = waveform_db.load_signal(handle)
+    var = waveform_db.get_var(handle) if waveform_db else None
+    signal = waveform_db.load_signal(handle) if waveform_db else None
 
     signal_node = SignalNodeSignal(
         name=data['name'],

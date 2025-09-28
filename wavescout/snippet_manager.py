@@ -41,16 +41,11 @@ class Snippet:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Snippet":
         """Create snippet from dictionary."""
-        from wavescout.persistence import _deserialize_node
+        from wavescout.persistence import deserialize_snippet_nodes
         
         parent_name = data["parent_name"]
-        nodes = []
-        
-        for node_data in data["nodes"]:
-            node = _deserialize_node(node_data, None)
-            # Keep names as they are in the JSON - they should be relative names
-            # Full path reconstruction happens during instantiation, not loading
-            nodes.append(node)
+        # Nodes in snippet JSON are stored with relative names; do not resolve against a DB here.
+        nodes = deserialize_snippet_nodes(data["nodes"], parent_name=parent_name, waveform_db=None)
         
         return cls(
             name=data["name"],
