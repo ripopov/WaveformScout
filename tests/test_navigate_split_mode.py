@@ -8,7 +8,9 @@ from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
 from wavescout.data_model import SignalNode, SignalNodeSignal, DisplayFormat
-from tests.test_utils import get_test_input_path, TestFiles, MockVar
+from wavescout import create_sample_session
+from wavescout.waveform_loader import create_signal_node_from_var
+from tests.test_utils import get_test_input_path, TestFiles
 
 
 class TestNavigateSplitMode:
@@ -44,24 +46,49 @@ class TestNavigateSplitMode:
     def test_navigate_in_split_mode(self, main_window):
         """Test that navigation works in split mode and selects variable in bottom panel."""
         window = main_window
-        
+
         # Split mode is now the default and only mode
         QTest.qWait(200)
-        
-        # Add a test signal to the session
+
+        # Get waveform_db from loaded session
+        session = window.wave_widget.session
+        if not session or not session.waveform_db:
+            pytest.skip("No waveform database loaded")
+
+        db = session.waveform_db
+        hierarchy = db.hierarchy
+
+        # Find a signal matching our test path or use first available
         signal_path = "apb_testbench.dut.paddr"
-        signal_node = SignalNodeSignal(
-            name=signal_path,
-            var=MockVar(signal_path.split('.')[-1], 32),
-            handle=0,
-            format=DisplayFormat(),
-            nickname='',
-            parent=None,
-            height_scaling=1,
-            is_multi_bit=False
-        )
-        
-        window.wave_widget.session.root_nodes = [signal_node]
+        target_handle = None
+        target_var = None
+
+        # Try to find the specific signal
+        all_handles = list(db.get_all_handles())
+        for handle in all_handles:
+            var = db.get_var(handle)
+            if var:
+                full_name = var.full_name(hierarchy)
+                if signal_path in full_name or 'paddr' in full_name.lower():
+                    target_handle = handle
+                    target_var = var
+                    signal_path = full_name  # Use actual full name
+                    break
+
+        # Fall back to first available signal if specific one not found
+        if not target_var and all_handles:
+            target_handle = all_handles[0]
+            target_var = db.get_var(target_handle)
+            if target_var:
+                signal_path = target_var.full_name(hierarchy)
+
+        if not target_var:
+            pytest.skip("No suitable test signal found")
+
+        # Create real signal node with actual waveform data
+        signal_node = create_signal_node_from_var(target_var, hierarchy, target_handle, db)
+
+        session.root_nodes = [signal_node]
         window.wave_widget.update()
         QTest.qWait(100)
         
@@ -127,25 +154,49 @@ class TestNavigateSplitMode:
     def test_signal_emission_in_split_mode(self, main_window):
         """Test that signal emission works correctly in split mode."""
         window = main_window
-        
-        # Switch to split mode
+
         # Split mode is now the default and only mode
         QTest.qWait(200)
-        
-        # Add a test signal
+
+        # Get waveform_db from loaded session
+        session = window.wave_widget.session
+        if not session or not session.waveform_db:
+            pytest.skip("No waveform database loaded")
+
+        db = session.waveform_db
+        hierarchy = db.hierarchy
+
+        # Find a signal for testing
         signal_path = "apb_testbench.pready"
-        signal_node = SignalNodeSignal(
-            name=signal_path,
-            var=MockVar(signal_path.split('.')[-1]),
-            handle=1,
-            format=DisplayFormat(),
-            nickname='',
-            parent=None,
-            height_scaling=1,
-            is_multi_bit=False
-        )
-        
-        window.wave_widget.session.root_nodes = [signal_node]
+        target_handle = None
+        target_var = None
+
+        # Try to find the specific signal or any signal with 'ready' in its name
+        all_handles = list(db.get_all_handles())
+        for handle in all_handles:
+            var = db.get_var(handle)
+            if var:
+                full_name = var.full_name(hierarchy)
+                if 'pready' in full_name.lower() or 'ready' in full_name.lower():
+                    target_handle = handle
+                    target_var = var
+                    signal_path = full_name  # Use actual full name
+                    break
+
+        # Fall back to second available signal if specific one not found
+        if not target_var and len(all_handles) > 1:
+            target_handle = all_handles[1]
+            target_var = db.get_var(target_handle)
+            if target_var:
+                signal_path = target_var.full_name(hierarchy)
+
+        if not target_var:
+            pytest.skip("No suitable test signal found")
+
+        # Create real signal node with actual waveform data
+        signal_node = create_signal_node_from_var(target_var, hierarchy, target_handle, db)
+
+        session.root_nodes = [signal_node]
         window.wave_widget.update()
         QTest.qWait(100)
         
