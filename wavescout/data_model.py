@@ -358,14 +358,3 @@ class WaveformSession:
     clock_signal: Optional[tuple[Time, Time, SignalNode]] = None  # Clock period, phase offset, and signal node for clock-based grid display
     loading_handles: set[SignalHandle] = field(default_factory=set)  # Handles currently being loaded asynchronously
     sampling_signal: Optional[SignalNode] = None  # Signal used for sampling in signal analysis
-
-    def is_loading(self, handle: SignalHandle) -> bool:
-        """Check if a signal handle is currently being loaded.
-
-        Args:
-            handle: Signal handle to check
-
-        Returns:
-            True if the handle is being loaded, False otherwise
-        """
-        return handle in self.loading_handles
