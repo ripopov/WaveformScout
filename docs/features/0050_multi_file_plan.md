@@ -33,7 +33,10 @@ Support opening multiple waveform files (VCD/FST) simultaneously and displaying 
 - First loaded file establishes the reference timescale
 - Subsequent files must have matching timescale or loading fails with error message
   - Error message format: `"Cannot load <filename>: timescale mismatch. Expected <timescale1>, got <timescale2>"`
-- All loaded files share the same time range. If a subsequent file has a longer range, the viewport's `total_duration` is increased to accommodate it
+- All loaded files share the same time range:
+  - `viewport.total_duration` = max(duration of all loaded files)
+  - When opening a new file: `viewport.total_duration = max(current_total_duration, new_file_duration)`
+  - Files remain loaded for the entire session (closing individual files not supported in v1)
 
 #### Session Persistence
 - Sessions save references to all loaded waveform files with unique file IDs
@@ -63,6 +66,11 @@ Support opening multiple waveform files (VCD/FST) simultaneously and displaying 
 - **Viewport**: Single unified viewport controls zoom/pan for all files - No changes needed
 - **Clock Signal**: Can be any signal from any loaded file
 - **Sampling Signal**: Can be any signal from any loaded file
+- **Signal Aliases**: Each signal can have an alias (stored in SignalNode)
+  - Aliases are per-signal, not global (no collision issues across files)
+  - Display name shows alias if set, otherwise shows hierarchical name (with file prefix if multi-file)
+  - Aliases are preserved in session save/load (already part of SignalNode serialization)
+  - No special handling needed for multi-file (aliases are signal-specific, file_id is tracked separately)
 
 ---
 
@@ -79,6 +87,9 @@ Support opening multiple waveform files (VCD/FST) simultaneously and displaying 
   - `signal`: AsyncLoadedSignal for async loading
   - `instance_id`: Unique identifier for this node instance
 - **TreeNode** base class provides `instance_id` generation (lines 94-116)
+  - `instance_id` is runtime-generated and **not** persisted to session files
+  - Used for object identity during a single application session
+  - Regenerated on session load (not stable across save/load cycles)
 - No existing file_id tracking mechanism
 
 #### WaveformDB (`wavescout/waveform_db.py`)
@@ -153,10 +164,10 @@ class WaveformFileReference:
 - **KEEP**: All existing fields (name stores original path without prefix)
 
 **New Helper Methods:**
-Add to WaveformSession (not as dataclass methods, but as module-level functions):
-- `get_file_by_id(session, file_id)`: Returns WaveformFileReference or None
-- `get_primary_file(session)`: Returns first file (for backward compat)
-- `add_waveform_file(session, file_path, waveform_db)`: Adds new file with unique ID
+Add these as methods on WaveformSession (consistent with current dataclass patterns):
+- `get_file_by_id(file_id: int) -> Optional[WaveformFileReference]`: Look up file by ID
+- `get_primary_file() -> Optional[WaveformFileReference]`: Returns first file (backward compat)
+- `add_waveform_file(file_path: str, waveform_db: WaveformDB) -> WaveformFileReference`: Creates new file reference with next_file_id, appends to list, increments counter
 
 ---
 
@@ -172,11 +183,6 @@ Add to WaveformSession (not as dataclass methods, but as module-level functions)
   - Updates viewport.total_duration if new file is longer
   - Emits session_changed event
   - Returns True on success, False on failure (shows error message)
-
-- `close_waveform_file(file_id: int) -> None`: Closes specific file
-  - Removes all signals from that file from root_nodes
-  - Removes file from waveform_files list
-  - Updates viewport if needed
 
 - `get_waveform_db_for_signal(node: SignalNode) -> Optional[WaveformDB]`: Helper
   - Returns WaveformDB instance for given signal's file_id
@@ -222,6 +228,15 @@ Add to WaveformSession (not as dataclass methods, but as module-level functions)
 - Include `file_id` in serialization
 - Validate file_id exists on deserialization
 
+**Modify `_resolve_signal_handles()`:**
+- **CRITICAL**: Signal handles are scoped to their WaveformDB instance
+- For each SignalNode during deserialization:
+  - Look up the correct WaveformDB using `node.file_id`
+  - Resolve the handle against that specific WaveformDB instance
+  - If file_id references a missing file, skip the node
+  - If handle resolution fails, log warning and skip node
+  - Return only successfully resolved nodes
+
 ---
 
 ### Design Tree View Changes
@@ -233,12 +248,19 @@ Currently using `ScopeTreeModel` from `wavescout/scope_tree_model.py` (line 119)
 
 **Approach 1: Wrapper Model (Recommended)**
 - Create `MultiFileScopeTreeModel` that wraps multiple ScopeTreeModel instances
+- Implementation details:
+  - Stores list of `(file_id, ScopeTreeModel)` pairs
+  - Root level (parent=QModelIndex()) returns file nodes
+  - For file node children, delegates to the appropriate ScopeTreeModel
+  - Maps QModelIndex to (file_id, sub_index) internally
+  - File nodes store file_id in internal pointer or user role
 - Root nodes are file wrappers when multiple files loaded
 - Single file mode delegates directly to ScopeTreeModel (backward compat)
 
 **Approach 2: Modify ScopeTreeModel**
 - Add multi-file awareness to ScopeTreeModel
 - Conditional root node structure based on file count
+- Less clean but avoids wrapper complexity
 
 #### File: `wavescout/design_tree_view.py`
 
@@ -253,8 +275,10 @@ Currently using `ScopeTreeModel` from `wavescout/scope_tree_model.py` (line 119)
 - Set `file_id` field when creating SignalNode
 - Keep `name` as original hierarchical path (no prefix)
 
-**New Method: `_get_current_file_id()`:**
-- Determines which file context user is in
+**New Method: `_get_current_file_id(index: QModelIndex)`:**
+- Determines which file the selected tree node belongs to
+- Single file mode: return the only file's file_id
+- Multi-file mode: walk up tree to find file root node and extract file_id
 - Used when creating SignalNodes from tree selection
 
 ---
@@ -265,21 +289,36 @@ Currently using `ScopeTreeModel` from `wavescout/scope_tree_model.py` (line 119)
 
 **No direct changes to data structures** - this view displays SignalNodes from the model.
 
+**Context Menu Operations:**
+- Copy/Paste: SignalNode serialization already includes all fields
+  - When serializing for clipboard, include `file_id` (already part of node)
+  - When pasting, validate that `file_id` exists in current session
+  - If file_id is missing (e.g., pasted from different session), show error or prompt to select target file
+- Delete, Move Up/Down: No changes needed (operate on SignalNode instances)
+
 **Display Logic Changes (in Qt ItemDelegate or Model):**
 Need to modify display to show file prefix for signals from non-primary files.
 
 #### File: `wavescout/waveform_item_model.py` (Qt model)
 
+**Add session reference:**
+- WaveformItemModel needs access to the current session to determine file prefixes
+- Add `_session: Optional[WaveformSession]` field
+- Add `set_session(session: WaveformSession)` method called when session changes
+- Controller should call `model.set_session()` whenever session is updated
+
 **Modify `data()` method for display role:**
 - When returning signal name for display:
-  - If multiple files in session AND signal.file_id != primary_file_id:
-    - Return formatted name: `"{filename}:{signal.name}"`
-  - Else:
-    - Return `signal.name` (backward compat)
+  - If `_session` is None or single file: return `signal.name`
+  - If multiple files in session:
+    - Get file_ref for signal's file_id
+    - If file_id == 0 (primary): return `signal.name` (no prefix)
+    - Else: return `"{filename}:{signal.name}"`
 
 **Helper Method:**
 - `_get_display_name(node: SignalNode) -> str`: Formats name with file prefix if needed
-- Uses session.waveform_files to lookup filename by file_id
+- Uses `_session.waveform_files` to lookup filename by file_id
+- Returns original name if session not set or file not found
 
 ---
 
@@ -297,10 +336,7 @@ Need to modify display to show file prefix for signals from non-primary files.
 - Show error dialog if timescale mismatch
 - Update window title to show multiple files (e.g., "WaveformScout - 3 files loaded")
 
-**New File → Close File Menu:**
-- Submenu listing all open files by name
-- Allows closing individual files
-- Grayed out if only one file open
+**Note:** Closing individual files is not supported in v1 (deferred to future release)
 
 ---
 
@@ -317,8 +353,12 @@ Need to modify display to show file prefix for signals from non-primary files.
 - Detect old format (has `db_uri` instead of `waveform_files`)
 - Convert to new format:
   - Create single WaveformFileReference with file_id=0
-  - Set all existing SignalNodes to file_id=0
+  - Set all existing SignalNodes to file_id=0 (if field is missing)
+  - Set session.next_file_id = 1
   - Save in new format on next save
+- Handle SignalNodes without file_id field:
+  - Default to file_id=0 during deserialization
+  - Log warning about legacy format
 
 ---
 
@@ -354,9 +394,8 @@ Need to modify display to show file prefix for signals from non-primary files.
 
 **Phase 2: Controller Logic**
 1. Add open_waveform_file() to WaveformController
-2. Add close_waveform_file() to WaveformController
-3. Add get_waveform_db_for_signal() helper
-4. Modify clock/sampling signal methods to use helper
+2. Add get_waveform_db_for_signal() helper
+3. Modify clock/sampling signal methods to use helper
 
 **Phase 3: Persistence**
 1. Modify save_session() for multi-file format
@@ -377,9 +416,8 @@ Need to modify display to show file prefix for signals from non-primary files.
 
 **Phase 6: UI Integration**
 1. Modify main application File → Open to support multiple calls
-2. Add File → Close File submenu
-3. Update window title for multiple files
-4. Add error dialogs for timescale/missing files
+2. Update window title for multiple files
+3. Add error dialogs for timescale/missing files
 
 **Phase 7: Testing & Polish**
 1. Test single file mode (backward compat)
@@ -394,77 +432,33 @@ Need to modify display to show file prefix for signals from non-primary files.
 ### Algorithm Descriptions
 
 **Opening Multiple Files:**
-```
-1. User selects File → Open
-2. Controller.open_waveform_file(path):
-   a. Check if already open → show warning, return
-   b. Create new WaveformDB instance
-   c. Call waveform_db.open(path)
-   d. Extract timescale from waveform_db
-   e. If not first file:
-      - Compare timescale with session.waveform_files[0].timescale
-      - If mismatch:
-        * Show error dialog
-        * Close waveform_db
-        * Return False
-   f. Create WaveformFileReference:
-      - file_id = session.next_file_id
-      - file_path = path
-      - waveform_db = waveform_db
-      - timescale = extracted timescale
-   g. Add to session.waveform_files
-   h. Increment session.next_file_id
-   i. Update viewport.total_duration if new file is longer
-   j. Emit session_changed event
-   k. Return True
-```
+- Canonicalize and check for duplicate path
+- Create and open new WaveformDB instance
+- Extract timescale and validate against existing files (fail if mismatch)
+- Create WaveformFileReference with next file_id
+- Add to session, increment file_id counter
+- Update viewport.total_duration to max
+- Emit session_changed event
 
 **Display Name Resolution:**
-```
-For each SignalNode in tree view:
-1. Get session.waveform_files list
-2. If len(waveform_files) == 1:
-   - Display: node.name (original path)
-3. Else (multiple files):
-   - Get file_ref = get_file_by_id(session, node.file_id)
-   - Get filename = basename(file_ref.file_path)
-   - If node.file_id == 0 (primary file):
-     * Display: node.name (no prefix for first file)
-   - Else:
-     * Display: f"{filename}:{node.name}"
-```
+- Single file: display `node.name` only
+- Multiple files:
+  - Primary file (first in list): display `node.name` (no prefix)
+  - Other files: display `"{filename}:{node.name}"`
+- Primary file remains stable throughout session (no closing support in v1)
 
 **Session Save with Multiple Files:**
-```
-1. Create waveform_files list in JSON:
-   [
-     {file_id: 0, file_path: "/path/to/file1.vcd", timescale: {...}},
-     {file_id: 1, file_path: "/path/to/file2.fst", timescale: {...}}
-   ]
-2. For each SignalNode:
-   - Include file_id in serialization
-3. Save next_file_id to ensure stable IDs on reload
-```
+- Serialize waveform_files list with file_id, file_path, and timescale for each
+- Include file_id in each SignalNode serialization
+- Save next_file_id counter for stable IDs on reload
 
 **Session Load with Multiple Files:**
-```
-1. Read waveform_files list from JSON
-2. For each file entry:
-   a. Check if file exists
-   b. If exists:
-      - Create WaveformDB, open file
-      - Validate timescale matches first file
-      - Add to session.waveform_files with original file_id
-   c. If missing:
-      - Add to missing_files list
-3. If missing_files not empty:
-   - Show warning dialog
-   - If user clicks Continue:
-     * Remove SignalNodes with file_id in missing set
-     * Update next_file_id
-4. Restore next_file_id from max(loaded file_ids) + 1
-5. Continue normal session loading
-```
+- Read waveform_files list from JSON
+- For each file: create WaveformDB, validate timescale against first file
+- Track missing files and show warning dialog
+- If user continues: remove SignalNodes referencing missing files
+- Restore next_file_id from max(loaded file_ids) + 1
+- Continue normal session loading with resolved handles
 
 ---
 
@@ -481,9 +475,18 @@ For each SignalNode in tree view:
 - Acceptable for typical use (2-4 files)
 
 **Handle Disambiguation:**
-- Handles are file-scoped (no global handle space)
+- **CRITICAL**: Handles are file-scoped (no global handle space)
+- Each SignalHandle is only valid within its originating WaveformDB
 - file_id + handle uniquely identifies a signal
-- No handle collision possible
+- No handle collision possible across files
+- When resolving handles (e.g., during session load), always use the correct WaveformDB for the signal's file_id
+
+**Thread Safety:**
+- Each WaveformDB instance has its own async loading threads
+- No shared mutable state between WaveformDB instances
+- pyrox library is thread-safe for concurrent reads from different Waveform instances
+- Qt signal emission is thread-safe via AsyncLoadedSignal's use of Qt's signal/slot mechanism
+- No additional synchronization needed for multi-file support
 
 ---
 
