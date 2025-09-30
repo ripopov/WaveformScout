@@ -119,7 +119,7 @@ Support opening multiple waveform files (VCD/FST) simultaneously and displaying 
 - Receives session via `setSession()` (line 180)
 
 ### Protocol-Based Abstraction
-- `WaveformDBProtocol` in `protocols.py` defines interface
+- The current code imports the concrete `WaveformDB` class directly
 - Multiple WaveformDB instances can coexist as long as handles don't collide
 - Each WaveformDB has its own signal cache and loading state
 
