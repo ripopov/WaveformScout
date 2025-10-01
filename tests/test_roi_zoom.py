@@ -53,7 +53,9 @@ class ROITestHelper:
         qtbot.waitExposed(widget)
         
         # Add some signals from the VCD
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
         assert db is not None and db.hierarchy is not None
         
         # Find and add first few signals

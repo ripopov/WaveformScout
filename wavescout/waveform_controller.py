@@ -111,13 +111,15 @@ class WaveformController:
 
         # Hook up event bus to WaveformDB if it doesn't have one
         # This is crucial for sessions loaded in background threads
-        if session and session.waveform_db:
-            tprint("[CONTROLLER] Session has waveform_db")
-            # We need to access internal WaveformDB attributes, so check if it's the actual class
-            # not just the protocol
-            from wavescout.waveform_db import WaveformDB, AsyncEventBridge
-            if isinstance(session.waveform_db, WaveformDB):
-                waveform_db = session.waveform_db
+        if session and session.waveform_files:
+            primary_file = session.get_primary_file()
+            if primary_file:
+                tprint("[CONTROLLER] Session has waveform_db")
+                # We need to access internal WaveformDB attributes, so check if it's the actual class
+                # not just the protocol
+                from wavescout.waveform_db import WaveformDB, AsyncEventBridge
+                if isinstance(primary_file.waveform_db, WaveformDB):
+                    waveform_db = primary_file.waveform_db
                 tprint("[CONTROLLER] WaveformDB instance detected")
                 tprint(f"[CONTROLLER] WaveformDB._event_bus = {waveform_db._event_bus}")
                 tprint(f"[CONTROLLER] WaveformDB._event_bridge = {waveform_db._event_bridge}")
@@ -1355,8 +1357,10 @@ class WaveformController:
         Args:
             handles: List of signal handles to load
         """
-        if not self.session or not self.session.waveform_db:
+        if not self.session or not self.session.waveform_files:
             return
 
-        # Delegate to WaveformDB
-        self.session.waveform_db.load_signals_async(handles)
+        # Delegate to WaveformDB (use primary file)
+        primary_file = self.session.get_primary_file()
+        if primary_file and primary_file.waveform_db:
+            primary_file.waveform_db.load_signals_async(handles)

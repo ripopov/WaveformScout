@@ -130,12 +130,7 @@ class WaveformCanvas(QWidget):
         self._rendered_image: Optional[QImage] = None
         self._render_generation = 0  # Track render requests
         self._last_render_params_hash: Optional[int] = None  # Track last rendered params
-        
-        # Waveform time boundaries
-        self._waveform_min_time: Time = 0
-        self._waveform_max_time: Optional[Time] = None
-        
-        
+
         # Debug counters and timing
         self._paint_frame_counter = 0  # Incremented on every paintEvent
         self._render_complete_counter = 0  # Incremented when render completes
@@ -316,46 +311,11 @@ class WaveformCanvas(QWidget):
             self._layout = CanvasLayout()
             return
 
-        # Update waveform time boundaries
-        self._update_waveform_bounds()
-
         # Build new layout from model
         self._layout = build_layout(self._model, self._row_height)
 
         # Don't automatically generate draw commands here - let paintEvent handle it
         # This prevents generating commands with wrong viewport before setTimeRange is called
-    
-    def _update_waveform_bounds(self) -> None:
-        """Update the waveform time boundaries from the database.
-
-        In multi-file mode, finds the maximum time across all loaded waveforms.
-        """
-        if not self._model or not self._model._session:
-            self._waveform_max_time = None
-            return
-
-        session = self._model._session
-        max_time = None
-
-        try:
-            # Multi-file support: find max time across all loaded waveforms
-            if session.waveform_files:
-                for file_ref in session.waveform_files:
-                    if file_ref.waveform_db:
-                        time_table = file_ref.waveform_db.get_time_table()
-                        if time_table and len(time_table) > 0:
-                            file_max = time_table[-1]
-                            if max_time is None or file_max > max_time:
-                                max_time = file_max
-            # Fallback to legacy single waveform_db (backward compatibility)
-            elif session.waveform_db:
-                time_table = session.waveform_db.get_time_table()
-                if time_table and len(time_table) > 0:
-                    max_time = time_table[-1]
-
-            self._waveform_max_time = max_time
-        except:
-            self._waveform_max_time = None
 
     def _update_time_scale(self) -> None:
         """Update time scale based on widget width and time range."""
@@ -756,7 +716,7 @@ class WaveformCanvas(QWidget):
             generation=self._render_generation,
             base_row_height=self._row_height,
             header_height=self._header_height,  # Include header height for proper rendering
-            waveform_max_time=self._waveform_max_time,  # Add waveform max time for renderer
+            waveform_max_time=self._model._session.waveform_max_time if self._model and self._model._session else None,  # Add waveform max time for renderer
             signal_range_cache=self._signal_range_cache,  # Pass signal range cache for analog rendering
             highlight_selected=self._highlight_selected,  # Pass highlight flag
             layout=self._layout,  # Pass the new layout
@@ -811,12 +771,16 @@ class WaveformCanvas(QWidget):
                             # Add all child signals from the group
                             signals_to_render.extend(row.descriptor.children)
 
+            # Get waveform max time from session
+            waveform_max_time = self._model._session.waveform_max_time if self._model and self._model._session else None
+
             # Generate draw commands only for signals in render area
             draw_commands = self._generate_all_draw_commands(
                 signals_to_render,
                 params['start_time'],
                 params['end_time'],
-                params['width']
+                params['width'],
+                waveform_max_time
             )
 
             # Build group drawing payloads
@@ -914,23 +878,26 @@ class WaveformCanvas(QWidget):
         
         try:
             # First paint the valid time range background
-                if self._waveform_max_time is not None and params['width'] > 0:
-                    # Calculate pixel positions for time boundaries
-                    x_min = int((self._waveform_min_time - params['start_time']) * params['width'] / 
-                               (params['end_time'] - params['start_time']))
-                    x_max = int((self._waveform_max_time + 1 - params['start_time']) * params['width'] / 
-                               (params['end_time'] - params['start_time']))
-                    
-                    # Clip to image bounds
-                    x_min = max(0, x_min)
-                    x_max = min(params['width'], x_max)
-                    
-                    # Paint the valid time range with lighter background
-                    if x_max > x_min:
-                        painter.fillRect(x_min, 0, x_max - x_min, params['height'], QColor(config.COLORS.BACKGROUND))
-                
-                # Render normal waveforms
-                self._render_waveforms(painter, params)
+            waveform_max_time = self._model._session.waveform_max_time if self._model and self._model._session else None
+            waveform_min_time = self._model._session.waveform_min_time if self._model and self._model._session else 0
+
+            if waveform_max_time is not None and params['width'] > 0:
+                # Calculate pixel positions for time boundaries
+                x_min = int((waveform_min_time - params['start_time']) * params['width'] /
+                           (params['end_time'] - params['start_time']))
+                x_max = int((waveform_max_time + 1 - params['start_time']) * params['width'] /
+                           (params['end_time'] - params['start_time']))
+
+                # Clip to image bounds
+                x_min = max(0, x_min)
+                x_max = min(params['width'], x_max)
+
+                # Paint the valid time range with lighter background
+                if x_max > x_min:
+                    painter.fillRect(x_min, 0, x_max - x_min, params['height'], QColor(config.COLORS.BACKGROUND))
+
+            # Render normal waveforms
+            self._render_waveforms(painter, params)
         finally:
             painter.end()
         
@@ -1191,7 +1158,7 @@ class WaveformCanvas(QWidget):
 
 
     
-    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int) -> CachedWaveDrawData:
+    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int, waveform_max_time: Optional[Time]) -> CachedWaveDrawData:
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"
@@ -1205,7 +1172,7 @@ class WaveformCanvas(QWidget):
             if node.handle is not None:
                 drawing_data = generate_signal_draw_commands(
                     node, start_time, end_time, canvas_width,
-                    self._waveform_max_time
+                    waveform_max_time
                 )
                 if drawing_data:
                     result.draw_commands[node.handle] = drawing_data
@@ -1235,38 +1202,46 @@ class WaveformCanvas(QWidget):
         """Paint background with different colors for valid/invalid time ranges."""
         # Default background color for entire canvas
         painter.fillRect(self.rect(), QColor(config.COLORS.BACKGROUND_DARK))  # Darker for invalid ranges
-        
+
+        # Get waveform bounds from session
+        waveform_max_time = self._model._session.waveform_max_time if self._model and self._model._session else None
+        waveform_min_time = self._model._session.waveform_min_time if self._model and self._model._session else 0
+
         # If we have valid waveform bounds, paint the valid range differently
-        if self._waveform_max_time is not None and self.width() > 0:
+        if waveform_max_time is not None and self.width() > 0:
             # Calculate pixel positions for time boundaries
-            x_min = self._time_to_x(self._waveform_min_time)
-            x_max = self._time_to_x(self._waveform_max_time + 1)  # +1 to include the last timestamp
-            
+            x_min = self._time_to_x(waveform_min_time)
+            x_max = self._time_to_x(waveform_max_time + 1)  # +1 to include the last timestamp
+
             # Clip to widget bounds
             x_min = max(0, x_min)
             x_max = min(self.width(), x_max)
-            
+
             # Paint the valid time range with a lighter background
             if x_max > x_min:
                 painter.fillRect(x_min, 0, x_max - x_min, self.height(), QColor(config.COLORS.BACKGROUND))
     
     def _draw_boundary_lines(self, painter: QPainter) -> None:
         """Draw vertical lines at waveform time boundaries."""
-        if self._waveform_max_time is None:
+        # Get waveform bounds from session
+        waveform_max_time = self._model._session.waveform_max_time if self._model and self._model._session else None
+        waveform_min_time = self._model._session.waveform_min_time if self._model and self._model._session else 0
+
+        if waveform_max_time is None:
             return
-        
+
         # Set up pen for boundary lines (cosmetic for HiDPI)
         pen = QPen(QColor(config.COLORS.BOUNDARY_LINE))
         pen.setWidth(0)  # 1 device pixel
         painter.setPen(pen)
-        
+
         # Draw line at time 0 if visible
-        if self._waveform_min_time >= self._start_time and self._waveform_min_time <= self._end_time:
-            x_min = self._time_to_x(self._waveform_min_time)
+        if waveform_min_time >= self._start_time and waveform_min_time <= self._end_time:
+            x_min = self._time_to_x(waveform_min_time)
             painter.drawLine(x_min, 0, x_min, self.height())
-        
+
         # Draw line at max_time + 1 if visible
-        boundary_time = self._waveform_max_time + 1
+        boundary_time = waveform_max_time + 1
         if boundary_time >= self._start_time and boundary_time <= self._end_time:
             x_max = self._time_to_x(boundary_time)
             painter.drawLine(x_max, 0, x_max, self.height())

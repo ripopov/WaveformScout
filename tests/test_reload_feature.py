@@ -81,10 +81,13 @@ class TestReloadFeature:
         Returns list of signal names that were added.
         """
         # Get the waveform database
-        if not window.wave_widget.session or not window.wave_widget.session.waveform_db:
+        if not window.wave_widget.session or not window.wave_widget.session.waveform_files:
             return []
 
-        waveform_db = window.wave_widget.session.waveform_db
+        primary_file = window.wave_widget.session.get_primary_file()
+        if not primary_file or not primary_file.waveform_db:
+            return []
+        waveform_db = primary_file.waveform_db
         hierarchy = waveform_db.hierarchy
         added_signals = []
 

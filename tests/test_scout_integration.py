@@ -56,7 +56,7 @@ class WaveScoutTestHelper:
         def _loaded():
             return (
                 window.wave_widget.session is not None
-                and window.wave_widget.session.waveform_db is not None
+                and window.wave_widget.session.waveform_files
                 and window.design_tree_view.scope_tree_model is not None
                 and window.design_tree_view.scope_tree_model.rowCount() > 0
             )
@@ -278,14 +278,16 @@ def test_height_scaling_widget_api(qtbot):
     qtbot.waitExposed(widget)
 
     # Add specific signals to session
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
-    
+
     signal_patterns = {
         "prdata": ("apb_testbench.prdata", None),
         "paddr": ("apb_testbench.paddr", None),
     }
-    
+
     found_nodes = helper.add_signals_to_session(db, session, db.hierarchy, signal_patterns)
     assert "prdata" in found_nodes, "apb_testbench.prdata not found in VCD"
     assert "paddr" in found_nodes, "apb_testbench.paddr not found in VCD"
@@ -741,7 +743,7 @@ def test_split_mode_inner_scope_selection(qtbot):
     def _loaded():
         return (
             window.wave_widget.session is not None
-            and window.wave_widget.session.waveform_db is not None
+            and window.wave_widget.session.waveform_files
             and window.design_tree_view.scope_tree_model is not None
         )
     qtbot.waitUntil(_loaded, timeout=5000)
@@ -1053,16 +1055,18 @@ def test_signal_rename_and_persistence(qtbot):
     qtbot.addWidget(widget)
     widget.show()
     qtbot.waitExposed(widget)
-    
+
     # Add specific signals to session
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
-    
+
     signal_patterns = {
         "prdata": ("apb_testbench.prdata", None),
         "paddr": ("apb_testbench.paddr", None),
     }
-    
+
     found_nodes = helper.add_signals_to_session(db, session, db.hierarchy, signal_patterns)
     assert "prdata" in found_nodes, "apb_testbench.prdata not found in VCD"
     assert "paddr" in found_nodes, "apb_testbench.paddr not found in VCD"
@@ -1195,16 +1199,18 @@ def test_group_rename_functionality(qtbot):
     qtbot.addWidget(widget)
     widget.show()
     qtbot.waitExposed(widget)
-    
+
     # Add signals to session
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
-    
+
     signal_patterns = {
         "prdata": ("apb_testbench.prdata", None),
         "paddr": ("apb_testbench.paddr", None),
     }
-    
+
     found_nodes = helper.add_signals_to_session(db, session, db.hierarchy, signal_patterns)
     assert "prdata" in found_nodes
     assert "paddr" in found_nodes

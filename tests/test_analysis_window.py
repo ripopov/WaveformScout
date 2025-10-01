@@ -199,12 +199,13 @@ def test_analysis_window_integration():
         
         controller = window.wave_widget.controller
         session = controller.session
-        waveform_db = session.waveform_db
-        
+        primary_file = session.get_primary_file()
+        waveform_db = primary_file.waveform_db if primary_file else None
+
         # Create signal nodes and add them to the session
         all_signals = []
         clk_cnt_signal = None
-        
+
         if waveform_db:
             for handle in waveform_db.get_all_handles()[:10]:  # First 10 signals
                 var = waveform_db.var_from_handle(handle)

@@ -241,7 +241,7 @@ class WaveformItemModel(QAbstractItemModel):
     
     def _value_at_cursor(self, node: TreeNode) -> str:
         # Query WaveformDB for signal value at cursor time and format it according to node.format.data_format
-        if isinstance(node, GroupNode) or not self._session.waveform_db:
+        if isinstance(node, GroupNode) or not self._session.waveform_files:
             return ""
 
         # Now we know it's a SignalNodeSignal
@@ -249,8 +249,6 @@ class WaveformItemModel(QAbstractItemModel):
         signal_node = node
         if signal_node.handle is None:
             return ""
-
-        db = self._session.waveform_db
         try:
             # Use cached Signal object from node
             if not signal_node.signal.is_loaded():

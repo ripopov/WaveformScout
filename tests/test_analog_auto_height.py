@@ -41,7 +41,9 @@ def test_analog_scale_all_auto_height(qtbot):
     qtbot.waitExposed(widget)
     
     # Add prdata signal to session
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
     
     signal_patterns = {
@@ -125,7 +127,9 @@ def test_analog_scale_visible_auto_height(qtbot):
     qtbot.waitExposed(widget)
     
     # Add paddr signal to session
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
     
     signal_patterns = {
@@ -191,7 +195,9 @@ def test_analog_height_not_changed_if_already_scaled(qtbot):
     qtbot.waitExposed(widget)
     
     # Add prdata signal
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
     
     signal_patterns = {

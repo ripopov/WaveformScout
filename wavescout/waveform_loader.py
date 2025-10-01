@@ -72,9 +72,6 @@ def create_sample_session(vcd_path: str) -> WaveformSession:
     # Use the new multi-file structure
     file_ref = session.add_waveform_file(vcd_path, db)
 
-    # Set waveform_db for backward compatibility
-    session.waveform_db = db
-
     # Set timescale from the file
     timescale = db.get_timescale()
     if timescale:

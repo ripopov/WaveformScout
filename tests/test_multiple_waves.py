@@ -66,10 +66,6 @@ class TestMultipleWaveforms:
         assert file_ref2.waveform_db is db2
         print("✓ File references correctly stored")
 
-        # Verify backward compatibility (waveform_db should reference first file)
-        assert session.waveform_db is db1, "waveform_db should reference first file for backward compatibility"
-        print("✓ Backward compatibility maintained")
-
     def test_add_signals_from_different_files(self):
         """Test adding signals from different waveform files to the session."""
         print("\n=== Testing Signal Addition from Multiple Files ===")

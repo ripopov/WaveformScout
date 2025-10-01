@@ -60,7 +60,7 @@ def test_copy_paste_signals(qtbot, tmp_path):
             break
     
     assert window.wave_widget.session is not None, "Session should be loaded"
-    assert window.wave_widget.session.waveform_db is not None, "WaveformDB should be loaded"
+    assert window.wave_widget.session.waveform_files, "WaveformDB should be loaded"
     
     # Step 1: Add signals to WaveScoutWidget using split mode
     # Request more to ensure we get enough (apb_sim.vcd has 16 unique signals)
@@ -662,7 +662,9 @@ def test_copy_paste_recursion_regression(qtbot):
     # Load a real waveform to get real Var objects
     test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
     session = create_sample_session(str(test_file))
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     hierarchy = db.hierarchy
 
     # Get some real signal handles and variables

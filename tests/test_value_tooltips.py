@@ -34,8 +34,12 @@ def main_window(qt_app):
 def main_window_with_signals(main_window):
     """Create main window with signals added to session."""
     # Add some signals to the session directly from the waveform database
-    if main_window.wave_widget.session and main_window.wave_widget.session.waveform_db:
-        db = main_window.wave_widget.session.waveform_db
+    if main_window.wave_widget.session and main_window.wave_widget.session.waveform_files:
+        primary_file = main_window.wave_widget.session.get_primary_file()
+        if primary_file and primary_file.waveform_db:
+            db = primary_file.waveform_db
+        else:
+            return main_window
         handles = db.get_all_handles()[:3]  # Get first 3 signal handles
 
         signals_to_add = []

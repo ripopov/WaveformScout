@@ -32,10 +32,13 @@ def vcd_session(vcd_file):
 
 def add_signals_from_vcd(session, count=10, include_groups=True):
     """Helper to add signals from the VCD file to the session."""
-    if not session.waveform_db:
+    if not session.waveform_files:
         return
 
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    if not primary_file or not primary_file.waveform_db:
+        return
+    db = primary_file.waveform_db
     hierarchy = db.hierarchy
 
     # Get actual signal handles from the database

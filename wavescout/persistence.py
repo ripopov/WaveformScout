@@ -643,7 +643,6 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     # Create session
     session_start = time.time()
     session = WaveformSession(
-        waveform_db=waveform_files[0].waveform_db if waveform_files else None,  # Keep for backward compatibility
         waveform_files=waveform_files,
         next_file_id=next_file_id,
         root_nodes=root_nodes,

@@ -28,9 +28,10 @@ def create_test_session():
     session = create_sample_session(str(vcd_path))
 
     # Get waveform database and add signals
-    db = session.waveform_db
-    if not db:
+    primary_file = session.get_primary_file()
+    if not primary_file or not primary_file.waveform_db:
         raise RuntimeError("Failed to open waveform database")
+    db = primary_file.waveform_db
 
     hierarchy = db.hierarchy
     all_handles = list(db.get_all_handles())
@@ -192,14 +193,16 @@ def test_save_session_with_waveform_db():
         loaded_session = load_session(temp_path)
 
         # Verify waveform database is reconnected
-        assert loaded_session.waveform_db is not None
-        assert loaded_session.waveform_db.file_path == str(vcd_path)
+        loaded_primary_file = loaded_session.get_primary_file()
+        assert loaded_primary_file is not None
+        assert loaded_primary_file.waveform_db is not None
+        assert loaded_primary_file.waveform_db.file_path == str(vcd_path)
 
         # Verify signals are preserved
         assert len(loaded_session.root_nodes) == len(session.root_nodes)
 
         # Wait for any async signal loading to complete
-        if loaded_session.waveform_db and hasattr(loaded_session.waveform_db, 'wait_for_signals'):
+        if loaded_primary_file.waveform_db and hasattr(loaded_primary_file.waveform_db, 'wait_for_signals'):
             # Collect all handles from loaded session
             handles = []
             def collect_handles(nodes):
@@ -212,7 +215,7 @@ def test_save_session_with_waveform_db():
 
             # Wait for signals to load
             if handles:
-                loaded_session.waveform_db.wait_for_signals(handles, timeout=5.0)
+                loaded_primary_file.waveform_db.wait_for_signals(handles, timeout=5.0)
 
     finally:
         # Clean up
@@ -237,9 +240,9 @@ def test_load_session_missing_waveform():
         # Load session - should succeed but without waveform_db
         loaded_session = load_session(temp_path)
 
-        # Verify session loads but waveform_db is None (no files loaded)
-        assert loaded_session.waveform_db is None
+        # Verify session loads but waveform_files is empty (no files loaded)
         assert len(loaded_session.waveform_files) == 0
+        assert loaded_session.get_primary_file() is None
         assert len(loaded_session.root_nodes) == 2
 
     finally:
@@ -253,9 +256,10 @@ def test_sampling_signal_persistence():
     vcd_path = get_test_input_path(TestFiles.APB_SIM_VCD)
     session = create_sample_session(str(vcd_path))
 
-    db = session.waveform_db
-    if not db:
+    primary_file = session.get_primary_file()
+    if not primary_file or not primary_file.waveform_db:
         raise RuntimeError("Failed to open waveform database")
+    db = primary_file.waveform_db
 
     hierarchy = db.hierarchy
     all_handles = list(db.get_all_handles())
@@ -302,9 +306,10 @@ def test_sampling_signal_in_nested_group():
     vcd_path = get_test_input_path(TestFiles.APB_SIM_VCD)
     session = create_sample_session(str(vcd_path))
 
-    db = session.waveform_db
-    if not db:
+    primary_file = session.get_primary_file()
+    if not primary_file or not primary_file.waveform_db:
         raise RuntimeError("Failed to open waveform database")
+    db = primary_file.waveform_db
 
     hierarchy = db.hierarchy
     all_handles = list(db.get_all_handles())

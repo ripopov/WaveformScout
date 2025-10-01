@@ -868,8 +868,8 @@ class WaveScoutMainWindow(FramelessWindow):
         import tempfile
         from pathlib import Path
         from wavescout.persistence import save_session, load_session
-        
-        if self.wave_widget.session and self.wave_widget.session.waveform_db:
+
+        if self.wave_widget.session and self.wave_widget.session.waveform_files:
             try:
                 # Create temporary file for session
                 tmp_fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='wavescout_reload_')
@@ -1105,7 +1105,7 @@ class WaveScoutMainWindow(FramelessWindow):
         from PySide6.QtWidgets import QApplication
         
         def update_design_tree():
-            if session.waveform_db:
+            if session.waveform_files:
                 # Show progress for tree building
                 tree_progress = QProgressDialog(
                     "Building design hierarchy...",
@@ -1276,14 +1276,14 @@ class WaveScoutMainWindow(FramelessWindow):
         self._loading_state.clear()
         
         # Update design tree if we have a waveform
-        if session.waveform_db:
+        if session.waveform_files:
             # Defer heavy UI updates to allow UI to remain responsive
             from PySide6.QtCore import QTimer
 
             def update_design_tree():
                 """Update design tree with loaded waveform."""
                 tprint(f"QTimer callback: updating design tree")
-                if session.waveform_db and self.design_tree_view:
+                if session.waveform_files and self.design_tree_view:
                     self.design_tree_view.set_waveform_files(session.waveform_files)
                 tprint(f"QTimer callback: design tree updated")
 
@@ -1332,8 +1332,7 @@ class WaveScoutMainWindow(FramelessWindow):
                 self._add_node_to_session(node)
             return
 
-        waveform_db = self.wave_widget.session.waveform_db
-        if not waveform_db:
+        if not self.wave_widget.session.waveform_files:
             return
 
         # Need to load signals asynchronously using new system
@@ -1363,9 +1362,9 @@ class WaveScoutMainWindow(FramelessWindow):
             tprint("[SCOUT] Updating design tree for session")
             self.design_tree_view.set_waveform_files(session.waveform_files)
 
-        # Update canvas waveform bounds to accommodate multi-file time ranges
-        if self.wave_widget and self.wave_widget._canvas:
-            self.wave_widget._canvas._update_waveform_bounds()
+        # Update session waveform bounds to accommodate multi-file time ranges
+        if session:
+            session.update_time_bounds()
 
     def _extract_session_handles(self, session):
         """Extract all signal handles from a session.
@@ -1422,14 +1421,16 @@ class WaveScoutMainWindow(FramelessWindow):
         self.wave_widget.setSession(session)
         
         # Get filename and update status
-        if session.waveform_db:
-            file_path = session.waveform_db.file_path
-            if file_path:
-                self.current_wave_file = Path(file_path)
-                self.setWindowTitle(f"WaveScout - {Path(file_path).name}")
-                self.statusBar().showMessage(f"Loaded: {Path(file_path).name}")
-                tprint(f"Successfully loaded waveform: {file_path}")
-            
+        if session.waveform_files:
+            primary_file = session.get_primary_file()
+            if primary_file:
+                file_path = primary_file.waveform_db.file_path
+                if file_path:
+                    self.current_wave_file = Path(file_path)
+                    self.setWindowTitle(f"WaveScout - {Path(file_path).name}")
+                    self.statusBar().showMessage(f"Loaded: {Path(file_path).name}")
+                    tprint(f"Successfully loaded waveform: {file_path}")
+
             # Update design tree if we have a waveform
             # Defer heavy UI updates to allow UI to remain responsive
             from PySide6.QtCore import QTimer
@@ -1437,7 +1438,7 @@ class WaveScoutMainWindow(FramelessWindow):
             def update_design_tree():
                 """Update design tree with loaded waveform."""
                 tprint(f"QTimer callback: updating design tree")
-                if session.waveform_db and self.design_tree_view:
+                if session.waveform_files and self.design_tree_view:
                     self.design_tree_view.set_waveform_files(session.waveform_files)
                 tprint(f"QTimer callback: design tree updated")
 
@@ -1473,17 +1474,12 @@ class WaveScoutMainWindow(FramelessWindow):
         """
         # For backward compatibility, just add nodes immediately
         # The new async system will handle the actual loading
-        waveform_db = self.wave_widget.session.waveform_db
-        if not waveform_db:
+        if not self.wave_widget.session.waveform_files:
             return
 
         # Just add the nodes - signals will load asynchronously via new system
         for node in signal_nodes:
             self._add_node_to_session(node)
-
-        # Trigger async loading through new system if available
-        if hasattr(waveform_db, 'load_signals_async'):
-            waveform_db.load_signals_async(handles)
     
     def _on_signals_loaded(self, result=None):
         """Handle successful signal loading.
@@ -1831,9 +1827,9 @@ class WaveScoutMainWindow(FramelessWindow):
         
         # Get current waveform database
         waveform_db = None
-        if self.wave_widget.session:
-            waveform_db = self.wave_widget.session.waveform_db
-        
+        if self.wave_widget.session and self.wave_widget.session.waveform_files:
+            waveform_db = self.wave_widget.session.get_primary_file().waveform_db
+
         # Show instantiation dialog
         dialog = InstantiateSnippetDialog(snippet, waveform_db, self)
         
@@ -1865,9 +1861,10 @@ class WaveScoutMainWindow(FramelessWindow):
                 )
 
                 # NOW trigger async loading after nodes are in the session tree
-                if success and handles_to_load and self.wave_widget.session and self.wave_widget.session.waveform_db:
-                    if hasattr(self.wave_widget.session.waveform_db, 'load_signals_async'):
-                        self.wave_widget.session.waveform_db.load_signals_async(handles_to_load)
+                if success and handles_to_load and self.wave_widget.session and self.wave_widget.session.waveform_files:
+                    primary_file = self.wave_widget.session.get_primary_file()
+                    if primary_file and hasattr(primary_file.waveform_db, 'load_signals_async'):
+                        primary_file.waveform_db.load_signals_async(handles_to_load)
                 
                 if success:
                     QMessageBox.information(
@@ -1886,9 +1883,9 @@ class WaveScoutMainWindow(FramelessWindow):
         from wavescout.snippet_dialogs import InstantiateSnippetDialog
         from wavescout.snippet_manager import SnippetManager
         from wavescout.data_model import GroupNode
-        
+
         manager = SnippetManager()
-        waveform_db = self.wave_widget.session.waveform_db
+        waveform_db = self.wave_widget.session.get_primary_file().waveform_db if self.wave_widget.session.waveform_files else None
         
         for name in snippet_names:
             # Load snippet from file (reuse existing loading)

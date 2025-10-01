@@ -196,7 +196,9 @@ class TestWaveformController:
         # Create session with real waveform
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Create controller and set session
         controller = WaveformController()
@@ -226,7 +228,9 @@ class TestWaveformController:
         # Create session with real waveform
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Create controller and set session
         controller = WaveformController()
@@ -253,7 +257,9 @@ class TestWaveformController:
         # Create session with real waveform
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Create controller and set session
         controller = WaveformController()
@@ -346,7 +352,9 @@ class TestSessionPersistence:
         # Create session with real waveform
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Find and add clock signal to root nodes
         clock_handle = db.find_handle_by_path('apb_testbench.pclk')
@@ -390,7 +398,9 @@ class TestSessionPersistence:
         # Create session with real waveform but no clock signal
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Add a non-clock signal to root nodes
         data_handle = db.find_handle_by_path('apb_testbench.pwdata')
@@ -430,7 +440,9 @@ class TestRealWaveform:
         # Create session with real waveform and event bus
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Ensure event bus is set up for async loading
         if not hasattr(db, '_event_bus') or db._event_bus is None:
@@ -474,7 +486,9 @@ class TestRealWaveform:
         # Create session with real waveform
         test_file = get_test_input_path(TestFiles.APB_SIM_VCD)
         session = create_sample_session(str(test_file))
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        assert primary_file is not None
+        db = primary_file.waveform_db
 
         # Create controller and set session
         controller = WaveformController()

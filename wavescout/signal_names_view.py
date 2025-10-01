@@ -315,8 +315,10 @@ class SignalNamesView(BaseColumnView):
             menu.addAction(navigate_action)
 
             # Add clock signal options if this is a valid clock signal
-            if self._controller.session and self._controller.session.waveform_db:
-                db = self._controller.session.waveform_db
+            if self._controller.session and self._controller.session.waveform_files:
+                primary_file = self._controller.session.get_primary_file()
+                if primary_file:
+                    db = primary_file.waveform_db
                 if node.handle is not None:
                     if is_valid_clock_signal(node.var):
                         menu.addSeparator()
@@ -709,8 +711,10 @@ class SignalNamesView(BaseColumnView):
 
             # Get waveform_db if available for proper deserialization
             waveform_db = None
-            if self._controller.session and self._controller.session.waveform_db:
-                waveform_db = self._controller.session.waveform_db
+            if self._controller.session and self._controller.session.waveform_files:
+                primary_file = self._controller.session.get_primary_file()
+                if primary_file:
+                    waveform_db = primary_file.waveform_db
 
             nodes = []
             for node_data in data.get('nodes', []):
@@ -745,7 +749,7 @@ class SignalNamesView(BaseColumnView):
     
     def _validate_nodes(self, nodes: List[TreeNode]) -> List[TreeNode]:
         """Validate nodes against current WaveformDB, filtering out invalid handles."""
-        if not self._controller.session or not self._controller.session.waveform_db:
+        if not self._controller.session or not self._controller.session.waveform_files:
             # If no waveform loaded, keep groups but remove signals
             validated: List[TreeNode] = []
             for node in nodes:
@@ -755,7 +759,10 @@ class SignalNamesView(BaseColumnView):
                     validated.append(node)
             return validated
 
-        db = self._controller.session.waveform_db
+        primary_file = self._controller.session.get_primary_file()
+        if not primary_file or not primary_file.waveform_db:
+            return []
+        db = primary_file.waveform_db
         validated2: List[TreeNode] = []
 
         for node in nodes:

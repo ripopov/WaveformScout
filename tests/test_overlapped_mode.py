@@ -29,7 +29,9 @@ def test_overlapped_group_periodic_signals(qtbot):
     session: WaveformSession = create_sample_session(str(vcd_path))
 
     # Build three signal nodes from the DB
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None
     names = ["sine_1khz", "cosine_2khz", "square_4khz"]
     found = _find_vars_by_names(db, names)
@@ -99,7 +101,9 @@ def test_overlapped_mode_triggers_immediate_rerender(qtbot):
     # Load periodic signals VCD
     vcd_path = get_test_input_path("periodic_signals.vcd")
     session = create_sample_session(str(vcd_path))
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None
 
     # Collect three known signals by name suffixes

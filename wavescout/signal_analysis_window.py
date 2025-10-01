@@ -427,7 +427,7 @@ class SignalAnalysisWindow(QDialog):
     
     def _start_analysis(self) -> None:
         """Start the signal analysis."""
-        if not self._controller.session or not self._controller.session.waveform_db:
+        if not self._controller.session or not self._controller.session.waveform_files:
             QMessageBox.warning(self, "Error", "No waveform loaded")
             return
         
@@ -463,29 +463,41 @@ class SignalAnalysisWindow(QDialog):
             else:
                 # Fallback to global
                 start_time = 0
-                time_table = self._controller.session.waveform_db.get_time_table()
-                end_time = time_table[-1] if time_table else 100000000
+                primary_file = self._controller.session.get_primary_file()
+                if primary_file and primary_file.waveform_db:
+                    time_table = primary_file.waveform_db.get_time_table()
+                    end_time = time_table[-1] if time_table else 100000000
+                else:
+                    end_time = 100000000
         else:
             # Use global interval
             start_time = 0
-            time_table = self._controller.session.waveform_db.get_time_table()
-            end_time = time_table[-1] if time_table else 100000000
-        
+            primary_file = self._controller.session.get_primary_file()
+            if primary_file and primary_file.waveform_db:
+                time_table = primary_file.waveform_db.get_time_table()
+                end_time = time_table[-1] if time_table else 100000000
+            else:
+                end_time = 100000000
+
         # Clear previous results but keep signal names
         self._results.clear()
         # Clear only the value columns (1-4), keep signal names (column 0)
         for i in range(len(self._selected_signals)):
             for j in range(1, 5):  # Only columns 1-4 (Min, Max, Sum, Average)
                 self._results_table.setItem(i, j, QTableWidgetItem(""))
-        
+
         # Setup progress bar
         self._progress_bar.setValue(0)
         self._progress_bar.setVisible(True)
         self._start_button.setEnabled(False)
-        
+
         # Create and start worker thread
+        primary_file = self._controller.session.get_primary_file()
+        if not primary_file:
+            QMessageBox.warning(self, "Error", "No waveform file loaded")
+            return
         self._worker = SignalAnalysisWorker(
-            self._controller.session.waveform_db,
+            primary_file.waveform_db,
             self._selected_signals,
             sampling_mode,
             sampling_signal,

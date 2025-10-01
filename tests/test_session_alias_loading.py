@@ -173,10 +173,12 @@ class TestSessionAliasLoading:
             session = load_session(session_file)
             
             assert session is not None
-            assert session.waveform_db is not None
-            
+            assert session.waveform_files
+
             # Check that signals are loaded correctly
-            db = session.waveform_db
+            primary_file = session.get_primary_file()
+            assert primary_file is not None
+            db = primary_file.waveform_db
             
             # Test pready (handle 0) - should be a 1-bit signal with value 1 at t=0
             value_pready = _test_sample(db, 0, 0)
@@ -226,10 +228,12 @@ class TestSessionAliasLoading:
             session = load_session(session_file)
             
             assert session is not None
-            assert session.waveform_db is not None
-            
+            assert session.waveform_files
+
             # Check that signals are loaded correctly
-            db = session.waveform_db
+            primary_file = session.get_primary_file()
+            assert primary_file is not None
+            db = primary_file.waveform_db
             
             # Test pready (handle 0)
             value_pready = _test_sample(db, 0, 0)
@@ -273,7 +277,9 @@ class TestSessionAliasLoading:
             # Load session
             session = load_session(session_file)
 
-            db = session.waveform_db
+            primary_file = session.get_primary_file()
+            assert primary_file is not None
+            db = primary_file.waveform_db
 
             # Test values for handle 0 (pready)
             for t in [0, 100, 1000, 10000]:

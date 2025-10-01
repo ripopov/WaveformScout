@@ -367,7 +367,6 @@ class WaveformFileReference:
 
 @dataclass
 class WaveformSession:
-    waveform_db: Optional['WaveformDB'] = None  # DEPRECATED: For backward compatibility only, use waveform_files instead
     waveform_files: List[WaveformFileReference] = field(default_factory=list)  # List of loaded waveform files
     next_file_id: int = 0  # Counter for generating unique file IDs
     root_nodes: List[TreeNode] = field(default_factory=list)
@@ -381,6 +380,8 @@ class WaveformSession:
     clock_signal: Optional[tuple[Time, Time, TreeNode]] = None  # Clock period, phase offset, and signal node for clock-based grid display
     loading_handles: set[SignalHandle] = field(default_factory=set)  # Handles currently being loaded asynchronously
     sampling_signal: Optional[TreeNode] = None  # Signal used for sampling in signal analysis
+    waveform_min_time: Time = 0  # Minimum time across all loaded waveforms
+    waveform_max_time: Optional[Time] = None  # Maximum time across all loaded waveforms
 
     def get_file_by_id(self, file_id: int) -> Optional[WaveformFileReference]:
         """Look up file by ID."""
@@ -392,6 +393,27 @@ class WaveformSession:
     def get_primary_file(self) -> Optional[WaveformFileReference]:
         """Returns first file (backward compatibility)."""
         return self.waveform_files[0] if self.waveform_files else None
+
+    def update_time_bounds(self) -> None:
+        """Update waveform time boundaries from all loaded waveform files.
+
+        Finds the maximum time across all loaded waveforms in multi-file mode.
+        """
+        max_time = None
+
+        try:
+            # Find max time across all loaded waveforms
+            for file_ref in self.waveform_files:
+                if file_ref.waveform_db:
+                    time_table = file_ref.waveform_db.get_time_table()
+                    if time_table and len(time_table) > 0:
+                        file_max = time_table[-1]
+                        if max_time is None or file_max > max_time:
+                            max_time = file_max
+
+            self.waveform_max_time = max_time
+        except:
+            self.waveform_max_time = None
 
     def add_waveform_file(self, file_path: str, waveform_db: 'WaveformDB') -> WaveformFileReference:
         """Creates new file reference with next_file_id, appends to list, increments counter."""
@@ -408,8 +430,7 @@ class WaveformSession:
         self.waveform_files.append(file_ref)
         self.next_file_id += 1
 
-        # Set waveform_db to first file for backward compatibility
-        if len(self.waveform_files) == 1:
-            self.waveform_db = waveform_db
+        # Update time bounds after adding file
+        self.update_time_bounds()
 
         return file_ref

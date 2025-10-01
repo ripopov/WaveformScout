@@ -40,14 +40,16 @@ def test_copy_results():
         
         # Add some test signals
         test_signals = []
-        if session.waveform_db:
+        primary_file = session.get_primary_file()
+        if primary_file and primary_file.waveform_db:
+            waveform_db = primary_file.waveform_db
             # Get first 3 signal handles using the new API
-            handles = session.waveform_db.get_all_handles()[:3]
+            handles = waveform_db.get_all_handles()[:3]
             for handle in handles:
-                var = session.waveform_db.var_from_handle(handle)
+                var = waveform_db.var_from_handle(handle)
                 if var:
                     # Use the proper load_signal method to create AsyncLoadedSignal
-                    async_signal = session.waveform_db.load_signal(handle)
+                    async_signal = waveform_db.load_signal(handle)
 
                     # Wait for signal to load with timeout
                     import time
@@ -62,7 +64,7 @@ def test_copy_results():
                         print(f"WARNING: Signal {handle} did not load in time")
 
                     signal = SignalNode(
-                        name=var.full_name(session.waveform_db.hierarchy),
+                        name=var.full_name(waveform_db.hierarchy),
                         var=var,  # Add the required var field
                         handle=handle,
                         signal=async_signal,

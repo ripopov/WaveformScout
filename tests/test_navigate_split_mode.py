@@ -52,10 +52,13 @@ class TestNavigateSplitMode:
 
         # Get waveform_db from loaded session
         session = window.wave_widget.session
-        if not session or not session.waveform_db:
+        if not session or not session.waveform_files:
             pytest.skip("No waveform database loaded")
 
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        if not primary_file or not primary_file.waveform_db:
+            pytest.skip("No waveform database loaded")
+        db = primary_file.waveform_db
         hierarchy = db.hierarchy
 
         # Find a signal matching our test path or use first available
@@ -160,10 +163,13 @@ class TestNavigateSplitMode:
 
         # Get waveform_db from loaded session
         session = window.wave_widget.session
-        if not session or not session.waveform_db:
+        if not session or not session.waveform_files:
             pytest.skip("No waveform database loaded")
 
-        db = session.waveform_db
+        primary_file = session.get_primary_file()
+        if not primary_file or not primary_file.waveform_db:
+            pytest.skip("No waveform database loaded")
+        db = primary_file.waveform_db
         hierarchy = db.hierarchy
 
         # Find a signal for testing

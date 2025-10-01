@@ -66,7 +66,7 @@ class MarkerTestHelper:
 
             # Check if session and design tree are loaded
             if (window.wave_widget.session is not None and
-                window.wave_widget.session.waveform_db is not None and
+                window.wave_widget.session.waveform_files and
                 window.design_tree_view.scope_tree_model is not None and
                 window.design_tree_view.scope_tree_model.rowCount() > 0):
                 return
@@ -83,7 +83,8 @@ class MarkerTestHelper:
         """
         design_tree_view = window.design_tree_view
         model = design_tree_view.scope_tree_model
-        if not model or not design_tree_view.waveform_db:
+        session = window.wave_widget.session
+        if not model or not session or not session.waveform_files:
             return None
 
         # Track initial signal count
@@ -245,7 +246,10 @@ def test_marker_integration(qtbot):
             # Fallback: Add a signal directly
             print("   Note: Using fallback method to add signal")
             session = window.wave_widget.session
-            waveform_db = session.waveform_db
+            primary_file = session.get_primary_file()
+            if not primary_file or not primary_file.waveform_db:
+                return None
+            waveform_db = primary_file.waveform_db
 
             if waveform_db and waveform_db.hierarchy:
                 # Find first variable in hierarchy

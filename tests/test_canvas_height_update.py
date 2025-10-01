@@ -39,7 +39,9 @@ def test_canvas_updates_on_height_change(qtbot):
     qtbot.waitExposed(widget)
     
     # Add multiple signals
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     assert db is not None and db.hierarchy is not None
     
     signal_patterns = {
@@ -132,7 +134,9 @@ def test_multiple_height_changes_update_canvas(qtbot):
     qtbot.waitExposed(widget)
     
     # Add a signal
-    db = session.waveform_db
+    primary_file = session.get_primary_file()
+    assert primary_file is not None
+    db = primary_file.waveform_db
     signal_patterns = {"prdata": ("apb_testbench.prdata", None)}
     found_nodes = helper.add_signals_to_session(db, session, db.hierarchy, signal_patterns)
     

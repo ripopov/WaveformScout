@@ -68,7 +68,7 @@ class FSTTestHelper:
         
         while (time.time() - start_time) * 1000 < timeout_ms:
             if (window.wave_widget.session is not None and
-                window.wave_widget.session.waveform_db is not None and
+                window.wave_widget.session.waveform_files and
                 window.design_tree_view.scope_tree_model is not None and
                 window.design_tree_view.scope_tree_model.rowCount() > 0):
                 return
@@ -233,7 +233,7 @@ def test_fst_loading():
         
         # Verify correct backend was used
         session = window.wave_widget.session
-        assert session.waveform_db is not None
+        assert session.waveform_files
         print("   [OK] Application started and FST loaded")
         
         # Step 2: Navigate to top.des scope

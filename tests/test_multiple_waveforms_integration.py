@@ -326,19 +326,19 @@ def test_time_range_clipping_with_different_duration_waveforms(qtbot):
     # Step 4: Add signals from both files and verify they are not clipped
     print("\n=== Step 4: Verifying signals are not clipped ===")
 
-    # Check canvas waveform bounds
-    canvas = window.wave_widget._canvas
-    print(f"Canvas _waveform_max_time: {canvas._waveform_max_time}")
+    # Check session waveform bounds (moved from canvas to session in refactoring)
+    session = window.wave_widget.controller.session
+    print(f"Session waveform_max_time: {session.waveform_max_time}")
 
-    # The canvas should also be aware of the full time range
+    # The session should be aware of the full time range across all files
     # This is where the clipping bug might manifest
-    if canvas._waveform_max_time is not None:
-        assert canvas._waveform_max_time >= 5000000000, \
-            f"BUG REPRODUCED: Canvas _waveform_max_time is clipped to first file! " \
-            f"Expected >= 5000000000, got {canvas._waveform_max_time}"
-        print(f"✓ Canvas _waveform_max_time correctly set to {canvas._waveform_max_time}")
+    if session.waveform_max_time is not None:
+        assert session.waveform_max_time >= 5000000000, \
+            f"BUG REPRODUCED: Session waveform_max_time is clipped to first file! " \
+            f"Expected >= 5000000000, got {session.waveform_max_time}"
+        print(f"✓ Session waveform_max_time correctly set to {session.waveform_max_time}")
     else:
-        print("⚠ Canvas _waveform_max_time is None (might not be initialized yet)")
+        print("⚠ Session waveform_max_time is None (might not be initialized yet)")
 
     print("\n=== Test PASSED: Time range bug is NOT present (or has been fixed) ===")
 
