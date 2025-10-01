@@ -21,6 +21,9 @@ from .data_model import (
     ViewportConfig,
     Marker,
     AnalysisMode,
+    WaveformFileReference,
+    Timescale,
+    TimeUnit,
 )
 from .timing_utils import tprint
 from .waveform_db import WaveformDB
@@ -49,6 +52,7 @@ def _serialize_node(node: TreeNode) -> Dict[str, Any]:
             'handle': node.handle,
             'format': format_dict,
             'is_multi_bit': node.is_multi_bit,
+            'file_id': node.file_id,
             'group_render_mode': None,
             'is_expanded': True,
         })
@@ -204,6 +208,7 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
         is_multi_bit=data.get('is_multi_bit', False),
         instance_id=instance_id,
         var=var,
+        file_id=data.get('file_id', 0),  # Default to 0 for backward compatibility
     )
 
     return signal_node
@@ -428,15 +433,23 @@ def save_session(session: WaveformSession, path: pathlib.Path) -> None:
     # Ensure .json extension
     if not path.suffix.lower() == '.json':
         path = path.with_suffix('.json')
-    
-    # Get database URI if available (file_path is an optional property)
-    db_uri = None
-    if session.waveform_db:
-        db_uri = getattr(session.waveform_db, 'file_path', None)
-    
+
+    # Serialize waveform files (multi-file format)
+    waveform_files = []
+    for file_ref in session.waveform_files:
+        waveform_files.append({
+            'file_id': file_ref.file_id,
+            'file_path': file_ref.file_path,
+            'timescale': {
+                'factor': file_ref.timescale.factor,
+                'unit': file_ref.timescale.unit.value
+            }
+        })
+
     # Serialize data
     data = {
-        'db_uri': db_uri,
+        'waveform_files': waveform_files,
+        'next_file_id': session.next_file_id,
         'root_nodes': [_serialize_node(node) for node in session.root_nodes],
         'viewport': asdict(session.viewport),
         'markers': [asdict(marker) for marker in session.markers],
@@ -444,14 +457,14 @@ def save_session(session: WaveformSession, path: pathlib.Path) -> None:
         'analysis_mode': asdict(session.analysis_mode),
         # Note: selected_nodes are not persisted as they are transient UI state
     }
-    
+
     # Add timescale if available
     if session.timescale:
         data['timescale'] = {
             'factor': session.timescale.factor,
             'unit': session.timescale.unit.value
         }
-    
+
     # Add clock signal if available
     if session.clock_signal:
         clock_period, phase_offset, clock_node = session.clock_signal
@@ -460,19 +473,19 @@ def save_session(session: WaveformSession, path: pathlib.Path) -> None:
             'phase_offset': phase_offset,
             'node_id': clock_node.instance_id  # Store node ID for reconnection
         }
-    
+
     # Add sampling signal if available
     if session.sampling_signal:
         data['sampling_signal'] = {
             'node_id': session.sampling_signal.instance_id  # Store node ID for reconnection
         }
-    
+
     # Add metadata
     data['_metadata'] = {
-        'version': '2.0',
+        'version': '3.0',  # Bumped to 3.0 for multi-file support
         'generated': datetime.now().isoformat()
     }
-    
+
     # Write JSON with indentation for readability
     with open(path, 'w') as f:
         json.dump(data, f, indent=2)
@@ -481,6 +494,7 @@ def save_session(session: WaveformSession, path: pathlib.Path) -> None:
 def load_session(path: pathlib.Path) -> WaveformSession:
     """
     Deserialize JSON to dataclasses and reconnect to waveform DB.
+    Supports both legacy (db_uri) and new multi-file format.
 
     Args:
         path: Path to the session file
@@ -497,17 +511,105 @@ def load_session(path: pathlib.Path) -> WaveformSession:
         data = json.load(f)
     tprint(f"  load_session.read_json: {time.time() - json_start:.3f}s")
 
-    # Reconnect to waveform database if URI is provided
-    waveform_db = None
-    db_uri = data.get('db_uri')
-    if db_uri and pathlib.Path(db_uri).exists():
+    # Detect format: new multi-file format or legacy single-file format
+    waveform_files: List[WaveformFileReference] = []
+    next_file_id = 0
+    missing_files: List[str] = []
+    max_duration = 0
+    file_id_to_db: Dict[int, WaveformDB] = {}
+
+    from wavescout.application.event_bus import EventBus
+    event_bus = EventBus()
+
+    if 'waveform_files' in data:
+        # New multi-file format
         db_start = time.time()
-        # Create WaveformDB with EventBus for async loading to work
-        from wavescout.application.event_bus import EventBus
-        event_bus = EventBus()
-        waveform_db = WaveformDB(event_bus=event_bus)
-        waveform_db.open(db_uri)
-        tprint(f"  load_session.open_waveform_db: {time.time() - db_start:.3f}s")
+        for file_data in data.get('waveform_files', []):
+            file_id = file_data['file_id']
+            file_path = file_data['file_path']
+
+            if not pathlib.Path(file_path).exists():
+                missing_files.append(file_path)
+                tprint(f"  Warning: File not found: {file_path}")
+                continue
+
+            try:
+                # Open WaveformDB
+                waveform_db = WaveformDB(event_bus=event_bus)
+                waveform_db.open(file_path)
+
+                # Validate timescale against first file
+                timescale_data = file_data['timescale']
+                unit = TimeUnit.from_string(timescale_data['unit'])
+                if not unit:
+                    tprint(f"  Warning: Invalid timescale unit in file data: {timescale_data['unit']}")
+                    continue
+
+                expected_timescale = Timescale(factor=timescale_data['factor'], unit=unit)
+
+                actual_timescale = waveform_db.get_timescale()
+                if actual_timescale is None:
+                    tprint(f"  Warning: No timescale available for {file_path}")
+                    continue
+
+                if waveform_files and (actual_timescale.factor != expected_timescale.factor or
+                                       actual_timescale.unit != expected_timescale.unit):
+                    tprint(f"  Error: Timescale mismatch for {file_path}")
+                    continue
+
+                # Create file reference
+                file_ref = WaveformFileReference(
+                    file_id=file_id,
+                    file_path=file_path,
+                    waveform_db=waveform_db,
+                    timescale=actual_timescale
+                )
+                waveform_files.append(file_ref)
+                file_id_to_db[file_id] = waveform_db
+
+                # Track max duration
+                time_table = waveform_db.get_time_table()
+                if time_table and len(time_table) > 0:
+                    end_time = time_table[-1]
+                    if end_time > max_duration:
+                        max_duration = end_time
+
+            except Exception as e:
+                tprint(f"  Error loading file {file_path}: {e}")
+                missing_files.append(file_path)
+
+        next_file_id = data.get('next_file_id', len(waveform_files))
+        tprint(f"  load_session.open_waveform_dbs: {time.time() - db_start:.3f}s")
+
+    else:
+        # Legacy single-file format - convert to multi-file format
+        tprint("  Detected legacy session format, upgrading...")
+        db_uri = data.get('db_uri')
+        if db_uri and pathlib.Path(db_uri).exists():
+            db_start = time.time()
+            waveform_db = WaveformDB(event_bus=event_bus)
+            waveform_db.open(db_uri)
+
+            timescale = waveform_db.get_timescale()
+            if timescale is None:
+                # Default to picoseconds if no timescale available
+                timescale = Timescale(1, TimeUnit.PICOSECONDS)
+
+            file_ref = WaveformFileReference(
+                file_id=0,
+                file_path=db_uri,
+                waveform_db=waveform_db,
+                timescale=timescale
+            )
+            waveform_files.append(file_ref)
+            file_id_to_db[0] = waveform_db
+            next_file_id = 1
+
+            time_table = waveform_db.get_time_table()
+            if time_table and len(time_table) > 0:
+                max_duration = time_table[-1]
+
+            tprint(f"  load_session.open_waveform_db: {time.time() - db_start:.3f}s")
 
     # Deserialize viewport
     viewport_start = time.time()
@@ -530,18 +632,20 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     analysis_data = data.get('analysis_mode', {})
     analysis_mode = AnalysisMode(**analysis_data)
 
-    # Deserialize nodes
+    # Deserialize nodes - pass None for waveform_db, will resolve handles later per file
     nodes_start = time.time()
     root_nodes = []
     for node_data in data.get('root_nodes', []):
-        node = _deserialize_node(node_data, waveform_db=waveform_db, parent=None)
+        node = _deserialize_node(node_data, waveform_db=None, parent=None)
         root_nodes.append(node)
     tprint(f"  load_session.deserialize_nodes ({len(root_nodes)} root nodes): {time.time() - nodes_start:.3f}s")
 
     # Create session
     session_start = time.time()
     session = WaveformSession(
-        waveform_db=waveform_db if waveform_db else None,
+        waveform_db=waveform_files[0].waveform_db if waveform_files else None,  # Keep for backward compatibility
+        waveform_files=waveform_files,
+        next_file_id=next_file_id,
         root_nodes=root_nodes,
         viewport=viewport,
         markers=markers,
@@ -554,33 +658,70 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     # Restore timescale if available
     timescale_data = data.get('timescale')
     if timescale_data:
-        from .data_model import TimeUnit, Timescale
         unit = TimeUnit.from_string(timescale_data['unit'])
         if unit:
             session.timescale = Timescale(
                 factor=timescale_data['factor'],
                 unit=unit
             )
-    # If timescale not in saved data but waveform_db is loaded, get it from there
-    elif waveform_db:
-        timescale = waveform_db.get_timescale()
-        if timescale:
-            session.timescale = timescale
-    
-    # Resolve signal handles if waveform_db is available
-    handles_to_load: List[int] = []
-    if waveform_db:
-        handles_to_load = _resolve_signal_handles(session.root_nodes, waveform_db)
+    # If timescale not in saved data but waveform_files is loaded, get it from first file
+    elif waveform_files:
+        session.timescale = waveform_files[0].timescale
 
-        if handles_to_load:
-            for handle in handles_to_load:
-                waveform_db.load_signal(handle)
+    # Resolve signal handles per file
+    handles_to_load_by_file: Dict[int, List[int]] = {}
 
-        # Update viewport total_duration from the waveform's time table
-        time_table = waveform_db.get_time_table()
-        if time_table and len(time_table) > 0:
-            # The last time in the time table is the total duration in timescale units
-            session.viewport.total_duration = time_table[-1]
+    def resolve_node_handles(node: TreeNode) -> None:
+        """Resolve handles for a node, looking up the correct WaveformDB by file_id."""
+        if isinstance(node, SignalNode):
+            file_id = node.file_id
+            waveform_db = file_id_to_db.get(file_id)
+
+            if waveform_db and node.name:
+                # Try to resolve the handle by name
+                handle = waveform_db.find_handle_by_path(node.name)
+
+                # If not found and name has trailing spaces, try without spaces
+                if handle is None and node.name.endswith(' '):
+                    trimmed_name = node.name.rstrip()
+                    handle = waveform_db.find_handle_by_path(trimmed_name)
+                    if handle is not None:
+                        node.name = trimmed_name
+
+                # Update the handle if we found it
+                if handle is not None:
+                    node.handle = handle
+                    node.signal = waveform_db.load_signal(handle)
+
+                    # Track handles that need async loading
+                    if not node.signal.is_loaded():
+                        if file_id not in handles_to_load_by_file:
+                            handles_to_load_by_file[file_id] = []
+                        handles_to_load_by_file[file_id].append(handle)
+
+                    # Update the var field
+                    var = waveform_db.get_var(handle)
+                    if var is not None:
+                        node.var = var
+
+        if isinstance(node, GroupNode):
+            for child in node.children:
+                resolve_node_handles(child)
+
+    # Process all root nodes
+    for node in root_nodes:
+        resolve_node_handles(node)
+
+    # Trigger async loading for all handles
+    for file_id, handles in handles_to_load_by_file.items():
+        db = file_id_to_db.get(file_id)
+        if db and handles:
+            for handle in handles:
+                db.load_signal(handle)
+
+    # Update viewport total_duration from max of all loaded files
+    if max_duration > 0:
+        session.viewport.total_duration = max_duration
     
     # Update the SignalNode counter to avoid ID conflicts
     # Find the maximum instance_id in all loaded nodes

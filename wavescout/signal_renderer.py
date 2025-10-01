@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from pyrox import Signal
     from wavescout.waveform_db import Var
     from .canvas_layout import CanvasLayout, GroupContentDescriptor
+    from .data_model import WaveformSession
 
 from .data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, TreeNode, SignalRangeCache, DataFormat, GroupRenderMode
 from .signal_sampling import SignalDrawingData, ValueKind
@@ -51,6 +52,7 @@ class NodeInfo(TypedDict):
     instance_id: SignalNodeID
     is_selected: bool  # Whether this node is currently selected
     signal: Optional["Signal"]  # Cached Signal object from node.signal
+    file_id: int  # File ID to identify which waveform file this signal belongs to
 
 class RenderParams(TypedDict, total=False):
     width: int
@@ -62,7 +64,8 @@ class RenderParams(TypedDict, total=False):
     scroll_value: int
     visible_nodes_info: list[NodeInfo]
     visible_nodes: list[TreeNode]  # SignalNode objects
-    waveform_db: Optional[WaveformDB]
+    waveform_db: Optional[WaveformDB]  # DEPRECATED: Use session instead for multi-file support
+    session: Optional['WaveformSession']  # Session for looking up file-specific waveform_db
     generation: int
     base_row_height: int
     header_height: int
@@ -641,15 +644,17 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
                     data_format: DataFormat = DataFormat.UNSIGNED,
                     waveform_db: Optional[WaveformDB] = None,
                     start_time: Optional[Time] = None, end_time: Optional[Time] = None,
-                    signal_obj: Optional["Signal"] = None) -> Tuple[float, float]:
+                    signal_obj: Optional["Signal"] = None,
+                    file_id: int = 0,
+                    session: Optional["WaveformSession"] = None) -> Tuple[float, float]:
     """Return analog Y-range using a small cache keyed by signal instance.
-    
+
     Behavior
     - SCALE_TO_ALL_DATA: compute once per instance across the full recording (via DB if
       available, otherwise from visible samples) and cache as cache.min/max.
     - Other scaling: compute per viewport (start_time, end_time) and memoize in
       cache.viewport_ranges.
-    
+
     Args:
         instance_id: Unique SignalNode ID used as cache key.
         handle: DB handle used for global queries (may be None).
@@ -657,10 +662,12 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         scaling_mode: AnalogScalingMode enum controlling how the range is chosen.
         signal_range_cache: Dict[SignalNodeID, SignalRangeCache] owned by the canvas.
         signal_obj: Cached Signal object from node.signal (should be provided when handle exists).
-        waveform_db: Optional database facade for global-range computation.
+        waveform_db: Optional database facade for global-range computation (DEPRECATED for multi-file).
         start_time: Viewport start time.
         end_time: Viewport end time.
-    
+        file_id: File ID to look up the correct waveform_db in multi-file mode.
+        session: WaveformSession for looking up file-specific waveform_db.
+
     Returns:
         (min_val, max_val) range for mapping values to Y.
     """
@@ -673,16 +680,23 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
             viewport_ranges={},
             data_format=data_format
         )
-    
+
     cache = signal_range_cache[instance_id]
-    
+
     if scaling_mode == AnalogScalingMode.SCALE_TO_ALL_DATA:
         # Use global range computed from entire waveform
         if cache.min == float('inf'):
             # Compute and cache global range from database
-            if waveform_db and handle is not None:
+            # Get the correct waveform_db for this signal's file_id
+            file_waveform_db = waveform_db  # Default to passed waveform_db
+            if session:
+                file_ref = session.get_file_by_id(file_id)
+                if file_ref and file_ref.waveform_db:
+                    file_waveform_db = file_ref.waveform_db
+
+            if file_waveform_db and handle is not None:
                 # Note: var is not available in this context, would need to be passed as parameter
-                min_val, max_val = compute_global_signal_range(handle, waveform_db, data_format, signal_obj, None)
+                min_val, max_val = compute_global_signal_range(handle, file_waveform_db, data_format, signal_obj, None)
             else:
                 # Fallback to viewport data if db not available
                 min_val, max_val = compute_signal_range(drawing_data)
@@ -738,6 +752,8 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
     signal_range_cache = params.get('signal_range_cache', {})
     scaling_mode = node_info['format'].analog_scaling_mode
     waveform_db = params.get('waveform_db')
+    session = params.get('session')
+    file_id = node_info.get('file_id', 0)
 
     # Get cached signal object directly from node_info
     signal_obj = node_info.get('signal')
@@ -746,7 +762,7 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
         min_val, max_val = get_signal_range(
             instance_id, handle, drawing_data, scaling_mode, signal_range_cache,
             node_info['format'].data_format, waveform_db, params['start_time'], params['end_time'],
-            signal_obj
+            signal_obj, file_id, session
         )
     else:
         # Fallback to computing range from current data

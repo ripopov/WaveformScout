@@ -223,24 +223,25 @@ def test_load_session_missing_waveform():
     """Test loading a session when waveform file is missing."""
     original_session = create_test_session()
     # Change the waveform database path to a non-existent file
-    if original_session.waveform_db:
-        original_session.waveform_db.uri = "/nonexistent/path.vcd"
-    
+    if original_session.waveform_files:
+        original_session.waveform_files[0].file_path = "/nonexistent/path.vcd"
+
     # Save to temporary file
     with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
         temp_path = pathlib.Path(f.name)
-    
+
     try:
         # Save session
         save_session(original_session, temp_path)
-        
+
         # Load session - should succeed but without waveform_db
         loaded_session = load_session(temp_path)
-        
-        # Verify session loads but waveform_db is None
+
+        # Verify session loads but waveform_db is None (no files loaded)
         assert loaded_session.waveform_db is None
+        assert len(loaded_session.waveform_files) == 0
         assert len(loaded_session.root_nodes) == 2
-        
+
     finally:
         # Clean up
         temp_path.unlink(missing_ok=True)

@@ -8,7 +8,7 @@ and filtered variables in the bottom panel.
 from __future__ import annotations
 
 import time
-from typing import Optional, List, cast, TYPE_CHECKING
+from typing import Optional, List, cast, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from wavescout.waveform_db import Var
@@ -21,9 +21,10 @@ from PySide6.QtGui import QKeyEvent
 
 from pyrox import SignalHandle
 
-from .data_model import TreeNode, SignalNode, RenderType, DisplayFormat
+from .data_model import TreeNode, SignalNode, RenderType, DisplayFormat, WaveformFileReference
 from .settings_manager import SettingsManager
 from .scope_tree_model import ScopeTreeModel, DesignTreeNode
+from .multi_file_scope_tree_model import MultiFileScopeTreeModel
 from .vars_view import VarsView
 
 from .waveform_db import WaveformDB
@@ -42,14 +43,16 @@ class DesignTreeView(QWidget):
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        
+
         self.waveform_db: Optional['WaveformDB'] = None
-        self.scope_tree_model: Optional[ScopeTreeModel] = None
+        self.waveform_files: List[WaveformFileReference] = []
+        self.scope_tree_model: Optional[Union[ScopeTreeModel, MultiFileScopeTreeModel]] = None
         self.vars_view: Optional[VarsView] = None
-        
+        self.current_file_id: int = 0  # Track current file for signal creation
+
         # Settings manager
         self.settings_manager = SettingsManager()
-        
+
         # Setup UI
         self._setup_ui()
     
@@ -130,7 +133,70 @@ class DesignTreeView(QWidget):
             self.vars_view.set_variables([])
 
         tprint(f"  DesignTreeView.set_waveform_db completed (total: {time.time() - start_time:.3f}s)")
-    
+
+    def set_waveform_files(self, waveform_files: List[WaveformFileReference]) -> None:
+        """Set multiple waveform files and initialize multi-file model."""
+        tprint(f"DesignTreeView.set_waveform_files called with {len(waveform_files)} files")
+        start_time = time.time()
+
+        # Check if files are already set (avoid redundant rebuilds that clear selection)
+        # Compare by content: check if we have the same number of files with same file_ids
+        if (self.waveform_files and self.scope_tree_model is not None and
+            len(self.waveform_files) == len(waveform_files) and
+            all(a.file_id == b.file_id for a, b in zip(self.waveform_files, waveform_files))):
+            tprint(f"  Files already set, skipping rebuild")
+            return
+
+        self.waveform_files = list(waveform_files)  # Store a copy to avoid reference issues
+
+        if not waveform_files:
+            self.scope_tree_model = None
+            self.scope_tree.setModel(None)
+            if self.vars_view:
+                self.vars_view.set_variables([])
+            tprint(f"  DesignTreeView cleared (took {time.time() - start_time:.3f}s)")
+            return
+
+        # Set waveform_db to first file for backward compatibility
+        self.waveform_db = waveform_files[0].waveform_db if waveform_files else None
+
+        if len(waveform_files) == 1:
+            # Single file mode - use regular ScopeTreeModel
+            self.current_file_id = waveform_files[0].file_id
+            self.scope_tree_model = ScopeTreeModel(waveform_files[0].waveform_db)
+        else:
+            # Multi-file mode - use MultiFileScopeTreeModel
+            self.current_file_id = waveform_files[0].file_id  # Default to first file
+            self.scope_tree_model = MultiFileScopeTreeModel(waveform_files)
+
+        # Set the model on the view
+        self.scope_tree.setModel(self.scope_tree_model)
+        self.scope_tree.selectionModel().currentChanged.connect(self._on_scope_selection_changed)
+
+        # Clear variables view
+        if self.vars_view:
+            self.vars_view.set_variables([])
+
+        tprint(f"  DesignTreeView.set_waveform_files completed (total: {time.time() - start_time:.3f}s)")
+
+    def _get_current_file_id(self) -> int:
+        """Get the file_id for the currently selected scope.
+
+        In single-file mode, returns the only file's ID.
+        In multi-file mode, determines from the current scope selection.
+        """
+        if len(self.waveform_files) == 1:
+            return self.waveform_files[0].file_id
+
+        # Multi-file mode: get file_id from current scope selection
+        if isinstance(self.scope_tree_model, MultiFileScopeTreeModel):
+            current_index = self.scope_tree.currentIndex()
+            if current_index.isValid():
+                return self.scope_tree_model.get_file_id_for_index(current_index)
+
+        # Default to current_file_id
+        return self.current_file_id
+
     def _create_signal_node(self, node: DesignTreeNode) -> Optional[TreeNode]:
         """Create a SignalNode from a tree node"""
         if node.is_scope or not self.waveform_db:
@@ -200,7 +266,8 @@ class DesignTreeView(QWidget):
             signal=signal,
             var=var_obj,  # Pass the var object
             format=format,
-            is_multi_bit=not is_single_bit
+            is_multi_bit=not is_single_bit,
+            file_id=self._get_current_file_id()
         )
 
         return signal_node
@@ -306,7 +373,7 @@ class DesignTreeView(QWidget):
         
         return True
     
-    def _find_scope_by_path(self, path_parts: List[str], model: ScopeTreeModel, parent: QModelIndex) -> QModelIndex:
+    def _find_scope_by_path(self, path_parts: List[str], model: Union[ScopeTreeModel, MultiFileScopeTreeModel], parent: QModelIndex) -> QModelIndex:
         """Recursively find a scope node by its path components.
         
         Args:
@@ -397,14 +464,19 @@ class DesignTreeView(QWidget):
         """Handle scope selection change in split mode."""
         if not current.isValid() or not self.scope_tree_model:
             return
-        
+
         # Get the selected scope node
         scope_node = current.internalPointer()
         if not scope_node:
             return
-        
+
         # Get variables for this scope
-        variables = self.scope_tree_model.get_variables_for_scope(scope_node)
+        # MultiFileScopeTreeModel takes index, ScopeTreeModel takes node
+        from .multi_file_scope_tree_model import MultiFileScopeTreeModel
+        if isinstance(self.scope_tree_model, MultiFileScopeTreeModel):
+            variables = self.scope_tree_model.get_variables_for_scope(current)
+        else:
+            variables = self.scope_tree_model.get_variables_for_scope(scope_node)
         
         # Update vars view
         if self.vars_view:
@@ -492,25 +564,43 @@ class DesignTreeView(QWidget):
     
     def _create_signal_node_from_var(self, var_data: 'VariableData') -> Optional[TreeNode]:
         """Create a SignalNode from variable data."""
-        if not var_data or not self.waveform_db:
+        if not var_data:
             return None
-        
+
+        # Get the current file_id to determine which WaveformDB to use
+        file_id = self._get_current_file_id()
+
+        # Get the correct WaveformDB for this file_id
+        current_db = None
+        if len(self.waveform_files) > 0:
+            # Multi-file mode: find the WaveformDB for the current file_id
+            for file_ref in self.waveform_files:
+                if file_ref.file_id == file_id:
+                    current_db = file_ref.waveform_db
+                    break
+        else:
+            # Single-file mode (backward compat): use self.waveform_db
+            current_db = self.waveform_db
+
+        if not current_db:
+            return None
+
         full_path = var_data.get('full_path', var_data.get('name'))
         if not full_path:
             return None
-        
+
         # Check if we have a var object directly in the data
         var = var_data.get('var')
 
-        # Look up handle by path
-        handle = self._find_signal_handle(full_path)
-        
+        # Look up handle by path using the correct WaveformDB
+        handle = current_db.find_handle_by_path(full_path)
+
         if handle is None:
             return None
-        
+
         # Ensure we have a var object
-        if var is None and self.waveform_db and handle is not None:
-            var = self.waveform_db.get_var(handle)
+        if var is None and current_db and handle is not None:
+            var = current_db.get_var(handle)
 
         if var is None:
             return None  # Cannot create signal without var
@@ -533,7 +623,7 @@ class DesignTreeView(QWidget):
             render_type = RenderType.BOOL if is_single_bit else RenderType.BUS
         format = DisplayFormat(render_type=render_type)
 
-        signal = self.waveform_db.load_signal(handle)
+        signal = current_db.load_signal(handle)
 
         signal_node = SignalNode(
             name=full_path,
@@ -541,7 +631,8 @@ class DesignTreeView(QWidget):
             signal=signal,
             var=var,  # Pass the var object
             format=format,
-            is_multi_bit=not is_single_bit
+            is_multi_bit=not is_single_bit,
+            file_id=file_id
         )
 
         return signal_node

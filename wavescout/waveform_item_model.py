@@ -193,15 +193,51 @@ class WaveformItemModel(QAbstractItemModel):
         # Nickname takes precedence, else use hierarchical display mode
         if node.nickname:
             return node.nickname
-        
+
+        # Get base name (with file prefix if needed)
+        base_name = self._get_display_name(node)
+
         # Use cached hierarchy levels from settings (0 = show full path)
         if self._cached_hierarchy_levels == 0:
-            return node.name
+            return base_name
         else:
             # Split hierarchical name and take last N levels
-            parts = node.name.split('.')
+            parts = base_name.split('.')
             n = self._cached_hierarchy_levels
-            return '.'.join(parts[-n:]) if len(parts) > n else node.name
+            return '.'.join(parts[-n:]) if len(parts) > n else base_name
+
+    def _get_display_name(self, node: TreeNode) -> str:
+        """Format node name with file prefix if needed.
+
+        Returns:
+            - Single file: node.name
+            - Multiple files, primary file (file_id=0): node.name
+            - Multiple files, other files: "{filename}:{node.name}"
+        """
+        # Groups don't need file prefix
+        if not isinstance(node, SignalNode):
+            return node.name
+
+        # Single file or no files loaded
+        if len(self._session.waveform_files) <= 1:
+            return node.name
+
+        # Multi-file mode
+        signal_node = node
+        file_ref = self._session.get_file_by_id(signal_node.file_id)
+
+        # Primary file (first in list) doesn't need prefix
+        if file_ref and file_ref == self._session.waveform_files[0]:
+            return node.name
+
+        # Other files need prefix
+        if file_ref:
+            from pathlib import Path
+            filename = Path(file_ref.file_path).name
+            return f"{filename}:{node.name}"
+
+        # Fallback if file not found
+        return node.name
     
     def _value_at_cursor(self, node: TreeNode) -> str:
         # Query WaveformDB for signal value at cursor time and format it according to node.format.data_format

@@ -327,19 +327,34 @@ class WaveformCanvas(QWidget):
         # This prevents generating commands with wrong viewport before setTimeRange is called
     
     def _update_waveform_bounds(self) -> None:
-        """Update the waveform time boundaries from the database."""
-        if not self._model or not self._model._session or not self._model._session.waveform_db:
+        """Update the waveform time boundaries from the database.
+
+        In multi-file mode, finds the maximum time across all loaded waveforms.
+        """
+        if not self._model or not self._model._session:
             self._waveform_max_time = None
             return
-        
+
+        session = self._model._session
+        max_time = None
+
         try:
-            # Get time table from waveform database
-            time_table = self._model._session.waveform_db.get_time_table()
-            if time_table and len(time_table) > 0:
-                # The last time in the time table is the maximum time
-                self._waveform_max_time = time_table[-1]
-            else:
-                self._waveform_max_time = None
+            # Multi-file support: find max time across all loaded waveforms
+            if session.waveform_files:
+                for file_ref in session.waveform_files:
+                    if file_ref.waveform_db:
+                        time_table = file_ref.waveform_db.get_time_table()
+                        if time_table and len(time_table) > 0:
+                            file_max = time_table[-1]
+                            if max_time is None or file_max > max_time:
+                                max_time = file_max
+            # Fallback to legacy single waveform_db (backward compatibility)
+            elif session.waveform_db:
+                time_table = session.waveform_db.get_time_table()
+                if time_table and len(time_table) > 0:
+                    max_time = time_table[-1]
+
+            self._waveform_max_time = max_time
         except:
             self._waveform_max_time = None
 
@@ -725,10 +740,13 @@ class WaveformCanvas(QWidget):
             node = row.source
             visible_nodes.append(node)
 
-        # Get waveform_db reference if available
+        # Get waveform_db and session references if available
         waveform_db = None
-        if self._model and self._model._session and self._model._session.waveform_db:
-            waveform_db = self._model._session.waveform_db
+        session = None
+        if self._model and self._model._session:
+            session = self._model._session
+            if self._model._session.waveform_db:
+                waveform_db = self._model._session.waveform_db
 
         return RenderParams(
             width=self.width(),
@@ -739,7 +757,8 @@ class WaveformCanvas(QWidget):
             cursor_time=self._cursor_time,
             scroll_value=scroll_value,
             visible_nodes=visible_nodes,
-            waveform_db=waveform_db,
+            waveform_db=waveform_db,  # DEPRECATED: kept for backward compatibility
+            session=session,  # Pass session for multi-file waveform_db lookup
             generation=self._render_generation,
             base_row_height=self._row_height,
             header_height=self._header_height,  # Include header height for proper rendering
@@ -1082,6 +1101,7 @@ class WaveformCanvas(QWidget):
                         'instance_id': node.instance_id,
                         'is_selected': is_selected,
                         'signal': node.signal.get_signal_blocking(timeout=0.001) if node.signal.is_loaded() else None,
+                        'file_id': node.file_id,
                     }
                     render_type = node.format.render_type
                     if render_type == RenderType.BOOL:

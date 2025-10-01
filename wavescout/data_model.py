@@ -134,6 +134,7 @@ class SignalNode(TreeNode):
     signal: "AsyncLoadedSignal" = field(repr=False, compare=False)
     format: DisplayFormat = field(default_factory=DisplayFormat)
     is_multi_bit: bool = False
+    file_id: int = 0  # Track which file this signal belongs to
 
     def _comparison_state(self) -> Tuple[Any, ...]:
         return (
@@ -144,6 +145,7 @@ class SignalNode(TreeNode):
             self.handle,
             self.format,
             self.is_multi_bit,
+            self.file_id,
             # signal excluded from comparison
         )
 
@@ -164,6 +166,7 @@ class SignalNode(TreeNode):
             signal=self.signal,  # Share AsyncLoadedSignal reference
             format=format_copy,
             is_multi_bit=self.is_multi_bit,
+            file_id=self.file_id,
         )
 
 
@@ -341,8 +344,18 @@ class SignalRangeCache:
     data_format: DataFormat = DataFormat.UNSIGNED  # The data format used for computing these ranges
 
 @dataclass
+class WaveformFileReference:
+    """Reference to a loaded waveform file with unique ID."""
+    file_id: int
+    file_path: str
+    waveform_db: Optional['WaveformDB']
+    timescale: Timescale
+
+@dataclass
 class WaveformSession:
-    waveform_db: Optional['WaveformDB'] = None  # Pointer to WaveformDB instance
+    waveform_db: Optional['WaveformDB'] = None  # DEPRECATED: For backward compatibility only, use waveform_files instead
+    waveform_files: List[WaveformFileReference] = field(default_factory=list)  # List of loaded waveform files
+    next_file_id: int = 0  # Counter for generating unique file IDs
     root_nodes: List[TreeNode] = field(default_factory=list)
     viewport: Viewport = field(default_factory=Viewport)
     markers: List[Marker] = field(default_factory=list)
@@ -354,3 +367,35 @@ class WaveformSession:
     clock_signal: Optional[tuple[Time, Time, TreeNode]] = None  # Clock period, phase offset, and signal node for clock-based grid display
     loading_handles: set[SignalHandle] = field(default_factory=set)  # Handles currently being loaded asynchronously
     sampling_signal: Optional[TreeNode] = None  # Signal used for sampling in signal analysis
+
+    def get_file_by_id(self, file_id: int) -> Optional[WaveformFileReference]:
+        """Look up file by ID."""
+        for file_ref in self.waveform_files:
+            if file_ref.file_id == file_id:
+                return file_ref
+        return None
+
+    def get_primary_file(self) -> Optional[WaveformFileReference]:
+        """Returns first file (backward compatibility)."""
+        return self.waveform_files[0] if self.waveform_files else None
+
+    def add_waveform_file(self, file_path: str, waveform_db: 'WaveformDB') -> WaveformFileReference:
+        """Creates new file reference with next_file_id, appends to list, increments counter."""
+        timescale = waveform_db.get_timescale()
+        if timescale is None:
+            # Default to picoseconds if no timescale available
+            timescale = Timescale(1, TimeUnit.PICOSECONDS)
+        file_ref = WaveformFileReference(
+            file_id=self.next_file_id,
+            file_path=file_path,
+            waveform_db=waveform_db,
+            timescale=timescale
+        )
+        self.waveform_files.append(file_ref)
+        self.next_file_id += 1
+
+        # Set waveform_db to first file for backward compatibility
+        if len(self.waveform_files) == 1:
+            self.waveform_db = waveform_db
+
+        return file_ref

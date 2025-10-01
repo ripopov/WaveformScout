@@ -68,15 +68,22 @@ def create_sample_session(vcd_path: str) -> WaveformSession:
     db = WaveformDB()
     db.open(vcd_path)
     session = WaveformSession()
+
+    # Use the new multi-file structure
+    file_ref = session.add_waveform_file(vcd_path, db)
+
+    # Set waveform_db for backward compatibility
     session.waveform_db = db
+
+    # Set timescale from the file
     timescale = db.get_timescale()
     if timescale:
         session.timescale = timescale
-    
+
     # Set the total duration from the waveform's time table
     time_table = db.get_time_table()
     if time_table and len(time_table) > 0:
         # The last time in the time table is the total duration in timescale units
         session.viewport.total_duration = time_table[-1]
-    
+
     return session

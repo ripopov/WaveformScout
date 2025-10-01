@@ -11,6 +11,9 @@ these callbacks and update their views accordingly.
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Iterable, Set, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from .waveform_db import WaveformDB
+
 from .data_model import (
     WaveformSession,
     TreeNode,
@@ -22,6 +25,8 @@ from .data_model import (
     DataFormat,
     GroupRenderMode,
     RenderType,
+    WaveformFileReference,
+    Timescale,
 )
 from .clock_utils import calculate_clock_period, is_valid_clock_signal
 from . import config
@@ -148,6 +153,93 @@ class WaveformController:
         # Also emit viewport and cursor to allow immediate refresh
         self._emit("viewport_changed")
         self._emit("cursor_changed")
+
+    def open_waveform_file(self, file_path: str) -> bool:
+        """Opens new waveform file and adds to session.
+
+        Args:
+            file_path: Path to the waveform file
+
+        Returns:
+            True on success, False on failure (shows error message)
+        """
+        from pathlib import Path
+        from wavescout.waveform_db import WaveformDB
+
+        if not self.session:
+            return False
+
+        # Canonicalize path
+        file_path = str(Path(file_path).resolve())
+
+        # Check for duplicate
+        for file_ref in self.session.waveform_files:
+            if file_ref.file_path == file_path:
+                tprint(f"[CONTROLLER] File already loaded: {file_path}")
+                return False
+
+        try:
+            # Create and open new WaveformDB instance
+            waveform_db = WaveformDB()
+            waveform_db._event_bus = self.event_bus
+            from wavescout.waveform_db import AsyncEventBridge
+            waveform_db._event_bridge = AsyncEventBridge(self.event_bus)
+            waveform_db.open(file_path)
+
+            # Validate timescale against existing files
+            if self.session.waveform_files:
+                first_file = self.session.waveform_files[0]
+                new_timescale = waveform_db.get_timescale()
+                if new_timescale and (new_timescale.factor != first_file.timescale.factor or
+                                      new_timescale.unit != first_file.timescale.unit):
+                    error_msg = (
+                        f"Cannot load {Path(file_path).name}: timescale mismatch. "
+                        f"Expected {first_file.timescale.factor}{first_file.timescale.unit.value}, "
+                        f"got {new_timescale.factor}{new_timescale.unit.value}"
+                    )
+                    tprint(f"[CONTROLLER] {error_msg}")
+                    return False
+
+            # Add to session
+            file_ref = self.session.add_waveform_file(file_path, waveform_db)
+
+            # Update viewport.total_duration if new file is longer
+            time_table = waveform_db.get_time_table()
+            if time_table and len(time_table) > 0:
+                end_time = time_table[-1]
+                if end_time > self.session.viewport.total_duration:
+                    self.session.viewport.total_duration = end_time
+
+            # Update session timescale if this is the first file
+            if len(self.session.waveform_files) == 1:
+                timescale = waveform_db.get_timescale()
+                if timescale:
+                    self.session.timescale = timescale
+
+            # Emit session_changed event
+            self._emit("session_changed")
+
+            tprint(f"[CONTROLLER] Opened file: {file_path}, file_id={file_ref.file_id}")
+            return True
+
+        except Exception as e:
+            tprint(f"[CONTROLLER] Failed to open file {file_path}: {e}")
+            return False
+
+    def get_waveform_db_for_signal(self, node: SignalNode) -> Optional['WaveformDB']:
+        """Returns WaveformDB instance for given signal's file_id.
+
+        Args:
+            node: SignalNode to lookup
+
+        Returns:
+            WaveformDB instance or None if not found
+        """
+        if not self.session:
+            return None
+
+        file_ref = self.session.get_file_by_id(node.file_id)
+        return file_ref.waveform_db if file_ref else None
 
     def set_selection_by_ids(self, ids: Iterable[int]) -> None:
         """Set selection given node instance IDs; sync Session.selected_nodes."""
@@ -1029,8 +1121,8 @@ class WaveformController:
         if not isinstance(node, SignalNode):
             return
 
-        # Get the waveform database
-        db = self.session.waveform_db
+        # Get the waveform database for this signal's file
+        db = self.get_waveform_db_for_signal(node)
         if not db or node.handle is None:
             return
 

@@ -196,7 +196,10 @@ class WaveScoutMainWindow(FramelessWindow):
         tprint(f"  Creating WaveScoutWidget...")
         self.wave_widget = WaveScoutWidget()
         self.horizontal_splitter.addWidget(self.wave_widget)
-        
+
+        # Connect to controller's session_changed event to update design tree
+        self.wave_widget.controller.on("session_changed", self._on_controller_session_changed)
+
         # Create right sidebar with snippet browser
         from wavescout.snippet_browser_widget import SnippetBrowserWidget
         self.right_panel = SnippetBrowserWidget()
@@ -926,12 +929,58 @@ class WaveScoutMainWindow(FramelessWindow):
     def load_file(self, file_path: str):
         """Load a waveform file asynchronously using thread pool."""
         tprint(f"Loading file: {file_path}")
+
+        # Check if we already have a session with waveform files
+        # If so, add to existing session instead of creating new one
+        if (self.wave_widget.session is not None and
+            self.wave_widget.controller is not None and
+            self.wave_widget.session.waveform_files):
+            # Adding to existing session
+            tprint(f"Adding to existing session with {len(self.wave_widget.session.waveform_files)} files")
+
+            # Show loading status
+            file_name = os.path.basename(file_path)
+
+            # Create progress dialog
+            self.progress_dialog = QProgressDialog(
+                f"Adding {file_name}...",
+                "Cancel",
+                0,
+                0,
+                self
+            )
+            self.progress_dialog.setWindowTitle("Adding Waveform")
+            self.progress_dialog.setWindowModality(Qt.WindowModal)
+            self.progress_dialog.setMinimumDuration(0)
+            self.progress_dialog.setCancelButton(None)
+            self.progress_dialog.show()
+
+            # Update status bar
+            self.statusBar().showMessage(f"Adding {file_name}...")
+
+            # Use controller to add file to existing session
+            def add_file():
+                try:
+                    success = self.wave_widget.controller.open_waveform_file(file_path)
+                    return success
+                except Exception as e:
+                    raise Exception(f"Failed to add waveform file: {str(e)}")
+
+            loader = LoaderRunnable(add_file)
+            loader.signals.finished.connect(self._on_additional_waveform_load_finished)
+            loader.signals.error.connect(self._on_waveform_load_error)
+            QApplication.processEvents()
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self.thread_pool.start(loader))
+            return
+
+        # First file - create new session
         # Store the file path for reload functionality
         self.current_wave_file = file_path
 
         # Show loading status
         file_name = os.path.basename(file_path)
-        
+
         # Create progress dialog
         self.progress_dialog = QProgressDialog(
             f"Loading {file_name}...",
@@ -945,10 +994,10 @@ class WaveScoutMainWindow(FramelessWindow):
         self.progress_dialog.setMinimumDuration(0)  # Show immediately
         self.progress_dialog.setCancelButton(None)  # No cancel for now
         self.progress_dialog.show()
-        
+
         # Update status bar
         self.statusBar().showMessage(f"Loading {file_name}...")
-        
+
         # Create and run loader with backend preference, but defer start slightly to ensure dialog paints first
         loader = LoaderRunnable(create_sample_session, file_path)
         loader.signals.finished.connect(self._on_waveform_load_finished)
@@ -964,47 +1013,90 @@ class WaveScoutMainWindow(FramelessWindow):
         # Store session for later use
         self._loading_state.pending_session = session
         self._finalize_waveform_load()
-        
+
+    def _on_additional_waveform_load_finished(self, success):
+        """Handle successful addition of waveform to existing session."""
+        tprint(f"Additional waveform loaded successfully")
+
+        # Close progress dialog
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+
+        if success:
+            # Update the design tree to show multi-file hierarchy
+            session = self.wave_widget.session
+            if session and session.waveform_files:
+                tprint(f"Updating design tree with {len(session.waveform_files)} files")
+
+                # Update design tree view
+                from PySide6.QtCore import QTimer
+
+                def update_design_tree():
+                    """Update design tree with multiple files."""
+                    tprint(f"QTimer callback: updating design tree for multi-file mode")
+                    if session.waveform_files and self.design_tree_view:
+                        self.design_tree_view.set_waveform_files(session.waveform_files)
+                    tprint(f"QTimer callback: design tree updated")
+
+                    # Show status message
+                    file_names = [Path(f.file_path).name for f in session.waveform_files]
+                    files_str = ", ".join(file_names)
+                    self.statusBar().showMessage(f"Loaded {len(session.waveform_files)} files: {files_str}")
+
+                tprint(f"Scheduling design tree update via QTimer (10ms delay)")
+                QTimer.singleShot(10, update_design_tree)
+        else:
+            self.statusBar().showMessage("Failed to add waveform file", 3000)
+
     def _on_waveform_load_error(self, error_msg):
         """Handle waveform load error."""
         # Close progress dialog
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
-            
+
         # Clear the current file on error
         self.current_wave_file = None
         self._set_waveform_actions_enabled(False)
-            
+
         self.on_load_error(error_msg)
         
     def on_load_finished(self, session):
         """Handle successful file load."""
         self.wave_widget.setSession(session)
-        
-        
-        # Get filename from the session's waveform database (file_path is optional property)
-        if session.waveform_db:
-            file_path = getattr(session.waveform_db, 'file_path', None)
-            if file_path:
-                file_name = Path(file_path).name
-            else:
-                file_name = None
-            # Include timescale info if available
-            if file_name:
+
+        # Get file info from the session's waveform_files list
+        if session.waveform_files:
+            if len(session.waveform_files) == 1:
+                # Single file - show filename
+                file_ref = session.waveform_files[0]
+                file_name = Path(file_ref.file_path).name
+                # Include timescale info if available
                 if session.timescale:
                     timescale_str = f"{session.timescale.factor}{session.timescale.unit.value}"
                     self.statusBar().showMessage(f"Loaded: {file_name} (Timescale: {timescale_str})")
                 else:
                     self.statusBar().showMessage(f"Loaded: {file_name}")
                 # Print confirmation for CLI/integration tests
-                if file_path:
-                    try:
-                        tprint(f"Successfully loaded waveform: {file_path}")
-                    except Exception:
-                        pass
+                try:
+                    tprint(f"Successfully loaded waveform: {file_ref.file_path}")
+                except Exception:
+                    pass
             else:
-                self.statusBar().showMessage("File loaded successfully")
+                # Multiple files - show count and filenames
+                file_names = [Path(f.file_path).name for f in session.waveform_files]
+                files_str = ", ".join(file_names)
+                if session.timescale:
+                    timescale_str = f"{session.timescale.factor}{session.timescale.unit.value}"
+                    self.statusBar().showMessage(f"Loaded {len(session.waveform_files)} files: {files_str} (Timescale: {timescale_str})")
+                else:
+                    self.statusBar().showMessage(f"Loaded {len(session.waveform_files)} files: {files_str}")
+                # Print confirmation
+                try:
+                    tprint(f"Successfully loaded {len(session.waveform_files)} waveforms")
+                except Exception:
+                    pass
         else:
             self.statusBar().showMessage("File loaded successfully")
             
@@ -1027,7 +1119,7 @@ class WaveScoutMainWindow(FramelessWindow):
                 tree_progress.show()
                 QApplication.processEvents()
                 
-                self.design_tree_view.set_waveform_db(session.waveform_db)
+                self.design_tree_view.set_waveform_files(session.waveform_files)
                     
                 tree_progress.close()
                 
@@ -1099,7 +1191,7 @@ class WaveScoutMainWindow(FramelessWindow):
             return
             
         # Clear the design tree before loading new session
-        self.design_tree_view.set_waveform_db(None)
+        self.design_tree_view.set_waveform_files([])
         
         # Get filename for progress dialog
         file_name = os.path.basename(file_path)
@@ -1192,7 +1284,7 @@ class WaveScoutMainWindow(FramelessWindow):
                 """Update design tree with loaded waveform."""
                 tprint(f"QTimer callback: updating design tree")
                 if session.waveform_db and self.design_tree_view:
-                    self.design_tree_view.set_waveform_db(session.waveform_db)
+                    self.design_tree_view.set_waveform_files(session.waveform_files)
                 tprint(f"QTimer callback: design tree updated")
 
             tprint(f"Scheduling design tree update via QTimer (10ms delay)")
@@ -1227,27 +1319,53 @@ class WaveScoutMainWindow(FramelessWindow):
         """Handle signals selected from the design tree view."""
         if not self.wave_widget.session:
             return
-        
+
         # Extract handles from signal nodes
         handles = []
         for node in signal_nodes:
             if node.handle is not None:
                 handles.append(node.handle)
-        
+
         if not handles:
             # No valid handles, just add nodes directly
             for node in signal_nodes:
                 self._add_node_to_session(node)
             return
-        
+
         waveform_db = self.wave_widget.session.waveform_db
         if not waveform_db:
             return
-            
+
         # Need to load signals asynchronously using new system
         # Add nodes immediately with signal=None
         for node in signal_nodes:
             self._add_node_to_session(node)
+
+    def _on_controller_session_changed(self):
+        """Handle session changes from controller (e.g., when files are added).
+
+        This may be called from a background thread (e.g., after signal loading),
+        so we schedule the UI update on the main thread.
+        """
+        session = self.wave_widget.session
+        if not session:
+            return
+
+        # Update design tree view when session changes (e.g., new files added)
+        # Use QTimer to ensure UI updates happen on the main Qt thread
+        tprint("[SCOUT] Controller session_changed: scheduling design tree update")
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._update_design_tree_for_session(session))
+
+    def _update_design_tree_for_session(self, session):
+        """Update design tree for the given session (runs on main thread)."""
+        if self.design_tree_view and session.waveform_files:
+            tprint("[SCOUT] Updating design tree for session")
+            self.design_tree_view.set_waveform_files(session.waveform_files)
+
+        # Update canvas waveform bounds to accommodate multi-file time ranges
+        if self.wave_widget and self.wave_widget._canvas:
+            self.wave_widget._canvas._update_waveform_bounds()
 
     def _extract_session_handles(self, session):
         """Extract all signal handles from a session.
@@ -1320,7 +1438,7 @@ class WaveScoutMainWindow(FramelessWindow):
                 """Update design tree with loaded waveform."""
                 tprint(f"QTimer callback: updating design tree")
                 if session.waveform_db and self.design_tree_view:
-                    self.design_tree_view.set_waveform_db(session.waveform_db)
+                    self.design_tree_view.set_waveform_files(session.waveform_files)
                 tprint(f"QTimer callback: design tree updated")
 
                 # Load CLI snippets after design tree is ready

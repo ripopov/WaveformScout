@@ -319,10 +319,11 @@ def test_fst_loading():
         for name in signal_names[:10]:  # Show first 10
             print(f"     - {name}")
         
-        # Check db_uri is present
-        assert 'db_uri' in json_data, "JSON missing db_uri"
-        assert json_data['db_uri'].endswith('des.fst'), \
-            f"Unexpected db_uri: {json_data['db_uri']}"
+        # Check waveform_files is present (multi-file format)
+        assert 'waveform_files' in json_data, "JSON missing waveform_files"
+        assert len(json_data['waveform_files']) > 0, "No waveform files in session"
+        assert json_data['waveform_files'][0]['file_path'].endswith('des.fst'), \
+            f"Unexpected file_path: {json_data['waveform_files'][0]['file_path']}"
         
         print("   [OK] JSON validation successful")
         print("\n[TEST PASSED] FST loading successful!")
