@@ -472,6 +472,62 @@ fn convert_signal_value_to_py<'a>(signal: SignalValue, py: Python<'a>) -> PyResu
     }
 }
 
+/// Convert a signal value to a float based on data format
+/// Returns None for undefined/high-impedance values
+fn convert_signal_value_to_float(signal: SignalValue, data_format: &str, bit_width: u32) -> Option<f64> {
+    match signal {
+        SignalValue::Real(val) => Some(val),
+        SignalValue::String(_) => None, // Strings can't be converted to numeric values
+        _ => {
+            // Try to convert to integer
+            if let Some(biguint) = BigUint::try_from_signal(signal.clone()) {
+                // Convert BigUint to u64 (or return None if too large)
+                let bytes = biguint.to_bytes_le();
+                if bytes.len() > 8 {
+                    // Value too large to fit in u64, skip
+                    return None;
+                }
+
+                let mut value_u64 = 0u64;
+                for (i, &byte) in bytes.iter().enumerate() {
+                    value_u64 |= (byte as u64) << (i * 8);
+                }
+
+                // Apply data format conversion
+                match data_format {
+                    "unsigned" | "hex" | "bin" => Some(value_u64 as f64),
+                    "signed" => {
+                        // 2's complement conversion
+                        let max_val = 1u64 << (bit_width.saturating_sub(1));
+                        if value_u64 >= max_val {
+                            let signed_value = (value_u64 as i64) - (1i64 << bit_width);
+                            Some(signed_value as f64)
+                        } else {
+                            Some(value_u64 as f64)
+                        }
+                    }
+                    "float" => {
+                        // IEEE 754 float conversion
+                        if bit_width == 32 && bytes.len() <= 4 {
+                            let bits = value_u64 as u32;
+                            Some(f32::from_bits(bits) as f64)
+                        } else if bit_width == 64 && bytes.len() <= 8 {
+                            Some(f64::from_bits(value_u64))
+                        } else {
+                            // Unsupported float width
+                            Some(value_u64 as f64)
+                        }
+                    }
+                    _ => Some(value_u64 as f64), // Default to unsigned
+                }
+            } else {
+                // Value contains X/Z - undefined or high impedance
+                None
+            }
+        }
+    }
+}
+
 #[pymethods]
 impl TimeTable {
     fn __getitem__<'a>(&self, idx: isize, py: Python<'a>) -> PyResult<Option<Bound<'a, PyInt>>> {
@@ -1232,6 +1288,65 @@ impl Signal {
         // Use the signal reference index as hash
         let signal_ref = self.signal.signal_ref();
         signal_ref.index() as u64
+    }
+
+    /// Compute global min/max range for analog signals across entire waveform.
+    ///
+    /// This iterates through all actual signal transitions (not sampling) to find
+    /// the true min and max values. More accurate and faster than Python-side sampling.
+    ///
+    /// Args:
+    ///     data_format: Format for interpreting integer values ("unsigned", "signed", "float", "hex", "bin")
+    ///     bit_width: Bit width of the signal for signed/unsigned conversion
+    ///
+    /// Returns:
+    ///     Tuple of (min_value, max_value) as floats, or (0.0, 1.0) if no valid values found
+    pub fn get_global_range(
+        &self,
+        data_format: &str,
+        bit_width: u32,
+        py: Python<'_>,
+    ) -> PyResult<(f64, f64)> {
+        let mut min_val = f64::INFINITY;
+        let mut max_val = f64::NEG_INFINITY;
+
+        // Iterate through all signal changes
+        let time_indices = self.signal.time_indices();
+        for time_idx in time_indices {
+            // Get the signal value at this time index
+            if let Some(data_offset) = self.signal.get_offset(*time_idx) {
+                // Get the last value in the time step
+                let signal_value = self
+                    .signal
+                    .get_value_at(&data_offset, data_offset.elements - 1);
+
+                // Convert to float based on data format
+                if let Some(value_float) = convert_signal_value_to_float(signal_value, data_format, bit_width) {
+                    if !value_float.is_nan() && value_float.is_finite() {
+                        min_val = min_val.min(value_float);
+                        max_val = max_val.max(value_float);
+                    }
+                }
+            }
+        }
+
+        // Handle case where no valid values found
+        if !min_val.is_finite() || !max_val.is_finite() {
+            return Ok((0.0, 1.0));
+        }
+
+        // Add margin if range is zero
+        if (min_val - max_val).abs() < f64::EPSILON {
+            let margin = if min_val.abs() > f64::EPSILON {
+                min_val.abs() * 0.1
+            } else {
+                1.0
+            };
+            min_val -= margin;
+            max_val += margin;
+        }
+
+        Ok((min_val, max_val))
     }
 }
 

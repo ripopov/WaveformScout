@@ -30,11 +30,48 @@ class MockSignal:
     """Mock signal object for testing."""
     def __init__(self, values):
         self.values = values  # Dict of time -> value
-    
+
     def query_signal(self, time: int):
         if time in self.values:
             return MockQueryResult(self.values[time])
         return None
+
+    def get_global_range(self, data_format: str, bit_width: int):
+        """Compute global range for all values in the signal."""
+        from wavescout.signal_sampling import parse_signal_value
+        from wavescout.data_model import DataFormat
+
+        # Convert string format to DataFormat enum
+        format_map = {
+            'unsigned': DataFormat.UNSIGNED,
+            'signed': DataFormat.SIGNED,
+            'hex': DataFormat.HEX,
+            'bin': DataFormat.BIN,
+            'float': DataFormat.FLOAT,
+        }
+        df = format_map.get(data_format, DataFormat.UNSIGNED)
+
+        min_val = float('inf')
+        max_val = float('-inf')
+
+        # Process all values in the signal
+        for value in self.values.values():
+            _, value_float, _ = parse_signal_value(value, df, bit_width)
+            if value_float is not None and not math.isnan(value_float):
+                min_val = min(min_val, value_float)
+                max_val = max(max_val, value_float)
+
+        # Handle case where no valid values found
+        if min_val == float('inf') or max_val == float('-inf'):
+            return 0.0, 1.0
+
+        # Add margin if range is zero
+        if min_val == max_val:
+            margin = abs(min_val) * 0.1 if min_val != 0 else 1.0
+            min_val -= margin
+            max_val += margin
+
+        return min_val, max_val
 
 
 class MockWaveformDB:
@@ -99,7 +136,6 @@ def test_signal_range_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.UNSIGNED,
-        waveform_db=mock_db,
         signal_obj=signal_obj
     )
     
@@ -121,7 +157,6 @@ def test_signal_range_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.SIGNED,
-        waveform_db=mock_db,
         signal_obj=signal_obj
     )
     
@@ -156,7 +191,7 @@ def test_compute_global_signal_range_with_format():
 
     # Test unsigned interpretation
     min_unsigned, max_unsigned = compute_global_signal_range(
-        handle, mock_db, DataFormat.UNSIGNED, signal_obj
+        handle, DataFormat.UNSIGNED, signal_obj
     )
     # For 2147483648 unsigned, with 10% margin added
     expected_max_unsigned = 2147483648.0 + (2147483648.0 * 0.1) 
@@ -166,7 +201,7 @@ def test_compute_global_signal_range_with_format():
     
     # Test signed interpretation (32-bit width)
     min_signed, max_signed = compute_global_signal_range(
-        handle, mock_db, DataFormat.SIGNED, signal_obj
+        handle, DataFormat.SIGNED, signal_obj
     )
     # For 32-bit signed: 2147483648 becomes -2147483648
     # With 10% margin: margin = abs(-2147483648) * 0.1
@@ -281,7 +316,6 @@ def test_global_vs_viewport_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.UNSIGNED,
-        waveform_db=mock_db,
         signal_obj=signal_obj
     )
     
@@ -297,7 +331,6 @@ def test_global_vs_viewport_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_VISIBLE_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.UNSIGNED,
-        waveform_db=mock_db,
         start_time=0,
         end_time=100,
         signal_obj=signal_obj
@@ -314,7 +347,6 @@ def test_global_vs_viewport_cache_format_invalidation():
         scaling_mode=AnalogScalingMode.SCALE_TO_ALL_DATA,
         signal_range_cache=cache,
         data_format=DataFormat.SIGNED,
-        waveform_db=mock_db,
         signal_obj=signal_obj
     )
     

@@ -740,13 +740,10 @@ class WaveformCanvas(QWidget):
             node = row.source
             visible_nodes.append(node)
 
-        # Get waveform_db and session references if available
-        waveform_db = None
+        # Get session reference if available
         session = None
         if self._model and self._model._session:
             session = self._model._session
-            if self._model._session.waveform_db:
-                waveform_db = self._model._session.waveform_db
 
         return RenderParams(
             width=self.width(),
@@ -757,7 +754,6 @@ class WaveformCanvas(QWidget):
             cursor_time=self._cursor_time,
             scroll_value=scroll_value,
             visible_nodes=visible_nodes,
-            waveform_db=waveform_db,  # DEPRECATED: kept for backward compatibility
             session=session,  # Pass session for multi-file waveform_db lookup
             generation=self._render_generation,
             base_row_height=self._row_height,
@@ -782,7 +778,7 @@ class WaveformCanvas(QWidget):
         draw_cmd_start = time_module.time()
         
         # Generate draw commands only for signals in the render area
-        if params['waveform_db'] and 'layout' in params:
+        if 'layout' in params:
             layout = params['layout']
             # Calculate which signals are in the render area (with buffer)
             y_offset = params.get('header_height', RENDERING.DEFAULT_HEADER_HEIGHT)
@@ -817,18 +813,23 @@ class WaveformCanvas(QWidget):
                             # Add all child signals from the group
                             signals_to_render.extend(row.descriptor.children)
 
+            # Get waveform_db from session if available (for backward compatibility with _generate_all_draw_commands)
+            waveform_db = None
+            session = params.get('session')
+            if session is not None and session.waveform_db is not None:
+                waveform_db = session.waveform_db
+
             # Generate draw commands only for signals in render area
             draw_commands = self._generate_all_draw_commands(
                 signals_to_render,
                 params['start_time'],
                 params['end_time'],
                 params['width'],
-                params['waveform_db']
+                waveform_db
             )
 
             # Build group drawing payloads
             signal_range_cache = params.get('signal_range_cache', {})
-            waveform_db = params['waveform_db']
 
             if layout:
                 for i, row in enumerate(layout.rows):
@@ -843,16 +844,17 @@ class WaveformCanvas(QWidget):
                             for child in row.descriptor.children:
                                 if child.handle is None:
                                     continue
-                                if waveform_db is not None:
+                                # Get the actual Signal object if loaded
+                                signal_obj = None
+                                if child.signal.is_loaded():
+                                    try:
+                                        signal_obj = child.signal.get_signal_blocking(timeout=0.001)
+                                    except (RuntimeError, TimeoutError):
+                                        pass
+
+                                if signal_obj is not None:
                                     from .signal_renderer import compute_global_signal_range
-                                    # Get the actual Signal object if loaded
-                                    signal_obj = None
-                                    if child.signal.is_loaded():
-                                        try:
-                                            signal_obj = child.signal.get_signal_blocking(timeout=0.001)
-                                        except (RuntimeError, TimeoutError):
-                                            pass
-                                    cmin, cmax = compute_global_signal_range(child.handle, waveform_db, child.format.data_format, signal_obj, child.var)
+                                    cmin, cmax = compute_global_signal_range(child.handle, child.format.data_format, signal_obj, child.var)
                                 else:
                                     # Fallback to viewport samples
                                     dd = draw_commands.draw_commands.get(child.handle)
@@ -1101,6 +1103,7 @@ class WaveformCanvas(QWidget):
                         'instance_id': node.instance_id,
                         'is_selected': is_selected,
                         'signal': node.signal.get_signal_blocking(timeout=0.001) if node.signal.is_loaded() else None,
+                        'var': node.var if hasattr(node, 'var') else None,
                         'file_id': node.file_id,
                     }
                     render_type = node.format.render_type
@@ -1197,7 +1200,7 @@ class WaveformCanvas(QWidget):
 
 
     
-    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int, waveform_db: WaveformDB) -> CachedWaveDrawData:
+    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int, waveform_db: Optional[WaveformDB]) -> CachedWaveDrawData:
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"

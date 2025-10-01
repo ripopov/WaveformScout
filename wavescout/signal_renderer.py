@@ -12,8 +12,8 @@ Key ideas
 - Y axis is the row allocated to the signal. Helper calculate_signal_bounds returns
   top/bottom/middle Y coordinates inside that row with small margins.
 - params is a dict with, at minimum: width, start_time, end_time; optionally
-  waveform_max_time (to clip drawing outside the recorded time range),
-  signal_range_cache and waveform_db (for analog scaling).
+  waveform_max_time (to clip drawing outside the recorded time range) and
+  signal_range_cache (for analog scaling).
 - Rendering adapts to density: some routines switch to simplified strokes when many
   regions/transitions fall into the viewport to keep drawing fast and legible.
 
@@ -39,7 +39,6 @@ from . import config
 from .timing_utils import tprint
 RENDERING = config.RENDERING
 import math
-from .waveform_db import WaveformDB
 
 # Type definitions for node_info and params dictionaries
 class NodeInfo(TypedDict):
@@ -52,6 +51,7 @@ class NodeInfo(TypedDict):
     instance_id: SignalNodeID
     is_selected: bool  # Whether this node is currently selected
     signal: Optional["Signal"]  # Cached Signal object from node.signal
+    var: Optional["Var"]  # Var wrapper for bit width information
     file_id: int  # File ID to identify which waveform file this signal belongs to
 
 class RenderParams(TypedDict, total=False):
@@ -64,7 +64,6 @@ class RenderParams(TypedDict, total=False):
     scroll_value: int
     visible_nodes_info: list[NodeInfo]
     visible_nodes: list[TreeNode]  # SignalNode objects
-    waveform_db: Optional[WaveformDB]  # DEPRECATED: Use session instead for multi-file support
     session: Optional['WaveformSession']  # Session for looking up file-specific waveform_db
     generation: int
     base_row_height: int
@@ -551,87 +550,35 @@ def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[T
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalHandle, waveform_db: WaveformDB, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None, var: Optional["Var"] = None) -> Tuple[float, float]:
-    """Estimate global min/max from the waveform database.
+def compute_global_signal_range(handle: SignalHandle, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None, var: Optional["Var"] = None) -> Tuple[float, float]:
+    """Compute global min/max from the signal using Rust-side iteration.
 
-    Rationale
-    - Some scaling modes need the range across the entire recording. Since the backend
-      may not expose all transitions directly, we sample the signal uniformly across the
-      time table to approximate min/max.
+    This function delegates to the Rust Signal.get_global_range() method which
+    iterates through all actual signal transitions for accurate min/max computation.
 
     Args:
-        handle: Signal handle used to query the DB.
-        waveform_db: Waveform database facade providing get_time_table().
-        signal_obj: Cached Signal object from node.signal (should be provided when handle exists).
+        handle: Signal handle (kept for backward compatibility, not used).
+        data_format: Format for interpreting integer values.
+        signal_obj: Cached Signal object from node.signal (required).
+        var: Var wrapper for getting bit width.
 
     Returns:
         (min_val, max_val) over the full recording; defaults to (0.0, 1.0) on failure.
     """
-    if not waveform_db:
-        return 0.0, 1.0
-
     try:
-        # Signal object should be provided from cached node.signal
+        # Signal object is required
         if not signal_obj:
             return 0.0, 1.0
-            
-        min_val = float('inf')
-        max_val = float('-inf')
-        
-        # Get time table to know the full range
-        time_table = waveform_db.get_time_table()
-        if not time_table or len(time_table) == 0:
-            return 0.0, 1.0
-            
-        # Query the entire signal range
-        start_time = 0
-        end_time = time_table[-1]
-        
+
         # Get the signal's bit width for correct signed/unsigned interpretation
         bit_width = 32  # Default bit width
-
-        # If var is provided (our Var wrapper), use it directly
         if var:
             bit_width = var.bitwidth()  # Always returns an int (32 by default)
-        elif waveform_db and handle is not None:
-            # Otherwise try to get it from waveform_db
-            var_from_db = waveform_db.get_var(handle)
-            if var_from_db:
-                bit_width = var_from_db.bitwidth()  # Always returns an int (32 by default)
-        
-        # Sample the signal at various points to find min/max
-        # We need to sample because wellen doesn't provide a direct way to get all transitions
-        # Sample at a reasonable interval to capture the range
-        num_samples = min(10000, end_time - start_time + 1)  # Limit samples for performance
-        sample_interval = max(1, (end_time - start_time) // num_samples)
-        
-        from .signal_sampling import parse_signal_value
-        
-        current_time = start_time
-        while current_time <= end_time:
-            query_result = signal_obj.query_signal(int(current_time))
-            if query_result and query_result.value is not None:
-                # Parse the value to get numeric representation
-                _, value_float, _ = parse_signal_value(query_result.value, data_format, bit_width)
-                
-                if value_float is not None and not math.isnan(value_float):
-                    min_val = min(min_val, value_float)
-                    max_val = max(max_val, value_float)
-            
-            current_time += sample_interval
-        
-        # Handle case where no valid values found
-        if min_val == float('inf') or max_val == float('-inf'):
-            return 0.0, 1.0
-        
-        # Add some margin if range is zero
-        if min_val == max_val:
-            margin = abs(min_val) * 0.1 if min_val != 0 else 1.0
-            min_val -= margin
-            max_val += margin
-        
+
+        # Call Rust-side method to compute global range efficiently
+        min_val, max_val = signal_obj.get_global_range(data_format.value, bit_width)
         return min_val, max_val
-        
+
     except Exception as e:
         tprint(f"Error computing global signal range: {e}")
         return 0.0, 1.0
@@ -642,31 +589,28 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
                     scaling_mode: AnalogScalingMode,
                     signal_range_cache: Dict[SignalNodeID, SignalRangeCache],
                     data_format: DataFormat = DataFormat.UNSIGNED,
-                    waveform_db: Optional[WaveformDB] = None,
                     start_time: Optional[Time] = None, end_time: Optional[Time] = None,
                     signal_obj: Optional["Signal"] = None,
-                    file_id: int = 0,
-                    session: Optional["WaveformSession"] = None) -> Tuple[float, float]:
+                    var: Optional["Var"] = None) -> Tuple[float, float]:
     """Return analog Y-range using a small cache keyed by signal instance.
 
     Behavior
-    - SCALE_TO_ALL_DATA: compute once per instance across the full recording (via DB if
-      available, otherwise from visible samples) and cache as cache.min/max.
+    - SCALE_TO_ALL_DATA: compute once per instance across the full recording using
+      Rust-side Signal.get_global_range() and cache as cache.min/max.
     - Other scaling: compute per viewport (start_time, end_time) and memoize in
       cache.viewport_ranges.
 
     Args:
         instance_id: Unique SignalNode ID used as cache key.
-        handle: DB handle used for global queries (may be None).
+        handle: DB handle (may be None).
         drawing_data: Samples for the current paint pass.
         scaling_mode: AnalogScalingMode enum controlling how the range is chosen.
         signal_range_cache: Dict[SignalNodeID, SignalRangeCache] owned by the canvas.
-        signal_obj: Cached Signal object from node.signal (should be provided when handle exists).
-        waveform_db: Optional database facade for global-range computation (DEPRECATED for multi-file).
+        data_format: Format for interpreting integer values.
         start_time: Viewport start time.
         end_time: Viewport end time.
-        file_id: File ID to look up the correct waveform_db in multi-file mode.
-        session: WaveformSession for looking up file-specific waveform_db.
+        signal_obj: Cached Signal object from node.signal (required for global range).
+        var: Var wrapper for getting bit width.
 
     Returns:
         (min_val, max_val) range for mapping values to Y.
@@ -686,19 +630,12 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
     if scaling_mode == AnalogScalingMode.SCALE_TO_ALL_DATA:
         # Use global range computed from entire waveform
         if cache.min == float('inf'):
-            # Compute and cache global range from database
-            # Get the correct waveform_db for this signal's file_id
-            file_waveform_db = waveform_db  # Default to passed waveform_db
-            if session:
-                file_ref = session.get_file_by_id(file_id)
-                if file_ref and file_ref.waveform_db:
-                    file_waveform_db = file_ref.waveform_db
-
-            if file_waveform_db and handle is not None:
-                # Note: var is not available in this context, would need to be passed as parameter
-                min_val, max_val = compute_global_signal_range(handle, file_waveform_db, data_format, signal_obj, None)
+            # Compute and cache global range using signal object directly
+            # Computation happens in Rust via Signal.get_global_range()
+            if signal_obj and handle is not None:
+                min_val, max_val = compute_global_signal_range(handle, data_format, signal_obj, var)
             else:
-                # Fallback to viewport data if db not available
+                # Fallback to viewport data if signal not available
                 min_val, max_val = compute_signal_range(drawing_data)
             cache.min = min_val
             cache.max = max_val
@@ -751,18 +688,16 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
     handle = node_info.get('handle')
     signal_range_cache = params.get('signal_range_cache', {})
     scaling_mode = node_info['format'].analog_scaling_mode
-    waveform_db = params.get('waveform_db')
-    session = params.get('session')
-    file_id = node_info.get('file_id', 0)
 
-    # Get cached signal object directly from node_info
+    # Get cached signal object and var directly from node_info
     signal_obj = node_info.get('signal')
+    var = node_info.get('var')
 
     if instance_id is not None and handle is not None:
         min_val, max_val = get_signal_range(
             instance_id, handle, drawing_data, scaling_mode, signal_range_cache,
-            node_info['format'].data_format, waveform_db, params['start_time'], params['end_time'],
-            signal_obj, file_id, session
+            node_info['format'].data_format, params['start_time'], params['end_time'],
+            signal_obj, var
         )
     else:
         # Fallback to computing range from current data
