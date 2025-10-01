@@ -35,7 +35,6 @@ import time as time_module
 import time
 import math
 from .timing_utils import tprint
-from .waveform_db import WaveformDB
 from .data_model import SignalRangeCache
 from .time_grid_renderer import TimeGridRenderer, TickInfo
 
@@ -627,11 +626,10 @@ class WaveformCanvas(QWidget):
                 continue
 
             # Get value at cursor
-            if not self._model._session.waveform_db or signal_node.handle is None:
+            if signal_node.handle is None:
                 continue
-                
+
             try:
-                db = self._model._session.waveform_db
                 # Skip if signal not loaded yet (avoid blocking)
                 if not signal_node.signal.is_loaded():
                     continue
@@ -754,7 +752,7 @@ class WaveformCanvas(QWidget):
             cursor_time=self._cursor_time,
             scroll_value=scroll_value,
             visible_nodes=visible_nodes,
-            session=session,  # Pass session for multi-file waveform_db lookup
+            session=session,  # Pass session for multi-file support
             generation=self._render_generation,
             base_row_height=self._row_height,
             header_height=self._header_height,  # Include header height for proper rendering
@@ -813,19 +811,12 @@ class WaveformCanvas(QWidget):
                             # Add all child signals from the group
                             signals_to_render.extend(row.descriptor.children)
 
-            # Get waveform_db from session if available (for backward compatibility with _generate_all_draw_commands)
-            waveform_db = None
-            session = params.get('session')
-            if session is not None and session.waveform_db is not None:
-                waveform_db = session.waveform_db
-
             # Generate draw commands only for signals in render area
             draw_commands = self._generate_all_draw_commands(
                 signals_to_render,
                 params['start_time'],
                 params['end_time'],
-                params['width'],
-                waveform_db
+                params['width']
             )
 
             # Build group drawing payloads
@@ -1200,7 +1191,7 @@ class WaveformCanvas(QWidget):
 
 
     
-    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int, waveform_db: Optional[WaveformDB]) -> CachedWaveDrawData:
+    def _generate_all_draw_commands(self, signal_nodes: List[SignalNode], start_time: Time, end_time: Time, canvas_width: int) -> CachedWaveDrawData:
         """Generate drawing commands for all signals (runs in thread pool)."""
         result = CachedWaveDrawData()
         result.viewport_hash = f"{start_time}_{end_time}_{canvas_width}"
