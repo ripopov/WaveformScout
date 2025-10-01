@@ -1210,7 +1210,7 @@ class WaveformCanvas(QWidget):
         for node in signal_nodes:
             if node.handle is not None:
                 drawing_data = generate_signal_draw_commands(
-                    node, start_time, end_time, canvas_width, waveform_db,
+                    node, start_time, end_time, canvas_width,
                     self._waveform_max_time
                 )
                 if drawing_data:

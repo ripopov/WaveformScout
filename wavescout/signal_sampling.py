@@ -7,7 +7,6 @@ zoom levels and generating optimized drawing commands for rendering.
 from enum import Enum
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Any
-from .waveform_db import WaveformDB
 import math
 
 from .data_model import SignalNode, Time, DataFormat
@@ -27,9 +26,9 @@ class ValueKind(Enum):
 class SignalSample:
     """Represents a sampled signal value at a specific pixel position."""
     value_kind: ValueKind
-    value_str: Optional[str] = None      # For BUS rendering mode
-    value_float: Optional[float] = None  # For ANALOG rendering mode
-    value_bool: Optional[bool] = None    # For BOOL rendering mode
+    value_str: str                      # For BUS rendering mode
+    value_float: float                  # For ANALOG rendering mode
+    value_bool: bool                    # For BOOL rendering mode
     has_multiple_transitions: bool = False    # Indicates pulse/glitch within pixel
 
 
@@ -49,7 +48,7 @@ def determine_value_kind(value: str) -> ValueKind:
     return ValueKind.NORMAL
 
 
-def parse_signal_value(value: Any, data_format: DataFormat = DataFormat.UNSIGNED, bit_width: int = 32) -> Tuple[Optional[str], Optional[float], Optional[bool]]:
+def parse_signal_value(value: Any, data_format: DataFormat = DataFormat.UNSIGNED, bit_width: int = 32) -> Tuple[str, float, bool]:
     """Parse wellen signal value to appropriate types based on data format.
     
     Pyrox returns values in their native types:
@@ -145,7 +144,6 @@ def generate_signal_draw_commands(
     start_time: Time,
     end_time: Time,
     canvas_width: int,
-    waveform_db: WaveformDB,
     waveform_max_time: Optional[Time] = None
 ) -> Optional[SignalDrawingData]:
     """Generate drawing commands for a single signal.
@@ -158,14 +156,11 @@ def generate_signal_draw_commands(
         start_time: Start of the visible time range
         end_time: End of the visible time range
         canvas_width: Width of the canvas in pixels
-        waveform_db: Waveform database instance
         waveform_max_time: Maximum valid time in the waveform (optional)
 
     Returns:
         SignalDrawingData with samples ready for rendering, or None if unable to generate
     """
-    if not waveform_db:
-        return None
 
     # Skip if entire range is outside valid bounds
     if waveform_max_time is not None and (end_time < 0 or start_time > waveform_max_time + 1):
@@ -180,24 +175,11 @@ def generate_signal_draw_commands(
 
         signal_obj = signal.signal.get_signal_blocking()
         # Get signal bit width for data format conversion
-        # We need to get it from the variable, not the signal object
-        # Check if var exists and is not None
-        if hasattr(signal, 'var') and signal.var is not None:
-            bit_width = signal.var.bitwidth() or 32
-        else:
-            # Fallback: try to get bit width from waveform_db
-            var = waveform_db.get_var(signal.handle) if signal.handle is not None else None
-            var_bitwidth = var.bitwidth() if var else None
-            bit_width = var_bitwidth if var_bitwidth is not None else 32
-        
+        bit_width = signal.var.bitwidth() or 32
+
         drawing_data = SignalDrawingData(samples=[])
         time_per_pixel = (end_time - start_time) / canvas_width if canvas_width > 0 else 1
-        
-        # Calculate initial pixel position
-        initial_pixel = 0.0
-        if start_time < 0:
-            initial_pixel = -start_time / time_per_pixel
-        
+
         # Start from time 0 or start_time, whichever is greater
         current_time = max(0, start_time)
         prev_value = None
@@ -220,7 +202,7 @@ def generate_signal_draw_commands(
                 signal.format.data_format,
                 bit_width
             )
-            value_kind = determine_value_kind(value_str) if value_str else ValueKind.UNDEFINED
+            value_kind = determine_value_kind(value_str)
             
             # Calculate pixel position for current time
             current_pixel = (current_time - start_time) / time_per_pixel
