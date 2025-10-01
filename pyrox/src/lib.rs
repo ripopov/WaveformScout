@@ -474,7 +474,9 @@ fn convert_signal_value_to_py<'a>(signal: SignalValue, py: Python<'a>) -> PyResu
 
 /// Convert a signal value to a float based on data format
 /// Returns None for undefined/high-impedance values
-fn convert_signal_value_to_float(signal: SignalValue, data_format: &str, bit_width: u32) -> Option<f64> {
+///
+/// Data format codes: 0=unsigned, 1=signed, 2=hex, 3=bin, 4=float
+fn convert_signal_value_to_float(signal: SignalValue, data_format: u8, bit_width: u32) -> Option<f64> {
     match signal {
         SignalValue::Real(val) => Some(val),
         SignalValue::String(_) => None, // Strings can't be converted to numeric values
@@ -495,9 +497,12 @@ fn convert_signal_value_to_float(signal: SignalValue, data_format: &str, bit_wid
 
                 // Apply data format conversion
                 match data_format {
-                    "unsigned" | "hex" | "bin" => Some(value_u64 as f64),
-                    "signed" => {
-                        // 2's complement conversion
+                    0 | 2 | 3 => {
+                        // UNSIGNED (0), HEX (2), BIN (3) - all treated as unsigned
+                        Some(value_u64 as f64)
+                    }
+                    1 => {
+                        // SIGNED (1) - 2's complement conversion
                         let max_val = 1u64 << (bit_width.saturating_sub(1));
                         if value_u64 >= max_val {
                             let signed_value = (value_u64 as i64) - (1i64 << bit_width);
@@ -506,8 +511,8 @@ fn convert_signal_value_to_float(signal: SignalValue, data_format: &str, bit_wid
                             Some(value_u64 as f64)
                         }
                     }
-                    "float" => {
-                        // IEEE 754 float conversion
+                    4 => {
+                        // FLOAT (4) - IEEE 754 float conversion
                         if bit_width == 32 && bytes.len() <= 4 {
                             let bits = value_u64 as u32;
                             Some(f32::from_bits(bits) as f64)
@@ -1296,16 +1301,16 @@ impl Signal {
     /// the true min and max values. More accurate and faster than Python-side sampling.
     ///
     /// Args:
-    ///     data_format: Format for interpreting integer values ("unsigned", "signed", "float", "hex", "bin")
+    ///     data_format: Format for interpreting integer values (0=unsigned, 1=signed, 2=hex, 3=bin, 4=float)
     ///     bit_width: Bit width of the signal for signed/unsigned conversion
     ///
     /// Returns:
     ///     Tuple of (min_value, max_value) as floats, or (0.0, 1.0) if no valid values found
     pub fn get_global_range(
         &self,
-        data_format: &str,
+        data_format: u8,
         bit_width: u32,
-        py: Python<'_>,
+        _py: Python<'_>,
     ) -> PyResult<(f64, f64)> {
         let mut min_val = f64::INFINITY;
         let mut max_val = f64::NEG_INFINITY;

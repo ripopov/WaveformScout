@@ -576,7 +576,8 @@ def compute_global_signal_range(handle: SignalHandle, data_format: DataFormat = 
             bit_width = var.bitwidth()  # Always returns an int (32 by default)
 
         # Call Rust-side method to compute global range efficiently
-        min_val, max_val = signal_obj.get_global_range(data_format.value, bit_width)
+        # Convert DataFormat enum to integer code (0=unsigned, 1=signed, 2=hex, 3=bin, 4=float)
+        min_val, max_val = signal_obj.get_global_range(data_format.to_int(), bit_width)
         return min_val, max_val
 
     except Exception as e:

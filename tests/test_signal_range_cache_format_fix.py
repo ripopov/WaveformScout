@@ -36,18 +36,18 @@ class MockSignal:
             return MockQueryResult(self.values[time])
         return None
 
-    def get_global_range(self, data_format: str, bit_width: int):
+    def get_global_range(self, data_format: int, bit_width: int):
         """Compute global range for all values in the signal."""
         from wavescout.signal_sampling import parse_signal_value
         from wavescout.data_model import DataFormat
 
-        # Convert string format to DataFormat enum
+        # Convert integer code to DataFormat enum (0=unsigned, 1=signed, 2=hex, 3=bin, 4=float)
         format_map = {
-            'unsigned': DataFormat.UNSIGNED,
-            'signed': DataFormat.SIGNED,
-            'hex': DataFormat.HEX,
-            'bin': DataFormat.BIN,
-            'float': DataFormat.FLOAT,
+            0: DataFormat.UNSIGNED,
+            1: DataFormat.SIGNED,
+            2: DataFormat.HEX,
+            3: DataFormat.BIN,
+            4: DataFormat.FLOAT,
         }
         df = format_map.get(data_format, DataFormat.UNSIGNED)
 

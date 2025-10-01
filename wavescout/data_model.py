@@ -59,6 +59,20 @@ class DataFormat(Enum):
     BIN = "bin"
     FLOAT = "float"
 
+    def to_int(self) -> int:
+        """Convert DataFormat to integer code for Rust API.
+
+        Returns:
+            0=unsigned, 1=signed, 2=hex, 3=bin, 4=float
+        """
+        return {
+            DataFormat.UNSIGNED: 0,
+            DataFormat.SIGNED: 1,
+            DataFormat.HEX: 2,
+            DataFormat.BIN: 3,
+            DataFormat.FLOAT: 4,
+        }[self]
+
 class GroupRenderMode(Enum):
     SEPARATE_ROWS = "separate_rows"
     OVERLAPPED = "overlapped"
