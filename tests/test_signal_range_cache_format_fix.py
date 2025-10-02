@@ -191,7 +191,7 @@ def test_compute_global_signal_range_with_format():
 
     # Test unsigned interpretation
     min_unsigned, max_unsigned = compute_global_signal_range(
-        handle, DataFormat.UNSIGNED, signal_obj
+        DataFormat.UNSIGNED, signal_obj
     )
     # For 2147483648 unsigned, with 10% margin added
     expected_max_unsigned = 2147483648.0 + (2147483648.0 * 0.1) 
@@ -201,7 +201,7 @@ def test_compute_global_signal_range_with_format():
     
     # Test signed interpretation (32-bit width)
     min_signed, max_signed = compute_global_signal_range(
-        handle, DataFormat.SIGNED, signal_obj
+        DataFormat.SIGNED, signal_obj
     )
     # For 32-bit signed: 2147483648 becomes -2147483648
     # With 10% margin: margin = abs(-2147483648) * 0.1

@@ -809,7 +809,7 @@ class WaveformCanvas(QWidget):
 
                                 if signal_obj is not None:
                                     from .signal_renderer import compute_global_signal_range
-                                    cmin, cmax = compute_global_signal_range(child.handle, child.format.data_format, signal_obj, child.var)
+                                    cmin, cmax = compute_global_signal_range(child.format.data_format, signal_obj, child.var)
                                 else:
                                     # Fallback to viewport samples
                                     dd = draw_commands.draw_commands.get(child.handle)

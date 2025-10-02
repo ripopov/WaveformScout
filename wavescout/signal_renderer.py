@@ -62,7 +62,6 @@ class RenderParams(TypedDict, total=False):
     end_time: Time
     cursor_time: Time
     scroll_value: int
-    visible_nodes_info: list[NodeInfo]
     visible_nodes: list[TreeNode]  # SignalNode objects
     session: Optional['WaveformSession']  # Session for looking up file-specific waveform_db
     generation: int
@@ -506,58 +505,48 @@ def draw_bus_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Signal
                     painter.setPen(old_pen)
 
 
-def compute_signal_range(drawing_data: SignalDrawingData, start_time: Optional[Time] = None, end_time: Optional[Time] = None) -> Tuple[float, float]:
+def compute_signal_range(drawing_data: SignalDrawingData) -> Tuple[float, float]:
     """Compute min/max of numeric sample values for analog rendering.
-    
+
     Notes
     - Scans drawing_data.samples and considers sample.value_float values, ignoring NaN/None.
-    - Optional start_time/end_time are placeholders; drawing_data is already pixel-sampled,
-      so we currently use all provided samples.
+    - drawing_data is already pixel-sampled, so all provided samples are used.
     - If no valid values exist, returns (0.0, 1.0). If min==max, expand by a small margin.
-    
+
     Args:
         drawing_data: Samples prepared for drawing.
-        start_time: Optional viewport start (unused at the moment).
-        end_time: Optional viewport end (unused at the moment).
-    
+
     Returns:
         (min_val, max_val) suitable for mapping to Y coordinates.
     """
     min_val = float('inf')
     max_val = float('-inf')
-    
+
     for pixel_x, sample in drawing_data.samples:
-        # Filter by time range if specified
-        if start_time is not None and end_time is not None:
-            # Convert pixel position back to time if needed
-            # For now, use all samples in drawing_data
-            pass
-            
         if sample.value_float is not None and not math.isnan(sample.value_float):
             min_val = min(min_val, sample.value_float)
             max_val = max(max_val, sample.value_float)
-    
+
     # Handle case where no valid values found
     if min_val == float('inf') or max_val == float('-inf'):
         return 0.0, 1.0
-    
+
     # Add some margin if range is zero
     if min_val == max_val:
         margin = abs(min_val) * 0.1 if min_val != 0 else 1.0
         min_val -= margin
         max_val += margin
-    
+
     return min_val, max_val
 
 
-def compute_global_signal_range(handle: SignalHandle, data_format: DataFormat = DataFormat.UNSIGNED, signal_obj: Optional["Signal"] = None, var: Optional["Var"] = None) -> Tuple[float, float]:
+def compute_global_signal_range(data_format: DataFormat, signal_obj: Optional["Signal"], var: Optional["Var"] = None) -> Tuple[float, float]:
     """Compute global min/max from the signal using Rust-side iteration.
 
     This function delegates to the Rust Signal.get_global_range() method which
     iterates through all actual signal transitions for accurate min/max computation.
 
     Args:
-        handle: Signal handle (kept for backward compatibility, not used).
         data_format: Format for interpreting integer values.
         signal_obj: Cached Signal object from node.signal (required).
         var: Var wrapper for getting bit width.
@@ -634,7 +623,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
             # Compute and cache global range using signal object directly
             # Computation happens in Rust via Signal.get_global_range()
             if signal_obj and handle is not None:
-                min_val, max_val = compute_global_signal_range(handle, data_format, signal_obj, var)
+                min_val, max_val = compute_global_signal_range(data_format, signal_obj, var)
             else:
                 # Fallback to viewport data if signal not available
                 min_val, max_val = compute_signal_range(drawing_data)
@@ -646,7 +635,7 @@ def get_signal_range(instance_id: SignalNodeID, handle: SignalHandle,
         cache_key = (start_time, end_time) if start_time and end_time else (0, 0)
         if cache_key not in cache.viewport_ranges:
             # Compute and cache viewport range
-            min_val, max_val = compute_signal_range(drawing_data, start_time, end_time)
+            min_val, max_val = compute_signal_range(drawing_data)
             cache.viewport_ranges[cache_key] = (min_val, max_val)
         min_val, max_val = cache.viewport_ranges[cache_key]
         return min_val, max_val
