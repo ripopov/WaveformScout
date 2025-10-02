@@ -115,7 +115,6 @@ class WaveformCanvas(QWidget):
 
         # Caching
         self._transition_cache = TransitionCache()
-        self._last_viewport = (0, 0)  # Track viewport changes
         self._signal_range_cache: Dict[SignalNodeID, SignalRangeCache] = {}  # Cache for analog signal ranges
         
         # Single-threaded rendering - no thread pool needed
@@ -327,9 +326,7 @@ class WaveformCanvas(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Handle widget resize with deferred update."""
         super().resizeEvent(event)
-        old_width = event.oldSize().width()
-        new_width = event.size().width()
-        
+
         self._update_time_scale()
         
         # Don't clear rendered image - it will be stretched but that's better than flickering
