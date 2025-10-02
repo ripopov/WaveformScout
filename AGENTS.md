@@ -6,28 +6,57 @@ This playbook aligns CLAUDE, Junie, Codex, and other coding agents on the curren
 
 ## Current Architecture Snapshot
 - PySide6/Qt6 front-end renders the waveform viewer and supporting tools (snippets, markers, analysis panes).
-- Python orchestrates state via dataclasses (`wavescout/data_model.py`) and the Protocol pattern where needed.
+- Python orchestrates state via dataclasses (`wavescout/core/data_model.py`) and the Protocol pattern where needed.
 - Rust extension `pyrox` (PyO3 bindings for the Wellen core) provides fast waveform access for VCD and FST files.
-- Backend coordination is handled directly by `WaveformDB` in `wavescout/waveform_db.py`.
+- Backend coordination is handled directly by `WaveformDB` in `wavescout/core/waveform_db.py`.
+- Modular structure: code organized into `core/`, `models/`, `widgets/`, `rendering/`, `snippets/`, `dialogs/`, `utils/`, and `application/` packages.
 
 ## Directory Orientation
-- `wavescout/` — main application package. Key areas include:
-  - `application/` (event bus & domain events for cross-widget coordination)
-  - `config.py`, `theme.py`, `color_utils.py` (UI customization and theming)
-  - `data_model.py`, `waveform_item_model.py`, `waveform_controller.py` (core state & Qt models)
-  - `waveform_db.py` (async signal loading, backend coordination via pyrox)
-  - `wave_scout_widget.py`, `waveform_canvas.py`, `signal_renderer.py` (main widget & rendering pipeline)
-  - `snippet_*`, `markers_window.py`, `analysis_engine.py` (workflow-specific tooling)
-  - `design_tree_view.py`, `signal_names_view.py`, `vars_view.py` (hierarchy and signal browsing)
-  - `persistence.py` (session save/load with JSONC support)
-  - `settings_manager.py`, `icon_cache.py`, `timing_utils.py`, `clock_utils.py` (utilities)
-- `pyrox/` — Rust crate + maturin project that exposes the high-performance waveform API (`build-pyrox`).
-  - Contains Wellen library as a submodule providing the core waveform parsing and access.
-- `scripts/` — build helpers for pyrox (Linux/macOS plus Windows fallbacks).
+- `wavescout/` — main application package organized into clear subsystems:
+  - `application/` — event bus (`event_bus.py`) & domain events (`events.py`) for cross-widget coordination
+  - `core/` — core logic and state management:
+    - `data_model.py` (dataclasses for signals, groups, viewport state)
+    - `waveform_db.py` (async signal loading, backend coordination via pyrox)
+    - `waveform_controller.py` (orchestrates waveform operations)
+    - `waveform_loader.py` (file loading logic)
+    - `persistence.py` (session save/load with JSONC support)
+  - `models/` — Qt models for data presentation:
+    - `waveform_item_model.py` (signal list model)
+    - `scope_tree_model.py`, `multi_file_scope_tree_model.py` (hierarchy tree models)
+  - `widgets/` — UI components:
+    - `wave_scout_widget.py` (main waveform viewer widget)
+    - `waveform_canvas.py` (waveform drawing canvas)
+    - `design_tree_view.py`, `signal_names_view.py`, `vars_view.py` (hierarchy and signal browsing)
+    - `markers_window.py`, `signal_analysis_window.py` (analysis tools)
+  - `rendering/` — rendering pipeline:
+    - `signal_renderer.py` (main signal rendering logic)
+    - `time_grid_renderer.py` (time axis and grid)
+    - `signal_sampling.py` (sampling strategies)
+    - `canvas_layout.py` (layout calculations)
+  - `snippets/` — snippet workflow system:
+    - `snippet_manager.py`, `snippet_browser_widget.py`, `snippet_dialogs.py`
+  - `dialogs/` — dialog windows:
+    - `hierarchy_levels_dialog.py`, `navigate_time_dialog.py`
+  - `utils/` — shared utilities:
+    - `config.py`, `theme.py`, `color_utils.py` (UI customization and theming)
+    - `settings_manager.py`, `icon_cache.py` (application settings)
+    - `timing_utils.py`, `clock_utils.py` (time/clock utilities)
+    - `analysis_engine.py` (signal analysis)
+    - `message_box_utils.py` (UI helpers)
+- `pyrox/` — Rust crate (Cargo + maturin) that exposes the high-performance waveform API (`build-pyrox`).
+  - Contains Wellen library as a submodule providing core waveform parsing and access.
+  - Core modules: `lib.rs`, `convert.rs`, `design_tree_model.rs`
+- `scripts/` — build helpers:
+  - `build_pyrox.py` (cross-platform pyrox builder)
+  - `build_pylibfst.py`, `build_pylibfst_windows.py` (legacy libfst builders)
 - `tests/` — pytest + pytest-qt suite (uses `test_inputs/` waveforms for integration coverage).
-- `docs/` — feature plans
-- `take_snapshot.py` — utility to capture GUI snapshots during development.
-- `setup_env.ps1` — initializes the MSVC developer environment required to build Rust/PyO3 on Windows.
+- `docs/` — planning and documentation:
+  - `features/` (feature implementation notes)
+  - `examples/` (usage examples)
+  - `plan_new_feature.md` (feature planning template)
+- `scout.py` — main application entry point
+- `take_snapshot.py` — utility to capture GUI snapshots during development
+- `setup_env.ps1` — initializes the MSVC developer environment required to build Rust/PyO3 on Windows
 
 ## Toolchain & Environment
 - Python 3.12+ (up to 3.13) managed by Poetry (local `.venv`).
@@ -88,7 +117,7 @@ Use `poetry run <command>` whenever unsure that the venv is active.
 - Qt widgets should derive from the existing base classes and plug into the event bus where possible instead of emitting ad-hoc signals.
 
 ### Strict Typing Expectations
-1. Do not introduce `Any`; use precise protocols or concrete types from `wavescout.data_model`.
+1. Do not introduce `Any`; use precise protocols or concrete types from `wavescout.core.data_model`.
 2. Use `TypedDict`, `Protocol`, and `TypeAlias` for structured data instead of loose dicts.
 3. Annotate every parameter and return type; express optionality explicitly with `Optional[T]`.
 4. Prefer domain-specific types (`SignalHandle` from pyrox, `Time`, `Timescale`, etc.) over primitive types in signatures.
@@ -101,7 +130,7 @@ Use `poetry run <command>` whenever unsure that the venv is active.
 - For transient bundles of state, prefer dataclasses or small `NamedTuple`s declared next to their usage.
 
 ## Backend & Data Flow Guidance
-- `WaveformDB` in `wavescout/waveform_db.py` is the primary interface to waveform data, providing async signal loading via `AsyncLoadedSignal`.
+- `WaveformDB` in `wavescout/core/waveform_db.py` is the primary interface to waveform data, providing async signal loading via `AsyncLoadedSignal`.
 - Backend is exclusively pyrox; pylibfst support is deprecated and should not be used for new features.
 - Signals are loaded asynchronously using `get_async_signal(var: Var)` which returns an `AsyncLoadedSignal` with loading state and completion signals.
 - The `Var` wrapper (from `waveform_db.py`) provides a uniform interface over raw `SignalHandle` and hierarchical path strings.
@@ -112,7 +141,7 @@ Use `poetry run <command>` whenever unsure that the venv is active.
 ### Signal Loading (Async API)
 - `AsyncLoadedSignal` wraps signal data with loading state (`is_loading`, `is_loaded`, `has_failed`).
 - Emits `loading_started`, `loading_completed`, `loading_failed` Qt signals for UI updates.
-- `SignalNode` in `data_model.py` holds references to `AsyncLoadedSignal` instances via the `Var` wrapper.
+- `SignalNode` in `wavescout/core/data_model.py` holds references to `AsyncLoadedSignal` instances via the `Var` wrapper.
 - Rendering code checks `is_loaded` before accessing signal data; shows loading indicators otherwise.
 
 ### Event Bus Architecture
@@ -121,15 +150,16 @@ Use `poetry run <command>` whenever unsure that the venv is active.
 - Widgets subscribe to events instead of connecting point-to-point signals.
 
 ### Persistence and Sessions
-- `persistence.py` handles save/load of complete waveform sessions as JSONC files.
+- `wavescout/core/persistence.py` handles save/load of complete waveform sessions as JSONC files.
 - Saves viewport, signal list, markers, snippets, display formats, and signal colors.
 - Aliases are preserved and restored correctly on session load.
 - Clock signal designation is saved and restored.
 
 ### Snippets System
 - Snippets capture reusable signal groups with optional time ranges.
-- `snippet_manager.py` coordinates snippet CRUD operations.
-- `snippet_browser_widget.py` provides browsing UI with preview and search.
+- `wavescout/snippets/snippet_manager.py` coordinates snippet CRUD operations.
+- `wavescout/snippets/snippet_browser_widget.py` provides browsing UI with preview and search.
+- `wavescout/snippets/snippet_dialogs.py` contains UI dialogs for snippet operations.
 - Snippets stored as JSON files in user-configurable directory (default: `~/.wavescout/snippets`).
 
 ## Additional References
