@@ -20,7 +20,7 @@ from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtTest import QTest
 
 from wavescout import create_sample_session, WaveScoutWidget, save_session, load_session
-from wavescout.waveform_loader import create_signal_node_from_var
+from wavescout.core.waveform_loader import create_signal_node_from_var
 from .test_utils import get_test_input_path, TestFiles
 
 
@@ -982,7 +982,7 @@ def test_analog_scale_visible_menu_integration(qtbot):
     )
     
     # Import necessary enums for setting render mode
-    from wavescout.data_model import RenderType, AnalogScalingMode
+    from wavescout.core.data_model import RenderType, AnalogScalingMode
     
     # Verify signal is multi-bit
     assert prdata_node.is_multi_bit, "prdata should be a multi-bit signal"
@@ -1216,7 +1216,7 @@ def test_group_rename_functionality(qtbot):
     assert "paddr" in found_nodes
     
     # Create a group node
-    from wavescout.data_model import GroupNode
+    from wavescout.core.data_model import GroupNode
     group_node = GroupNode(
         name="Test Group",
         children=[found_nodes["prdata"], found_nodes["paddr"]]

@@ -1,7 +1,7 @@
 """Test DesignTreeNode functionality."""
 
 import pytest
-from wavescout.scope_tree_model import DesignTreeNode
+from wavescout.models.scope_tree_model import DesignTreeNode
 
 
 def test_design_tree_node():

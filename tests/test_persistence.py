@@ -4,7 +4,7 @@ import pytest
 import tempfile
 import pathlib
 from wavescout import save_session, load_session, create_sample_session
-from wavescout.data_model import (
+from wavescout.core.data_model import (
     WaveformSession,
     TreeNode,
     GroupNode,
@@ -16,8 +16,8 @@ from wavescout.data_model import (
     AnalysisMode,
     GroupRenderMode,
 )
-from wavescout.waveform_db import WaveformDB
-from wavescout.waveform_loader import create_signal_node_from_var
+from wavescout.core.waveform_db import WaveformDB
+from wavescout.core.waveform_loader import create_signal_node_from_var
 from .test_utils import get_test_input_path, TestFiles
 
 

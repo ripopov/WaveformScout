@@ -17,8 +17,8 @@ This test verifies that:
 import pytest
 from pathlib import Path
 from wavescout import create_sample_session, WaveScoutWidget, save_session, load_session
-from wavescout.waveform_loader import create_signal_node_from_var
-from wavescout.data_model import TreeNode
+from wavescout.core.waveform_loader import create_signal_node_from_var
+from wavescout.core.data_model import TreeNode
 import tempfile
 from .test_utils import get_test_input_path, TestFiles
 
@@ -26,8 +26,8 @@ from .test_utils import get_test_input_path, TestFiles
 @pytest.fixture
 def vcd_with_aliases():
     """Create a session from swerv1.vcd which contains signal aliases."""
-    from wavescout.waveform_db import WaveformDB
-    from wavescout.data_model import WaveformSession
+    from wavescout.core.waveform_db import WaveformDB
+    from wavescout.core.data_model import WaveformSession
     from wavescout.application.event_bus import EventBus
     from PySide6.QtWidgets import QApplication
 

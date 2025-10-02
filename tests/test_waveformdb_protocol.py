@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from wavescout.waveform_db import WaveformDB
+from wavescout.core.waveform_db import WaveformDB
 from .test_utils import get_test_input_path, TestFiles
 
 if TYPE_CHECKING:

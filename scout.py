@@ -17,16 +17,16 @@ from PySide6.QtWidgets import (QApplication, QMainWindow,
                               QVBoxLayout, QPushButton, QLabel, QFrame, QMenuBar,
                               QSizeGrip, QMenu, QStatusBar, QSizePolicy)
 from qframelesswindow import FramelessWindow
-from wavescout.message_box_utils import show_critical, show_warning, show_information, show_question
+from wavescout.utils.message_box_utils import show_critical, show_warning, show_information, show_question
 from PySide6.QtCore import Qt, QThreadPool, QRunnable, Signal, QObject, QSettings, QEvent, QPoint, QSize
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPainter, QColor, QPen, QIcon, QPixmap
 from wavescout import WaveScoutWidget, create_sample_session, save_session, load_session
-from wavescout.design_tree_view import DesignTreeView
-from wavescout.config import RENDERING
-from wavescout.theme import theme_manager, ThemeName, apply_saved_theme
-from wavescout.data_model import WaveformSession, TreeNode, GroupNode
-from wavescout.settings_manager import SettingsManager
-from wavescout.timing_utils import set_startup_time, tprint
+from wavescout.widgets.design_tree_view import DesignTreeView
+from wavescout.utils.config import RENDERING
+from wavescout.utils.theme import theme_manager, ThemeName, apply_saved_theme
+from wavescout.core.data_model import WaveformSession, TreeNode, GroupNode
+from wavescout.utils.settings_manager import SettingsManager
+from wavescout.utils.timing_utils import set_startup_time, tprint
 import qdarkstyle
 
 
@@ -201,7 +201,7 @@ class WaveScoutMainWindow(FramelessWindow):
         self.wave_widget.controller.on("session_changed", self._on_controller_session_changed)
 
         # Create right sidebar with snippet browser
-        from wavescout.snippet_browser_widget import SnippetBrowserWidget
+        from wavescout.snippets.snippet_browser_widget import SnippetBrowserWidget
         self.right_panel = SnippetBrowserWidget()
         self.right_panel.snippet_instantiate.connect(self._on_snippet_instantiate)
         self.horizontal_splitter.addWidget(self.right_panel)
@@ -867,7 +867,7 @@ class WaveScoutMainWindow(FramelessWindow):
         # Save current session state to temporary file
         import tempfile
         from pathlib import Path
-        from wavescout.persistence import save_session, load_session
+        from wavescout.core.persistence import save_session, load_session
 
         if self.wave_widget.session and self.wave_widget.session.waveform_files:
             try:
@@ -1568,7 +1568,7 @@ class WaveScoutMainWindow(FramelessWindow):
     
     def _open_snippets_directory(self):
         """Open the snippets directory in the system file manager."""
-        from wavescout.snippet_manager import SnippetManager
+        from wavescout.snippets.snippet_manager import SnippetManager
         
         # Get the snippets directory from SnippetManager
         snippet_manager = SnippetManager()
@@ -1683,7 +1683,7 @@ class WaveScoutMainWindow(FramelessWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # The dialog handles saving the setting and emitting the signal
             # Just show confirmation message
-            from wavescout.settings_manager import SettingsManager
+            from wavescout.utils.settings_manager import SettingsManager
             settings_manager = SettingsManager()
             levels = settings_manager.get_hierarchy_levels()
             if levels == 0:
@@ -1725,7 +1725,7 @@ class WaveScoutMainWindow(FramelessWindow):
     
     def _update_signal_colors_to_theme(self):
         """Update all signal colors that are using the old default to use the new theme default."""
-        from wavescout import config
+        from wavescout.utils import config
         new_default = config.COLORS.DEFAULT_SIGNAL
         
         # Walk through all signals in the session and update colors
@@ -1822,8 +1822,8 @@ class WaveScoutMainWindow(FramelessWindow):
     
     def _on_snippet_instantiate(self, snippet):
         """Handle snippet instantiation request from browser."""
-        from wavescout.snippet_dialogs import InstantiateSnippetDialog
-        from wavescout.data_model import GroupNode
+        from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
+        from wavescout.core.data_model import GroupNode
         
         # Get current waveform database
         waveform_db = None
@@ -1880,9 +1880,9 @@ class WaveScoutMainWindow(FramelessWindow):
     def _load_cli_snippets(self, snippet_names: list[str]) -> None:
         """Load and instantiate CLI snippets using exact signal names from JSON."""
         import sys
-        from wavescout.snippet_dialogs import InstantiateSnippetDialog
-        from wavescout.snippet_manager import SnippetManager
-        from wavescout.data_model import GroupNode
+        from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
+        from wavescout.snippets.snippet_manager import SnippetManager
+        from wavescout.core.data_model import GroupNode
 
         manager = SnippetManager()
         waveform_db = self.wave_widget.session.get_primary_file().waveform_db if self.wave_widget.session.waveform_files else None

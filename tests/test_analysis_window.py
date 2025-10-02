@@ -14,11 +14,11 @@ from PySide6.QtCore import QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import TreeNode, SignalNode, DisplayFormat
-from wavescout.signal_analysis_window import SignalAnalysisWindow
+from wavescout.core.data_model import TreeNode, SignalNode, DisplayFormat
+from wavescout.widgets.signal_analysis_window import SignalAnalysisWindow
 from .test_utils import MockVar
-from wavescout.waveform_db import WaveformDB
-from wavescout.analysis_engine import (
+from wavescout.core.waveform_db import WaveformDB
+from wavescout.utils.analysis_engine import (
     compute_signal_statistics,
     generate_sampling_times_signal,
     generate_sampling_times_period

@@ -5,7 +5,7 @@ from typing import Literal, Optional, TypedDict
 import time
 
 from pyrox import SignalHandle, Signal
-from wavescout.data_model import Time, SignalNodeID
+from wavescout.core.data_model import Time, SignalNodeID
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -10,10 +10,10 @@ from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import TreeNode, SignalNode, DisplayFormat, RenderType, DataFormat
-from wavescout.waveform_db import WaveformDB
+from wavescout.core.data_model import TreeNode, SignalNode, DisplayFormat, RenderType, DataFormat
+from wavescout.core.waveform_db import WaveformDB
 from .test_utils import get_test_input_path, TestFiles, MockVar
-from wavescout.waveform_loader import create_signal_node_from_var
+from wavescout.core.waveform_loader import create_signal_node_from_var
 
 
 class TestReloadFeature:
@@ -315,7 +315,7 @@ class TestReloadFeature:
     
     def test_reload_with_markers_and_cursor(self, main_window):
         """Test that reload preserves markers and cursor position."""
-        from wavescout.data_model import Marker
+        from wavescout.core.data_model import Marker
         
         window = main_window
         session = window.wave_widget.session

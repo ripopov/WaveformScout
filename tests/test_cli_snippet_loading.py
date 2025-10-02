@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any
 import pytest
 from PySide6.QtCore import QStandardPaths
-from wavescout.snippet_manager import Snippet
-from wavescout.data_model import GroupNode, SignalNode
-from wavescout.waveform_db import AsyncLoadedSignal, WaveformDB
+from wavescout.snippets.snippet_manager import Snippet
+from wavescout.core.data_model import GroupNode, SignalNode
+from wavescout.core.waveform_db import AsyncLoadedSignal, WaveformDB
 from wavescout.application.event_bus import EventBus
 from .test_utils import MockVar, get_test_input_path
 
@@ -102,7 +102,7 @@ def test_snippet_file_loading(snippets_dir, sample_snippet_data):
         json.dump(sample_snippet_data, f)
     
     # Test loading via SnippetManager
-    from wavescout.snippet_manager import SnippetManager
+    from wavescout.snippets.snippet_manager import SnippetManager
     # Reset the singleton instance to pick up the mocked path
     SnippetManager._instance = None
     manager = SnippetManager()
@@ -118,7 +118,7 @@ def test_snippet_file_loading(snippets_dir, sample_snippet_data):
 
 def test_missing_snippet_file(snippets_dir):
     """Test that loading a non-existent snippet returns None."""
-    from wavescout.snippet_manager import SnippetManager
+    from wavescout.snippets.snippet_manager import SnippetManager
     # Reset the singleton instance to pick up the mocked path
     SnippetManager._instance = None
     manager = SnippetManager()
@@ -134,7 +134,7 @@ def test_invalid_snippet_json(snippets_dir):
     with open(snippet_file, 'w') as f:
         f.write("{ invalid json content")
     
-    from wavescout.snippet_manager import SnippetManager
+    from wavescout.snippets.snippet_manager import SnippetManager
     # Reset the singleton instance to pick up the mocked path
     SnippetManager._instance = None
     manager = SnippetManager()
@@ -145,7 +145,7 @@ def test_invalid_snippet_json(snippets_dir):
 
 def test_validate_and_resolve_nodes():
     """Test the extracted validation logic."""
-    from wavescout.snippet_dialogs import InstantiateSnippetDialog
+    from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
 
     # Create real waveform database with APB test file
     db = WaveformDB(EventBus())
@@ -234,7 +234,7 @@ def test_cli_argument_parsing(sample_vcd_file, snippets_dir, sample_snippet_data
 
 def test_snippet_node_hierarchy():
     """Test that hierarchical snippet nodes are handled correctly."""
-    from wavescout.snippet_dialogs import InstantiateSnippetDialog
+    from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
 
     # Create real waveform database with APB test file
     db = WaveformDB(EventBus())
@@ -301,7 +301,7 @@ def test_exit_codes_simulation():
 
 def test_snippet_instantiation_order():
     """Test that snippets are instantiated in the order specified."""
-    from wavescout.data_model import GroupNode
+    from wavescout.core.data_model import GroupNode
     
     # Create a list to track instantiation order
     instantiation_order = []

@@ -14,8 +14,8 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtTest import QTest
 
 from wavescout import create_sample_session, WaveScoutWidget
-from wavescout.data_model import Time
-from wavescout.waveform_controller import WaveformController
+from wavescout.core.data_model import Time
+from wavescout.core.waveform_controller import WaveformController
 
 
 class TestPaths:
@@ -59,7 +59,7 @@ class ROITestHelper:
         assert db is not None and db.hierarchy is not None
         
         # Find and add first few signals
-        from wavescout.waveform_loader import create_signal_node_from_var
+        from wavescout.core.waveform_loader import create_signal_node_from_var
         
         signal_count = 0
         for handle, vars_list in db.iter_handles_and_vars():

@@ -22,7 +22,7 @@ from typing import Optional, Literal
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 from wavescout import WaveScoutWidget, load_session
-from wavescout.timing_utils import set_startup_time, tprint
+from wavescout.utils.timing_utils import set_startup_time, tprint
 
 # Global startup time for tracking elapsed time
 startup_time = None

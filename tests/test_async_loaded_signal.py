@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 
-from wavescout.waveform_db import WaveformDB, AsyncLoadedSignal
+from wavescout.core.waveform_db import WaveformDB, AsyncLoadedSignal
 from wavescout.application.event_bus import EventBus
 from wavescout.application.events import SignalLoadedEvent
 from pyrox import SignalHandle
@@ -295,7 +295,7 @@ class TestWaveformDBIntegration:
         # Setup event bus if not already
         if not waveform_db._event_bus:
             waveform_db._event_bus = EventBus()
-            from wavescout.waveform_db import AsyncEventBridge
+            from wavescout.core.waveform_db import AsyncEventBridge
             waveform_db._event_bridge = AsyncEventBridge(waveform_db._event_bus)
 
         # Get a handle

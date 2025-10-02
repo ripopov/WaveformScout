@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 from PySide6.QtCore import QModelIndex
-from wavescout.wave_scout_widget import WaveScoutWidget
-from wavescout.data_model import RenderType, AnalogScalingMode
+from wavescout.widgets.wave_scout_widget import WaveScoutWidget
+from wavescout.core.data_model import RenderType, AnalogScalingMode
 from tests.test_scout_integration import WaveScoutTestHelper, TestPaths, create_sample_session
 
 

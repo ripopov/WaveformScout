@@ -1,0 +1,1 @@
+"""Drawing and rendering logic."""

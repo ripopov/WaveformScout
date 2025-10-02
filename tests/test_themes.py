@@ -4,8 +4,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 from PySide6.QtCore import QSettings
 
-from wavescout.theme import ThemeName, THEMES, ThemeManager, theme_manager
-from wavescout.config import RGBA
+from wavescout.utils.theme import ThemeName, THEMES, ThemeManager, theme_manager
+from wavescout.utils.config import RGBA
 
 
 class TestThemeRegistry:
@@ -114,7 +114,7 @@ class TestThemeManager:
         manager = ThemeManager()
         
         # Import config to check COLORS
-        import wavescout.config as config
+        import wavescout.utils.config as config
         
         # Change theme
         manager.set_theme(ThemeName.DRACULA)

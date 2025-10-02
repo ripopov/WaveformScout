@@ -11,16 +11,16 @@ import pytest
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from wavescout.waveform_db import WaveformDB
-from wavescout.data_model import (
+from wavescout.core.waveform_db import WaveformDB
+from wavescout.core.data_model import (
     WaveformSession,
     TreeNode,
     SignalNode,
     DisplayFormat,
     WaveformFileReference,
 )
-from wavescout.waveform_controller import WaveformController
-from wavescout.persistence import save_session, load_session
+from wavescout.core.waveform_controller import WaveformController
+from wavescout.core.persistence import save_session, load_session
 from wavescout.application.event_bus import EventBus
 from tests.test_utils import TestFiles, get_test_input_path
 

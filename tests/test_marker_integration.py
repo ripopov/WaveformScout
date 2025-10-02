@@ -36,7 +36,7 @@ from PySide6.QtTest import QTest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import TreeNode, SignalNode, Marker
+from wavescout.core.data_model import TreeNode, SignalNode, Marker
 from tests.conftest import TestFiles, get_test_input_path
 
 class TestPaths:
@@ -336,7 +336,7 @@ def test_marker_integration(qtbot):
         print("\n5. Saving session to JSON...")
 
         # Save session
-        from wavescout.persistence import save_session
+        from wavescout.core.persistence import save_session
         save_session(session, Path(temp_session_path))
 
         # Verify file exists

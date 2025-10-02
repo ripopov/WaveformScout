@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QModelIndex
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 from scout import WaveScoutMainWindow
-from wavescout import config
+from wavescout.utils import config
 from .test_utils import get_test_input_path, TestFiles
 
 
@@ -46,7 +46,7 @@ def main_window_with_signals(main_window):
         for handle in handles:
             var = db.var_from_handle(handle)
             if var:
-                from wavescout.waveform_loader import create_signal_node_from_var
+                from wavescout.core.waveform_loader import create_signal_node_from_var
                 signal_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
                 signals_to_add.append(signal_node)
 
@@ -88,7 +88,7 @@ class TestValueTooltips:
     
     def test_settings_persistence(self, main_window):
         """Test that tooltip setting is saved to SettingsManager."""
-        from wavescout.settings_manager import SettingsManager
+        from wavescout.utils.settings_manager import SettingsManager
         settings_manager = SettingsManager()
         
         # Enable tooltips
@@ -193,7 +193,7 @@ class TestValueTooltips:
     
     def test_tooltip_colors_in_theme(self):
         """Test that tooltip colors are defined in all themes."""
-        from wavescout.theme import THEMES, ThemeName
+        from wavescout.utils.theme import THEMES, ThemeName
         
         for theme_name in ThemeName:
             theme = THEMES[theme_name]

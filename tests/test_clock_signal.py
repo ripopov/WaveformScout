@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from PySide6.QtWidgets import QApplication
 
-from wavescout.data_model import (
+from wavescout.core.data_model import (
     WaveformSession,
     SignalNode,
     DataFormat,
@@ -13,19 +13,19 @@ from wavescout.data_model import (
     RenderType,
     Time,
 )
-from wavescout.clock_utils import (
+from wavescout.utils.clock_utils import (
     is_valid_clock_signal,
     calculate_event_clock_period,
     calculate_digital_clock_period,
     calculate_counter_clock_period,
     calculate_clock_period
 )
-from wavescout.waveform_controller import WaveformController
-from wavescout.waveform_db import AsyncLoadedSignal
-from wavescout.time_grid_renderer import TimeGridRenderer, TimeRulerConfig
-from wavescout.persistence import save_session, load_session
+from wavescout.core.waveform_controller import WaveformController
+from wavescout.core.waveform_db import AsyncLoadedSignal
+from wavescout.rendering.time_grid_renderer import TimeGridRenderer, TimeRulerConfig
+from wavescout.core.persistence import save_session, load_session
 from wavescout import create_sample_session
-from wavescout.waveform_loader import create_signal_node_from_var
+from wavescout.core.waveform_loader import create_signal_node_from_var
 import tempfile
 
 # Import test utilities for proper file path handling
@@ -434,7 +434,7 @@ class TestRealWaveform:
     
     def test_apb_sim_clock_detection(self):
         """Test clock period detection on apb_sim.vcd file."""
-        from wavescout.clock_utils import calculate_clock_period
+        from wavescout.utils.clock_utils import calculate_clock_period
         from wavescout.application.event_bus import EventBus
 
         # Create session with real waveform and event bus
@@ -448,7 +448,7 @@ class TestRealWaveform:
         if not hasattr(db, '_event_bus') or db._event_bus is None:
             event_bus = EventBus()
             db._event_bus = event_bus
-            from wavescout.waveform_db import AsyncEventBridge
+            from wavescout.core.waveform_db import AsyncEventBridge
             db._event_bridge = AsyncEventBridge(event_bus)
             if db.waveform:
                 db.waveform.set_async_callback(db._on_async_event)

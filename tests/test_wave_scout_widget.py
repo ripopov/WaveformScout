@@ -13,7 +13,7 @@ from wavescout import (
     DisplayFormat,
     GroupRenderMode,
 )
-from wavescout.waveform_db import AsyncLoadedSignal
+from wavescout.core.waveform_db import AsyncLoadedSignal
 from .test_utils import get_test_input_path, TestFiles
 
 

@@ -1,7 +1,7 @@
 import pytest
 from wavescout import WaveScoutWidget, WaveformSession
-from wavescout.waveform_loader import create_signal_node_from_var, create_sample_session
-from wavescout.data_model import TreeNode, GroupNode, GroupRenderMode, RenderType, AnalogScalingMode
+from wavescout.core.waveform_loader import create_signal_node_from_var, create_sample_session
+from wavescout.core.data_model import TreeNode, GroupNode, GroupRenderMode, RenderType, AnalogScalingMode
 from .test_utils import get_test_input_path
 
 

@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scout import WaveScoutMainWindow
 from wavescout import save_session
-from wavescout.data_model import TreeNode
+from wavescout.core.data_model import TreeNode
 
 # Import test utilities
 from .test_utils import get_test_input_path, TestFiles

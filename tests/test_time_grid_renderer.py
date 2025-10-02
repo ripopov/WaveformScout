@@ -8,8 +8,8 @@ from PySide6.QtGui import QPainter, QColor, QFont
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from wavescout.time_grid_renderer import TimeGridRenderer, TickInfo
-from wavescout.data_model import TimeRulerConfig, Timescale, TimeUnit
+from wavescout.rendering.time_grid_renderer import TimeGridRenderer, TickInfo
+from wavescout.core.data_model import TimeRulerConfig, Timescale, TimeUnit
 
 # Initialize QApplication for tests that use Qt objects
 @pytest.fixture(scope="module")

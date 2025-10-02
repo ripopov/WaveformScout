@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Optional
 import pytest
 from PySide6.QtWidgets import QApplication
-from wavescout.data_model import TreeNode, GroupNode, SignalNode, DisplayFormat, DataFormat, RenderType, WaveformSession
+from wavescout.core.data_model import TreeNode, GroupNode, SignalNode, DisplayFormat, DataFormat, RenderType, WaveformSession
 from .test_utils import MockVar
-from wavescout.waveform_loader import create_signal_node_from_var
-from wavescout.snippet_manager import Snippet, SnippetManager
-from wavescout.persistence import serialize_snippet_nodes, deserialize_snippet_nodes
-from wavescout.waveform_db import WaveformDB, AsyncLoadedSignal
-from wavescout.snippet_dialogs import InstantiateSnippetDialog
+from wavescout.core.waveform_loader import create_signal_node_from_var
+from wavescout.snippets.snippet_manager import Snippet, SnippetManager
+from wavescout.core.persistence import serialize_snippet_nodes, deserialize_snippet_nodes
+from wavescout.core.waveform_db import WaveformDB, AsyncLoadedSignal
+from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
 
 
 def create_async_signal(handle, waveform_db):
@@ -501,7 +501,7 @@ class TestSnippetRoundTrip:
         assert dialog.get_group_name() == custom_name
         
         # Serialize and deserialize
-        from wavescout.persistence import serialize_snippet_nodes
+        from wavescout.core.persistence import serialize_snippet_nodes
         serialized = serialize_snippet_nodes(snippet.nodes, parent_scope)
         result = deserialize_snippet_nodes(serialized, parent_scope, waveform_db)
 
@@ -743,7 +743,7 @@ class TestSnippetRoundTrip:
         assert len(loaded_inner.children) == 2
         
         # Now test instantiation - FIRST INSTANCE
-        from wavescout.persistence import serialize_snippet_nodes
+        from wavescout.core.persistence import serialize_snippet_nodes
         serialized = serialize_snippet_nodes(loaded_snippet.nodes, parent_scope)
         
         # First instantiation
@@ -990,7 +990,7 @@ class TestSnippetBugRegressions:
         assert len(loaded_snippet.nodes) == 2
         
         # Test the path building logic (as used by CLI)
-        from wavescout.snippet_dialogs import InstantiateSnippetDialog
+        from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
         
         # Build full paths by concatenating parent with relative names
         full_path_nodes = []
@@ -1015,7 +1015,7 @@ class TestSnippetBugRegressions:
         This tests the simplified logic that just concatenates parent + "." + relative_name
         without complex remapping.
         """
-        from wavescout.snippet_dialogs import InstantiateSnippetDialog
+        from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
         
         # Test case 1: Simple signal
         # Use a real signal for testing, but we'll override the name for path testing
@@ -1142,7 +1142,7 @@ class TestSnippetBugRegressions:
         
         This method is used by CLI loading to validate signals exist and resolve handles.
         """
-        from wavescout.snippet_dialogs import InstantiateSnippetDialog
+        from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
         
         # Find a real signal from the waveform
         test_signals = find_test_signals(waveform_db, "TOP", count=1)
@@ -1243,7 +1243,7 @@ class TestSnippetAPBScenario:
 
     def test_apb_addr_snippet_scenario(self, apb_waveform_db, snippet_manager, qapp):
         """Test complete APB_ADDR snippet scenario."""
-        from wavescout.waveform_loader import create_signal_node_from_var
+        from wavescout.core.waveform_loader import create_signal_node_from_var
         from PySide6.QtWidgets import QInputDialog
 
         db = apb_waveform_db
@@ -1404,7 +1404,7 @@ class TestSnippetAPBScenario:
 
     def test_apb_addr_snippet_instantiation_with_different_scope(self, apb_waveform_db, snippet_manager, qapp):
         """Test the specific scenario reported: instantiate snippet with different scope."""
-        from wavescout.waveform_loader import create_signal_node_from_var
+        from wavescout.core.waveform_loader import create_signal_node_from_var
 
         db = apb_waveform_db
         session = WaveformSession()
@@ -1526,9 +1526,9 @@ class TestSnippetAPBScenario:
 
     def test_snippet_async_loading_integration(self, apb_waveform_db, snippet_manager, qapp):
         """Test that snippet instantiation properly handles async signal loading."""
-        from wavescout.waveform_loader import create_signal_node_from_var
-        from wavescout.waveform_controller import WaveformController
-        from wavescout.snippet_dialogs import InstantiateSnippetDialog
+        from wavescout.core.waveform_loader import create_signal_node_from_var
+        from wavescout.core.waveform_controller import WaveformController
+        from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
 
         db = apb_waveform_db
         session = WaveformSession()

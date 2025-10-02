@@ -10,12 +10,12 @@ from PySide6.QtCore import Qt, QMimeData, QModelIndex
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.signal_names_view import SignalNamesView
-from wavescout.persistence import save_session, load_session
+from wavescout.widgets.signal_names_view import SignalNamesView
+from wavescout.core.persistence import save_session, load_session
 from .test_split_mode_helpers import add_signals_from_split_mode, add_signals_by_double_click_vars
 from .test_utils import get_test_input_path, TestFiles
 from wavescout import create_sample_session
-from wavescout.waveform_loader import create_signal_node_from_var
+from wavescout.core.waveform_loader import create_signal_node_from_var
 
 # Get the absolute path to the test inputs directory
 TEST_DIR = Path(__file__).parent
@@ -655,8 +655,8 @@ def test_copy_paste_recursion_regression(qtbot):
     - Equality comparisons that would trigger infinite recursion
     """
 
-    from wavescout.data_model import GroupNode, SignalNode, DisplayFormat, RenderType
-    from wavescout.persistence import _serialize_node, _deserialize_node
+    from wavescout.core.data_model import GroupNode, SignalNode, DisplayFormat, RenderType
+    from wavescout.core.persistence import _serialize_node, _deserialize_node
     import json
 
     # Load a real waveform to get real Var objects

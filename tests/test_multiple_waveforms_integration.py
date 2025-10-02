@@ -131,7 +131,7 @@ def test_add_signals_from_second_file_after_first(qtbot):
     model = window.design_tree_view.scope_tree_model
 
     # In multi-file mode, we should have file nodes at root
-    from wavescout.multi_file_scope_tree_model import MultiFileScopeTreeModel, FileNode
+    from wavescout.models.multi_file_scope_tree_model import MultiFileScopeTreeModel, FileNode
     assert isinstance(model, MultiFileScopeTreeModel), "Should be using MultiFileScopeTreeModel"
 
     # Find swerv1.vcd file node (should be second child at root)

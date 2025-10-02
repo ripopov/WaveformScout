@@ -5,8 +5,8 @@ from PySide6.QtCore import QModelIndex, Qt, QItemSelectionModel
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from scout import WaveScoutMainWindow
-from wavescout.data_model import TreeNode, SignalNode
-from wavescout.waveform_db import AsyncLoadedSignal
+from wavescout.core.data_model import TreeNode, SignalNode
+from wavescout.core.waveform_db import AsyncLoadedSignal
 
 
 def add_signals_from_split_mode(window: WaveScoutMainWindow, count: int = 5) -> List[TreeNode]:

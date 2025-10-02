@@ -13,8 +13,8 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 
 from scout import WaveScoutMainWindow
-from wavescout.data_model import TreeNode, SignalNode, DisplayFormat
-from wavescout.signal_analysis_window import SignalAnalysisWindow
+from wavescout.core.data_model import TreeNode, SignalNode, DisplayFormat
+from wavescout.widgets.signal_analysis_window import SignalAnalysisWindow
 from test_utils import get_test_input_path, TestFiles, MockVar
 
 

@@ -3,7 +3,7 @@
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
-from wavescout.message_box_utils import show_critical, show_warning, show_information, show_question
+from wavescout.utils.message_box_utils import show_critical, show_warning, show_information, show_question
 
 
 def test_message_box_text_is_selectable(qtbot):

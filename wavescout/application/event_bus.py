@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 
 from wavescout.application.events import Event
-from wavescout.timing_utils import tprint
+from wavescout.utils.timing_utils import tprint
 
 T = TypeVar('T', bound=Event)
 

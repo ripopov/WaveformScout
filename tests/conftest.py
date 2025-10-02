@@ -4,8 +4,8 @@ import pytest
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from wavescout import create_sample_session, WaveScoutWidget
-from wavescout.waveform_loader import create_signal_node_from_var
-from wavescout.data_model import GroupNode
+from wavescout.core.waveform_loader import create_signal_node_from_var
+from wavescout.core.data_model import GroupNode
 from .test_utils import get_test_input_path, TestFiles
 
 

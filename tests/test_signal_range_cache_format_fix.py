@@ -11,13 +11,13 @@ from typing import Dict, Optional
 
 from pyrox import SignalHandle
 
-from wavescout.data_model import (
+from wavescout.core.data_model import (
     SignalNodeID, AnalogScalingMode, DataFormat, 
     SignalRangeCache, DisplayFormat
 )
-from wavescout.signal_renderer import get_signal_range, compute_global_signal_range
-from wavescout.signal_sampling import SignalDrawingData, SignalSample, ValueKind
-from wavescout.waveform_db import WaveformDB
+from wavescout.rendering.signal_renderer import get_signal_range, compute_global_signal_range
+from wavescout.rendering.signal_sampling import SignalDrawingData, SignalSample, ValueKind
+from wavescout.core.waveform_db import WaveformDB
 
 
 class MockQueryResult:
@@ -38,8 +38,8 @@ class MockSignal:
 
     def get_global_range(self, data_format: int, bit_width: int):
         """Compute global range for all values in the signal."""
-        from wavescout.signal_sampling import parse_signal_value
-        from wavescout.data_model import DataFormat
+        from wavescout.rendering.signal_sampling import parse_signal_value
+        from wavescout.core.data_model import DataFormat
 
         # Convert integer code to DataFormat enum (0=unsigned, 1=signed, 2=hex, 3=bin, 4=float)
         format_map = {

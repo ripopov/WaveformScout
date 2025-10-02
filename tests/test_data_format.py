@@ -5,11 +5,11 @@ import math
 import struct
 import os
 from pathlib import Path
-from wavescout.signal_sampling import parse_signal_value
-from wavescout.data_model import DataFormat
-from wavescout.waveform_db import WaveformDB
+from wavescout.rendering.signal_sampling import parse_signal_value
+from wavescout.core.data_model import DataFormat
+from wavescout.core.waveform_db import WaveformDB
 from .test_utils import get_test_input_path, TestFiles
-from wavescout.waveform_loader import create_signal_node_from_var
+from wavescout.core.waveform_loader import create_signal_node_from_var
 
 
 def test_parse_signal_value_unsigned():

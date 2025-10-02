@@ -10,10 +10,10 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 
 # Test the individual components
-from wavescout.snippet_manager import Snippet, SnippetManager
-from wavescout.snippet_dialogs import InstantiateSnippetDialog
-from wavescout.data_model import TreeNode, GroupNode, SignalNode
-from wavescout.waveform_db import AsyncLoadedSignal, WaveformDB
+from wavescout.snippets.snippet_manager import Snippet, SnippetManager
+from wavescout.snippets.snippet_dialogs import InstantiateSnippetDialog
+from wavescout.core.data_model import TreeNode, GroupNode, SignalNode
+from wavescout.core.waveform_db import AsyncLoadedSignal, WaveformDB
 from wavescout.application.event_bus import EventBus
 from .test_utils import MockVar, get_test_input_path
 
@@ -201,7 +201,7 @@ def test_loading_state_cli_snippets():
 
 
 @patch('sys.exit')
-@patch('wavescout.snippet_manager.SnippetManager')
+@patch('wavescout.snippets.snippet_manager.SnippetManager')
 def test_load_cli_snippets_error_handling(mock_manager_class, mock_exit):
     """Test error handling in _load_cli_snippets method."""
     # This would normally be in scout.py but we'll test the logic
