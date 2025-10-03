@@ -117,37 +117,10 @@ class WaveformController:
                 tprint("[CONTROLLER] Session has waveform_db")
                 # We need to access internal WaveformDB attributes, so check if it's the actual class
                 # not just the protocol
-                from wavescout.core.waveform_db import WaveformDB, AsyncEventBridge
+                from wavescout.core.waveform_db import WaveformDB
                 if isinstance(primary_file.waveform_db, WaveformDB):
                     waveform_db = primary_file.waveform_db
-                tprint("[CONTROLLER] WaveformDB instance detected")
-                tprint(f"[CONTROLLER] WaveformDB._event_bus = {waveform_db._event_bus}")
-                tprint(f"[CONTROLLER] WaveformDB._event_bridge = {waveform_db._event_bridge}")
-
-                # Check if WaveformDB lacks an event bridge
-                if hasattr(waveform_db, '_event_bus') and waveform_db._event_bus is None:
-                    tprint("[CONTROLLER] WaveformDB lacks event bus, hooking up...")
-                    # Hook up our event bus
-                    waveform_db._event_bus = self.event_bus
-                    # Create event bridge for thread-safe async callbacks
-                    waveform_db._event_bridge = AsyncEventBridge(self.event_bus)
-                    # Re-register async callback if waveform is loaded
-                    if waveform_db.waveform:
-                        tprint("[CONTROLLER] Re-registering async callback")
-                        waveform_db.waveform.set_async_callback(waveform_db._on_async_event)
-
-                    # If there are signals that were supposed to load async but didn't
-                    # because there was no event bus, re-trigger their loading
-                    if hasattr(waveform_db, '_loading_handles') and waveform_db._loading_handles:
-                        # Handles that are marked as loading but haven't loaded yet
-                        handles_to_reload = list(waveform_db._loading_handles)
-                        if handles_to_reload:
-                            tprint(f"[CONTROLLER] Re-triggering loading for {len(handles_to_reload)} handles")
-                            # Clear the loading set and re-trigger
-                            waveform_db._loading_handles.clear()
-                            waveform_db.load_signals_async(handles_to_reload)
-                else:
-                    tprint("[CONTROLLER] WaveformDB already has event bus, skipping hookup")
+                    waveform_db.attach_event_bus(self.event_bus)
 
         # Sync selected IDs from session.selected_nodes
         self._selected_ids = {n.instance_id for n in session.selected_nodes}
@@ -182,10 +155,7 @@ class WaveformController:
 
         try:
             # Create and open new WaveformDB instance
-            waveform_db = WaveformDB()
-            waveform_db._event_bus = self.event_bus
-            from wavescout.core.waveform_db import AsyncEventBridge
-            waveform_db._event_bridge = AsyncEventBridge(self.event_bus)
+            waveform_db = WaveformDB(event_bus=self.event_bus)
             waveform_db.open(file_path)
 
             # Validate timescale against existing files

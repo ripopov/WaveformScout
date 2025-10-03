@@ -229,6 +229,41 @@ class WaveformDB:
         if self._event_bus:
             self._event_bridge = AsyncEventBridge(self._event_bus)
 
+    def attach_event_bus(self, event_bus: EventBus) -> None:
+        """Attach an event bus to this WaveformDB instance for async signal loading.
+
+        This method is used for late binding when a WaveformDB is created without an event bus
+        (e.g., during background session loading) and the event bus needs to be attached later.
+
+        Args:
+            event_bus: The EventBus instance to attach
+
+        Note:
+            - Sets up the event bridge for thread-safe async callbacks
+            - Registers the async callback if waveform is already loaded
+            - Retries any signals that were queued for loading before event bus was attached
+            - If an event bus is already attached, this method does nothing (idempotent)
+        """
+        # Skip if event bus already attached
+        if self._event_bus is not None:
+            return
+
+        # Store event bus reference
+        self._event_bus = event_bus
+
+        # Create Qt signal bridge for thread safety
+        self._event_bridge = AsyncEventBridge(event_bus)
+
+        # Register async callback if waveform already loaded
+        if self.waveform is not None:
+            self.waveform.set_async_callback(self._on_async_event)
+
+        # Retry any signals that were loading before event bus attached
+        if self._loading_handles:
+            handles_to_retry = list(self._loading_handles)
+            self._loading_handles.clear()
+            self.load_signals_async(handles_to_retry)
+
     @property
     def file_path(self) -> Optional[str]:
         """Get the file path of the opened waveform."""
