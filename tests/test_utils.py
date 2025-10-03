@@ -77,6 +77,7 @@ class TestFiles:
     
     # VCD files
     APB_SIM_VCD = "apb_sim.vcd"
+    APB_SIM_2SCOPE_VCD = "apb_sim_2scope.vcd"
     SWERV1_VCD = "swerv1.vcd"
     VCD_EXTENSIONS = "vcd_extensions.vcd"
     PULSE_TEST_VCD = "pulse_test.vcd"
@@ -152,8 +153,133 @@ def get_medium_test_file() -> Path:
 
 def get_fst_test_file() -> Path:
     """Get an FST format test file.
-    
+
     Returns:
         Path to des.fst
     """
     return get_test_input_path(TestFiles.DES_FST)
+
+
+def add_signal_from_design_tree(window, scope_path: list, signal_name: str, qtbot) -> bool:
+    """Add a signal from design tree by navigating scopes and double-clicking in VarsView.
+
+    This is the UI-driven approach to adding signals, matching how users interact
+    with the application through DesignTreeView and VarsView.
+
+    Args:
+        window: WaveScoutMainWindow instance
+        scope_path: List of scope names to navigate (e.g., ['apb_testbench'])
+        signal_name: Name of the signal to add (e.g., 'inner.pready')
+        qtbot: pytest-qt fixture
+
+    Returns:
+        True if signal was successfully added, False otherwise
+    """
+    from PySide6.QtCore import QModelIndex, QItemSelectionModel
+    from PySide6.QtWidgets import QApplication
+
+    design_view = window.design_tree_view
+    scope_tree = design_view.scope_tree
+    scope_model = design_view.scope_tree_model
+    vars_view = design_view.vars_view
+
+    if not scope_model or not vars_view:
+        return False
+
+    # Navigate through scope path
+    current_idx = QModelIndex()
+    for scope_name in scope_path:
+        found = False
+        for row in range(scope_model.rowCount(current_idx)):
+            idx = scope_model.index(row, 0, current_idx)
+            if idx.isValid() and scope_model.data(idx) == scope_name:
+                scope_tree.expand(idx)
+                current_idx = idx
+                found = True
+                break
+
+        if not found:
+            return False
+
+    # Select the final scope to populate VarsView
+    scope_tree.setCurrentIndex(current_idx)
+    scope_tree.selectionModel().setCurrentIndex(
+        current_idx,
+        QItemSelectionModel.SelectionFlag.ClearAndSelect
+    )
+    qtbot.wait(200)  # Wait for VarsView to populate
+    QApplication.processEvents()
+
+    # Find signal in VarsView
+    vars_model = vars_view.vars_model
+    if not vars_model or not hasattr(vars_model, 'variables'):
+        return False
+
+    for row in range(len(vars_model.variables)):
+        var_data = vars_model.variables[row]
+        if var_data.get('name') == signal_name:
+            # Found the signal - emit double-click via table view to trigger the proper event
+            table_view = vars_view.table_view
+            var_idx = vars_view.filter_proxy.index(row, 0)
+            if var_idx.isValid():
+                # Track initial count
+                initial_count = len(window.wave_widget.session.root_nodes)
+                print(f"[TEST_UTILS] Adding signal '{signal_name}', initial count: {initial_count}")
+
+                # Emit the double-click signal properly
+                table_view.doubleClicked.emit(var_idx)
+                qtbot.wait(100)
+                QApplication.processEvents()
+
+                # Wait for signal to be added (with timeout)
+                for i in range(20):  # Wait up to 2 seconds
+                    current_count = len(window.wave_widget.session.root_nodes)
+                    if current_count > initial_count:
+                        print(f"[TEST_UTILS] Signal added! New count: {current_count}")
+                        qtbot.wait(50)  # Extra wait for stability
+                        QApplication.processEvents()
+                        return True
+                    qtbot.wait(100)
+                    QApplication.processEvents()
+
+                # Check one more time and print debug info
+                final_count = len(window.wave_widget.session.root_nodes)
+                print(f"[TEST_UTILS] Timeout waiting for signal. Final count: {final_count}")
+                if window.wave_widget.session.root_nodes:
+                    print(f"[TEST_UTILS] Current signals in session:")
+                    for node in window.wave_widget.session.root_nodes:
+                        if hasattr(node, 'full_name'):
+                            print(f"[TEST_UTILS]   - {node.full_name()}")
+                return final_count > initial_count
+
+    return False
+
+
+def verify_signal_in_names_view(window, signal_full_name: str) -> bool:
+    """Verify that a signal appears in the SignalNamesView.
+
+    Args:
+        window: WaveScoutMainWindow instance
+        signal_full_name: Full name of the signal to find (e.g., 'apb_testbench.inner.pready')
+
+    Returns:
+        True if signal is found in the names view, False otherwise
+    """
+    from PySide6.QtCore import Qt
+
+    session = window.wave_widget.session
+    if not session:
+        return False
+
+    # Search through session root nodes
+    for node in session.root_nodes:
+        if hasattr(node, 'full_name'):
+            if node.full_name() == signal_full_name:
+                return True
+        # Also check children if it's a group
+        if hasattr(node, 'is_group') and node.is_group and hasattr(node, 'children'):
+            for child in node.children:
+                if hasattr(child, 'full_name') and child.full_name() == signal_full_name:
+                    return True
+
+    return False

@@ -605,27 +605,38 @@ class DesignTreeView(QWidget):
         if not current_db:
             return None
 
-        full_path = var_data.get('full_path', var_data.get('name'))
-        if not full_path:
-            return None
-
         # Check if we have a var object directly in the data
         var = var_data.get('var')
 
-        # Look up handle by path using the correct WaveformDB
-        # Convert dotted string to path segments for new API
-        path_segments = full_path.split('.')
+        # We need the var object to get proper scope path (for dotted names support)
+        if var is None:
+            # Fallback: try to find by full_path (may break on dotted names)
+            full_path = var_data.get('full_path', var_data.get('name'))
+            if not full_path:
+                return None
+            path_segments = full_path.split('.')
+            handle = current_db.find_handle_by_path(path_segments)
+            if handle is None:
+                return None
+            var = current_db.get_var(handle)
+            if var is None:
+                return None
+
+        # Now we have a var object - use it to get the handle properly
+        hierarchy = current_db.hierarchy if hasattr(current_db, 'hierarchy') else None
+        if not hierarchy:
+            return None
+
+        # Get local name and scope path from var (supports dotted names)
+        local_name = var.name(hierarchy)
+        scope_segments = var.scope_path(hierarchy)
+
+        # Build path for handle lookup: scope_path + local_name
+        path_segments = list(scope_segments) + [local_name]
         handle = current_db.find_handle_by_path(path_segments)
 
         if handle is None:
             return None
-
-        # Ensure we have a var object
-        if var is None and current_db and handle is not None:
-            var = current_db.get_var(handle)
-
-        if var is None:
-            return None  # Cannot create signal without var
 
         # Determine render type using the helper and var_type if available
         is_single_bit = self._is_single_bit(var, handle)
@@ -647,23 +658,8 @@ class DesignTreeView(QWidget):
 
         signal = current_db.load_signal(handle)
 
-        # Split full_path into scope_path and local_name
-        # Use var.scope_path if available, otherwise split full_path
-        if var and hasattr(var, 'scope_path'):
-            hierarchy = current_db.hierarchy if hasattr(current_db, 'hierarchy') else None
-            if hierarchy:
-                local_name = var.name(hierarchy)
-                scope_path = tuple(var.scope_path(hierarchy))
-            else:
-                # Fallback to splitting full_path
-                parts = full_path.split('.')
-                local_name = parts[-1] if parts else full_path
-                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
-        else:
-            # Fallback to splitting full_path
-            parts = full_path.split('.')
-            local_name = parts[-1] if parts else full_path
-            scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+        # We already extracted local_name and scope_segments above (supports dotted names)
+        scope_path = tuple(scope_segments)
 
         signal_node = SignalNode(
             local_name=local_name,

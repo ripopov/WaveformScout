@@ -239,16 +239,19 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
 def serialize_snippet_nodes(nodes: List[TreeNode], parent_scope: str) -> List[Dict[str, Any]]:
     """
     Serialize nodes for snippet storage, stripping absolute paths and setting handles to -1.
-    
+
+    Uses the new format with explicit local_name and scope_path fields to properly
+    handle signals with dotted names.
+
     Args:
         nodes: List of SignalNode objects to serialize
         parent_scope: Common parent scope to strip from signal names
-    
+
     Returns:
         List of serialized node dictionaries with relative names and invalid handles
     """
     serialized_nodes = []
-    
+
     def serialize_for_snippet(node: TreeNode) -> Dict[str, Any]:
         """Serialize a single node for snippet storage."""
         format_dict = None
@@ -260,14 +263,22 @@ def serialize_snippet_nodes(nodes: List[TreeNode], parent_scope: str) -> List[Di
                 format_dict['render_type'] = format_dict['render_type'].value
             if 'analog_scaling_mode' in format_dict and isinstance(format_dict['analog_scaling_mode'], Enum):
                 format_dict['analog_scaling_mode'] = format_dict['analog_scaling_mode'].value
-        
-        name = node.name
-        if isinstance(node, SignalNode) and parent_scope:
-            if name.startswith(parent_scope + "."):
-                name = name[len(parent_scope) + 1:]
-        
+
+        # Use new format with local_name and scope_path
+        local_name = node.local_name
+        scope_path_list = list(node.scope_path())
+
+        # Make scope_path relative to parent_scope for snippets
+        if parent_scope and isinstance(node, SignalNode):
+            parent_parts = parent_scope.split('.')
+            # Remove parent_scope prefix from scope_path if it matches
+            if len(scope_path_list) >= len(parent_parts):
+                if scope_path_list[:len(parent_parts)] == parent_parts:
+                    scope_path_list = scope_path_list[len(parent_parts):]
+
         data: Dict[str, Any] = {
-            'name': name,
+            'local_name': local_name,
+            'scope_path': scope_path_list,
             'handle': -1 if isinstance(node, SignalNode) else None,
             'format': format_dict,
             'nickname': node.nickname,
@@ -277,15 +288,15 @@ def serialize_snippet_nodes(nodes: List[TreeNode], parent_scope: str) -> List[Di
             'height_scaling': node.height_scaling,
             'is_multi_bit': node.is_multi_bit if isinstance(node, SignalNode) else False,
         }
-        
+
         if isinstance(node, GroupNode) and node.children:
             data['children'] = [serialize_for_snippet(child) for child in node.children]
-        
+
         return data
-    
+
     for node in nodes:
         serialized_nodes.append(serialize_for_snippet(node))
-    
+
     return serialized_nodes
 
 

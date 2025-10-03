@@ -1284,5 +1284,491 @@ def test_group_rename_functionality(qtbot):
         assert loaded_group.is_group, "First node should be a group"
         assert loaded_group.nickname == "MyCustomGroup", \
             f"Expected loaded group nickname 'MyCustomGroup', got {loaded_group.nickname}"
-    
+
     widget.close()
+
+
+# ========================================================================
+# Dotted Names Support Tests
+# ========================================================================
+
+def test_dotted_names_signal_loading_and_display(qtbot):
+    """
+    Test that signals with dotted names can be loaded and displayed correctly.
+
+    This test verifies:
+    1. Signals with dotted names (e.g., "inner.pready") are loaded correctly
+    2. Signal local names preserve the dots
+    3. Full names are constructed correctly
+    4. Signals can be added to the canvas and displayed via UI
+    5. Signals appear in SignalNamesView
+
+    Uses apb_sim_2scope.vcd which contains:
+    - inner.pready (signal with dot in name in apb_testbench scope)
+    - one.two.three.pready (signal with multiple dots in apb_testbench scope)
+    - dotted.dot (scope with dot in name)
+    """
+    from PySide6.QtCore import QModelIndex, QItemSelectionModel
+    from PySide6.QtWidgets import QApplication
+
+    helper = WaveScoutTestHelper()
+    test_vcd = get_test_input_path(TestFiles.APB_SIM_2SCOPE_VCD)
+    assert test_vcd.exists(), f"Test VCD not found: {test_vcd}"
+
+    # Create main window
+    window = helper.setup_main_window_with_vcd(test_vcd, qtbot)
+    helper.wait_for_session_loaded(window, qtbot)
+
+    design_view = window.design_tree_view
+    scope_tree = design_view.scope_tree
+    scope_model = design_view.scope_tree_model
+    vars_view = design_view.vars_view
+
+    # Navigate to apb_testbench scope
+    root = QModelIndex()
+    apb_idx = helper.find_child_by_name(scope_model, root, "apb_testbench")
+    assert apb_idx and apb_idx.isValid(), "apb_testbench scope not found"
+
+    # Select the scope to populate VarsView
+    scope_tree.setCurrentIndex(apb_idx)
+    scope_tree.selectionModel().setCurrentIndex(apb_idx, QItemSelectionModel.SelectionFlag.ClearAndSelect)
+    qtbot.wait(200)
+    QApplication.processEvents()
+
+    # Now add the dotted signals from VarsView
+    vars_model = vars_view.vars_model
+    assert vars_model and len(vars_model.variables) > 0, "No variables loaded in VarsView"
+
+    # Find and add dotted signals: inner.pready and one.two.three.pready
+    dotted_signals_to_add = ['inner.pready', 'one.two.three.pready']
+    added_signals = []
+
+    for row in range(len(vars_model.variables)):
+        var_data = vars_model.variables[row]
+        var_name = var_data.get('name', '')
+
+        if var_name in dotted_signals_to_add:
+            # Add this signal via double-click
+            table_view = vars_view.table_view
+            var_idx = vars_view.filter_proxy.index(row, 0)
+            if var_idx.isValid():
+                table_view.doubleClicked.emit(var_idx)
+                added_signals.append(var_name)
+                qtbot.wait(150)
+                QApplication.processEvents()
+
+    assert len(added_signals) >= 1, f"Expected to add dotted signals, but only added: {added_signals}"
+
+    # Get session and verify
+    session = window.wave_widget.session
+
+    print(f"[TEST] Total signals in session: {len(session.root_nodes)}")
+    for node in session.root_nodes:
+        if hasattr(node, 'local_name'):
+            print(f"[TEST] Signal: local_name='{node.local_name}', full_name='{node.full_name()}'")
+
+    # Verify at least one dotted signal was added
+    dotted_signals = [n for n in session.root_nodes if hasattr(n, 'local_name') and '.' in n.local_name]
+    assert len(dotted_signals) >= 1, f"Expected at least 1 dotted signal, found {len(dotted_signals)}"
+
+    # Verify specific signals if found
+    for signal_name in added_signals:
+        node = next(
+            (n for n in session.root_nodes if hasattr(n, 'local_name') and n.local_name == signal_name),
+            None
+        )
+        assert node is not None, f"Signal '{signal_name}' not found in session after adding via UI"
+
+        # Verify properties
+        assert node.local_name == signal_name, \
+            f"Expected local_name '{signal_name}', got '{node.local_name}'"
+
+        expected_full_name = f"apb_testbench.{signal_name}"
+        assert node.full_name() == expected_full_name, \
+            f"Expected full_name '{expected_full_name}', got '{node.full_name()}'"
+
+    window.close()
+
+
+def test_dotted_scope_names(qtbot):
+    """
+    Test signals from scopes with dotted names.
+
+    This test verifies:
+    1. Scopes with dotted names (e.g., "dotted.dot") are loaded correctly via UI
+    2. Signals from dotted scopes have correct scope_path
+    3. Full names are constructed correctly including dotted scope
+
+    Uses apb_sim_2scope.vcd which contains:
+    - dotted.dot (scope with dot in name under apb_testbench)
+    - one.two (signal inside dotted.dot scope)
+    """
+    from PySide6.QtCore import QModelIndex, QItemSelectionModel
+    from PySide6.QtWidgets import QApplication
+
+    helper = WaveScoutTestHelper()
+    test_vcd = get_test_input_path(TestFiles.APB_SIM_2SCOPE_VCD)
+    assert test_vcd.exists(), f"Test VCD not found: {test_vcd}"
+
+    # Create main window
+    window = helper.setup_main_window_with_vcd(test_vcd, qtbot)
+    helper.wait_for_session_loaded(window, qtbot)
+
+    design_view = window.design_tree_view
+    scope_tree = design_view.scope_tree
+    scope_model = design_view.scope_tree_model
+    vars_view = design_view.vars_view
+
+    # Navigate to apb_testbench scope
+    root = QModelIndex()
+    apb_idx = helper.find_child_by_name(scope_model, root, "apb_testbench")
+    assert apb_idx and apb_idx.isValid(), "apb_testbench scope not found"
+
+    # Expand apb_testbench to see child scopes
+    scope_tree.expand(apb_idx)
+    qtbot.wait(100)
+
+    # Find dotted.dot scope
+    dotted_dot_idx = helper.find_child_by_name(scope_model, apb_idx, "dotted.dot")
+    assert dotted_dot_idx and dotted_dot_idx.isValid(), "dotted.dot scope not found"
+
+    # Select dotted.dot scope to populate VarsView
+    scope_tree.setCurrentIndex(dotted_dot_idx)
+    scope_tree.selectionModel().setCurrentIndex(dotted_dot_idx, QItemSelectionModel.SelectionFlag.ClearAndSelect)
+    qtbot.wait(200)
+    QApplication.processEvents()
+
+    # Add signal from dotted scope
+    vars_model = vars_view.vars_model
+    assert vars_model and len(vars_model.variables) > 0, "No variables in dotted.dot scope"
+
+    # Find and add one.two signal
+    added_one_two = False
+    for row in range(len(vars_model.variables)):
+        var_data = vars_model.variables[row]
+        var_name = var_data.get('name', '')
+
+        if var_name == 'one.two':
+            # Add this signal
+            table_view = vars_view.table_view
+            var_idx = vars_view.filter_proxy.index(row, 0)
+            if var_idx.isValid():
+                table_view.doubleClicked.emit(var_idx)
+                added_one_two = True
+                qtbot.wait(150)
+                QApplication.processEvents()
+                break
+
+    assert added_one_two, "Failed to add 'one.two' signal from dotted.dot scope"
+
+    # Verify in session
+    session = window.wave_widget.session
+    one_two_node = next(
+        (n for n in session.root_nodes
+         if hasattr(n, 'local_name') and n.local_name == "one.two"),
+        None
+    )
+
+    assert one_two_node is not None, "Signal 'one.two' not found in session"
+
+    # Verify signal properties
+    assert one_two_node.local_name == "one.two"
+    assert one_two_node._waveform_scope == ("apb_testbench", "dotted.dot"), \
+        f"Expected scope ('apb_testbench', 'dotted.dot'), got {one_two_node._waveform_scope}"
+    assert one_two_node.full_name() == "apb_testbench.dotted.dot.one.two"
+
+    print(f"[TEST] Successfully added signal from dotted scope: {one_two_node.full_name()}")
+
+    window.close()
+
+
+def test_dotted_names_session_persistence(qtbot):
+    """
+    Test that sessions with dotted names persist correctly.
+
+    This test verifies:
+    1. Sessions with dotted signal names can be saved to JSON
+    2. local_name and scope_path are preserved in JSON
+    3. Sessions can be loaded back with dotted names intact
+    4. Loaded signals work correctly
+    5. All signals added via UI appear in SignalNamesView
+    """
+    from .test_utils import add_signal_from_design_tree, verify_signal_in_names_view
+
+    helper = WaveScoutTestHelper()
+    test_vcd = get_test_input_path(TestFiles.APB_SIM_2SCOPE_VCD)
+    assert test_vcd.exists(), f"Test VCD not found: {test_vcd}"
+
+    # Create main window
+    window = helper.setup_main_window_with_vcd(test_vcd, qtbot)
+    helper.wait_for_session_loaded(window, qtbot)
+
+    # Add all dotted signals via UI
+    signals_to_add = [
+        (['apb_testbench'], 'inner.pready', 'apb_testbench.inner.pready'),
+        (['apb_testbench'], 'one.two.three.pready', 'apb_testbench.one.two.three.pready'),
+        (['apb_testbench', 'dotted.dot'], 'one.two', 'apb_testbench.dotted.dot.one.two'),
+    ]
+
+    for scope_path, signal_name, full_name in signals_to_add:
+        success = add_signal_from_design_tree(window, scope_path, signal_name, qtbot)
+        assert success, f"Failed to add signal '{signal_name}' via UI"
+        assert verify_signal_in_names_view(window, full_name), \
+            f"Signal '{full_name}' not found in SignalNamesView"
+
+    session = window.wave_widget.session
+    assert len(session.root_nodes) == 3, f"Expected 3 signals, found {len(session.root_nodes)}"
+
+    # Save and verify JSON
+    with tempfile.TemporaryDirectory() as tmpdir:
+        json_path = Path(tmpdir) / "dotted_names_session.json"
+
+        def verify_dotted_names_json(data):
+            nodes = data.get("root_nodes", [])
+            assert len(nodes) == 3, f"Expected 3 nodes in JSON, got {len(nodes)}"
+
+            # Find and verify each signal
+            inner_pready = next(
+                (n for n in nodes if n.get("local_name") == "inner.pready"),
+                None
+            )
+            assert inner_pready is not None, "inner.pready not found in JSON"
+            assert inner_pready.get("local_name") == "inner.pready"
+            assert inner_pready.get("scope_path") == ["apb_testbench"]
+
+            one_two_three = next(
+                (n for n in nodes if n.get("local_name") == "one.two.three.pready"),
+                None
+            )
+            assert one_two_three is not None, "one.two.three.pready not found in JSON"
+            assert one_two_three.get("local_name") == "one.two.three.pready"
+            assert one_two_three.get("scope_path") == ["apb_testbench"]
+
+            one_two = next(
+                (n for n in nodes if n.get("local_name") == "one.two" and
+                 n.get("scope_path") == ["apb_testbench", "dotted.dot"]),
+                None
+            )
+            assert one_two is not None, "one.two from dotted scope not found in JSON"
+            assert one_two.get("local_name") == "one.two"
+            assert one_two.get("scope_path") == ["apb_testbench", "dotted.dot"]
+
+        helper.save_and_verify_json(session, json_path, verify_dotted_names_json)
+
+        # Load session and verify signals are restored
+        loaded_session = load_session(json_path)
+        assert loaded_session is not None
+        assert len(loaded_session.root_nodes) == 3
+
+        # Verify each loaded signal
+        loaded_inner = next(
+            (n for n in loaded_session.root_nodes if n.local_name == "inner.pready"),
+            None
+        )
+        assert loaded_inner is not None
+        assert loaded_inner.full_name() == "apb_testbench.inner.pready"
+
+        loaded_one_two_three = next(
+            (n for n in loaded_session.root_nodes if n.local_name == "one.two.three.pready"),
+            None
+        )
+        assert loaded_one_two_three is not None
+        assert loaded_one_two_three.full_name() == "apb_testbench.one.two.three.pready"
+
+        loaded_one_two = next(
+            (n for n in loaded_session.root_nodes
+             if n.local_name == "one.two" and n._waveform_scope == ("apb_testbench", "dotted.dot")),
+            None
+        )
+        assert loaded_one_two is not None
+        assert loaded_one_two.full_name() == "apb_testbench.dotted.dot.one.two"
+
+    window.close()
+
+
+def test_dotted_names_in_groups(qtbot):
+    """
+    Test that groups containing signals with dotted names work correctly.
+
+    This test verifies:
+    1. Groups can contain signals with dotted names added via UI
+    2. Group structure with dotted signals persists correctly
+    3. Groups can be saved and loaded with dotted signal names
+    4. Signals in group appear in SignalNamesView
+    """
+    from .test_utils import add_signal_from_design_tree, verify_signal_in_names_view
+    from PySide6.QtCore import QItemSelection, QItemSelectionModel
+
+    helper = WaveScoutTestHelper()
+    test_vcd = get_test_input_path(TestFiles.APB_SIM_2SCOPE_VCD)
+    assert test_vcd.exists(), f"Test VCD not found: {test_vcd}"
+
+    # Create main window
+    window = helper.setup_main_window_with_vcd(test_vcd, qtbot)
+    helper.wait_for_session_loaded(window, qtbot)
+
+    # Add signals with dotted names via UI
+    success1 = add_signal_from_design_tree(
+        window,
+        scope_path=['apb_testbench'],
+        signal_name='inner.pready',
+        qtbot=qtbot
+    )
+    assert success1, "Failed to add signal 'inner.pready' via UI"
+
+    success2 = add_signal_from_design_tree(
+        window,
+        scope_path=['apb_testbench'],
+        signal_name='one.two.three.pready',
+        qtbot=qtbot
+    )
+    assert success2, "Failed to add signal 'one.two.three.pready' via UI"
+
+    # Verify signals appear in SignalNamesView
+    assert verify_signal_in_names_view(window, "apb_testbench.inner.pready")
+    assert verify_signal_in_names_view(window, "apb_testbench.one.two.three.pready")
+
+    session = window.wave_widget.session
+    assert len(session.root_nodes) == 2
+
+    # Get the added signal nodes
+    inner_pready = session.root_nodes[0]
+    one_two_three = session.root_nodes[1]
+
+    # Create a group with these signals
+    from wavescout.core.data_model import GroupNode
+    group_node = GroupNode(
+        local_name="Dotted Signals",
+        children=[inner_pready, one_two_three],
+        is_expanded=True
+    )
+
+    # Set parent references
+    inner_pready.parent = group_node
+    one_two_three.parent = group_node
+
+    # Replace individual nodes with group
+    session.root_nodes = [group_node]
+
+    # Notify model
+    if window.wave_widget.model:
+        window.wave_widget.model.layoutChanged.emit()
+    qtbot.wait(50)
+
+    # Verify group structure
+    assert len(session.root_nodes) == 1
+    assert session.root_nodes[0].is_group
+    assert len(session.root_nodes[0].children) == 2
+    assert session.root_nodes[0].children[0].local_name == "inner.pready"
+    assert session.root_nodes[0].children[1].local_name == "one.two.three.pready"
+
+    # Save and verify JSON
+    with tempfile.TemporaryDirectory() as tmpdir:
+        json_path = Path(tmpdir) / "dotted_names_group.json"
+
+        def verify_group_with_dotted_names(data):
+            nodes = data.get("root_nodes", [])
+            assert len(nodes) == 1, "Expected 1 root node (the group)"
+
+            group_json = nodes[0]
+            assert group_json.get("is_group") is True
+            assert group_json.get("local_name") == "Dotted Signals"
+
+            children = group_json.get("children", [])
+            assert len(children) == 2, f"Expected 2 children, got {len(children)}"
+
+            # Verify children have dotted local names
+            assert children[0].get("local_name") == "inner.pready"
+            assert children[1].get("local_name") == "one.two.three.pready"
+
+        helper.save_and_verify_json(session, json_path, verify_group_with_dotted_names)
+
+        # Load and verify
+        loaded_session = load_session(json_path)
+        assert len(loaded_session.root_nodes) == 1
+
+        loaded_group = loaded_session.root_nodes[0]
+        assert loaded_group.is_group
+        assert len(loaded_group.children) == 2
+        assert loaded_group.children[0].local_name == "inner.pready"
+        assert loaded_group.children[1].local_name == "one.two.three.pready"
+        assert loaded_group.children[0].full_name() == "apb_testbench.inner.pready"
+        assert loaded_group.children[1].full_name() == "apb_testbench.one.two.three.pready"
+
+    window.close()
+
+
+def test_mixed_dotted_and_regular_signals(qtbot):
+    """
+    Test sessions with a mix of regular and dotted signal names.
+
+    This test verifies that both regular signals and signals with dotted names
+    can coexist in the same session and be handled correctly via UI interactions.
+    All signals added via UI appear in SignalNamesView.
+    """
+    from .test_utils import add_signal_from_design_tree, verify_signal_in_names_view
+
+    helper = WaveScoutTestHelper()
+    test_vcd = get_test_input_path(TestFiles.APB_SIM_2SCOPE_VCD)
+    assert test_vcd.exists(), f"Test VCD not found: {test_vcd}"
+
+    # Create main window
+    window = helper.setup_main_window_with_vcd(test_vcd, qtbot)
+    helper.wait_for_session_loaded(window, qtbot)
+
+    # Add mix of regular and dotted signals via UI
+    signals_to_add = [
+        (['apb_testbench'], 'pready', 'apb_testbench.pready'),  # Regular signal
+        (['apb_testbench'], 'inner.pready', 'apb_testbench.inner.pready'),  # Dotted signal
+        (['apb_testbench'], 'pclk', 'apb_testbench.pclk'),  # Regular signal
+        (['apb_testbench'], 'one.two.three.pready', 'apb_testbench.one.two.three.pready'),  # Dotted signal
+    ]
+
+    for scope_path, signal_name, full_name in signals_to_add:
+        success = add_signal_from_design_tree(window, scope_path, signal_name, qtbot)
+        assert success, f"Failed to add signal '{signal_name}' via UI"
+        assert verify_signal_in_names_view(window, full_name), \
+            f"Signal '{full_name}' not found in SignalNamesView"
+
+    session = window.wave_widget.session
+    assert len(session.root_nodes) == 4, f"Expected 4 signals, found {len(session.root_nodes)}"
+
+    # Verify each signal's local name
+    signal_map = {node.local_name: node for node in session.root_nodes}
+    assert "pready" in signal_map
+    assert "inner.pready" in signal_map
+    assert "pclk" in signal_map
+    assert "one.two.three.pready" in signal_map
+
+    # Save and reload session
+    with tempfile.TemporaryDirectory() as tmpdir:
+        json_path = Path(tmpdir) / "mixed_signals.json"
+
+        def verify_mixed_signals(data):
+            nodes = data.get("root_nodes", [])
+            assert len(nodes) == 4
+
+            # Verify we have both types
+            regular_count = sum(1 for n in nodes if "." not in n.get("local_name", ""))
+            dotted_count = sum(1 for n in nodes if "." in n.get("local_name", ""))
+
+            assert regular_count == 2, f"Expected 2 regular signals, got {regular_count}"
+            assert dotted_count == 2, f"Expected 2 dotted signals, got {dotted_count}"
+
+        helper.save_and_verify_json(session, json_path, verify_mixed_signals)
+
+        # Load and verify all signals work
+        loaded_session = load_session(json_path)
+        assert len(loaded_session.root_nodes) == 4
+
+        # Verify full names
+        full_names = {node.full_name() for node in loaded_session.root_nodes}
+        expected_names = {
+            "apb_testbench.pready",
+            "apb_testbench.inner.pready",
+            "apb_testbench.pclk",
+            "apb_testbench.one.two.three.pready"
+        }
+        assert full_names == expected_names, f"Name mismatch: {full_names} vs {expected_names}"
+
+    window.close()
