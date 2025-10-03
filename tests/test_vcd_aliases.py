@@ -112,7 +112,6 @@ def test_add_both_aliases_to_waveform(vcd_with_aliases, qtbot):
             full_name = var.full_name(hierarchy)
             if full_name in target_names:
                 node = create_signal_node_from_var(var, hierarchy, handle, db)
-                node.name = full_name
                 session.root_nodes.append(node)
                 signals_added.append((full_name, handle))
                 
@@ -158,7 +157,6 @@ def test_save_load_session_with_aliases(vcd_with_aliases, tmp_path):
             if full_name in target_names:
                 handle_used = handle
                 node = create_signal_node_from_var(var, hierarchy, handle, db)
-                node.name = full_name
                 session.root_nodes.append(node)
                 
                 # Stop if we found both
@@ -179,9 +177,17 @@ def test_save_load_session_with_aliases(vcd_with_aliases, tmp_path):
     # Verify both nodes have the same non-null handle
     nodes = json_data['root_nodes']
     assert len(nodes) == 2
-    
-    node1_data = next(n for n in nodes if n['name'] == 'TOP.core_clk')
-    node2_data = next(n for n in nodes if n['name'] == 'TOP.tb_top.core_clk')
+
+    # Construct full names from local_name and scope_path
+    def get_full_name(node_data):
+        scope_path = node_data.get('scope_path', [])
+        local_name = node_data['local_name']
+        if scope_path:
+            return '.'.join(scope_path) + '.' + local_name
+        return local_name
+
+    node1_data = next(n for n in nodes if get_full_name(n) == 'TOP.core_clk')
+    node2_data = next(n for n in nodes if get_full_name(n) == 'TOP.tb_top.core_clk')
     
     assert node1_data['handle'] is not None, "TOP.core_clk should have non-null handle"
     assert node2_data['handle'] is not None, "TOP.tb_top.core_clk should have non-null handle"

@@ -201,10 +201,18 @@ class WaveformItemModel(QAbstractItemModel):
         if self._cached_hierarchy_levels == 0:
             return base_name
         else:
-            # Split hierarchical name and take last N levels
-            parts = base_name.split('.')
+            # Use node.path() to properly handle dotted variable names
+            # path() returns [scope1, scope2, ..., local_name]
+            path_segments = node.path()
             n = self._cached_hierarchy_levels
-            return '.'.join(parts[-n:]) if len(parts) > n else base_name
+
+            # Handle file prefix if present (format: "filename:...")
+            if ':' in base_name and len(self._session.waveform_files) > 1:
+                file_prefix, _ = base_name.split(':', 1)
+                trimmed = '.'.join(path_segments[-n:]) if len(path_segments) > n else '.'.join(path_segments)
+                return f"{file_prefix}:{trimmed}"
+            else:
+                return '.'.join(path_segments[-n:]) if len(path_segments) > n else '.'.join(path_segments)
 
     def _get_display_name(self, node: TreeNode) -> str:
         """Format node name with file prefix if needed.

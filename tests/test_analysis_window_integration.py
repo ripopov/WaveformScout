@@ -45,15 +45,19 @@ def test_analysis_with_analog_signals():
         var = db.var_from_handle(handle)
         if var:
             name = var.full_name(db.hierarchy)
+            parts = name.split('.')
+            local_name = parts[-1] if parts else name
+            scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
             signal = SignalNode(
-                name=name,
+                local_name=local_name,
+                _waveform_scope=scope_path,
                 var=var,  # Use the actual var from waveform_db
                 handle=handle,
                 signal=db.load_signal(handle),  # Use real AsyncLoadedSignal from waveform_db
                 format=DisplayFormat()
             )
             all_signals.append(signal)
-            
+
             # Find clk_cnt for step 3
             if 'clk_cnt' in name.lower():
                 clk_cnt_signal = signal

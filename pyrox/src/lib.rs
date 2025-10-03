@@ -12,7 +12,6 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use num_bigint::BigUint;
 use pyo3::types::PyInt;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
-use rustc_hash::FxHashMap;
 use tokio::runtime::Runtime;
 
 use wellen::{
@@ -132,7 +131,7 @@ impl Hierarchy {
         }))
     }
 
-    /// Find a variable by its full hierarchical name
+    /// Find a variable by its full hierarchical name (DEPRECATED - use find_var_by_path instead)
     fn find_var_by_full_name(&self, name: &str) -> Option<Var> {
         // Parse the dotted path
         let parts: Vec<&str> = name.split('.').collect();
@@ -152,6 +151,37 @@ impl Hierarchy {
         // Use the hierarchy's lookup_var method (expects &str references)
         self.0
             .lookup_var(path, &var_name)
+            .map(|var_ref| Var(self.0[var_ref].clone()))
+    }
+
+    /// Find a variable by its hierarchical path.
+    /// The path is a list where all elements except the last are scope names,
+    /// and the last element is the variable's local name (which may contain dots).
+    ///
+    /// Args:
+    ///     path: List of path segments [scope1, scope2, ..., var_name]
+    ///
+    /// Returns:
+    ///     The Var if found, None otherwise
+    fn find_var_by_path(&self, path: Vec<String>) -> Option<Var> {
+        if path.is_empty() {
+            return None;
+        }
+
+        // Split into scope path and variable name
+        let (scope_path, var_name) = if path.len() == 1 {
+            // Just a variable name at top level
+            (vec![], &path[0])
+        } else {
+            // Scope path + variable name
+            (path[0..path.len() - 1].to_vec(), &path[path.len() - 1])
+        };
+
+        // Use the hierarchy's lookup_var method
+        // scope_path is Vec<String>, var_name is &String
+        // lookup_var wants &[N] and &N where N: AsRef<str>
+        self.0
+            .lookup_var(&scope_path, var_name)
             .map(|var_ref| Var(self.0[var_ref].clone()))
     }
 
@@ -358,6 +388,32 @@ impl Var {
     pub fn signal_handle(&self) -> SignalHandle {
         self.0.signal_ref().index()
     }
+
+    /// Get the scope path for this variable as a list of scope names.
+    /// The returned list contains scope names from root to immediate parent (excluding the variable name itself).
+    /// Returns an empty list for top-level variables.
+    pub fn scope_path(&self, hier: Bound<'_, Hierarchy>) -> Vec<String> {
+        let hierarchy = &hier.borrow().0;
+        let mut scopes = Vec::new();
+
+        // Walk up the parent chain collecting scope names
+        if let Some(parent_scope) = self.0.parent(hierarchy) {
+            let scope = &hierarchy[parent_scope];
+            collect_scope_path(scope, hierarchy, &mut scopes);
+        }
+
+        scopes
+    }
+}
+
+/// Helper function to collect scope names from a scope up to the root
+fn collect_scope_path(scope: &wellen::Scope, hier: &wellen::Hierarchy, scopes: &mut Vec<String>) {
+    // Recursively walk up to the root
+    if let Some(parent_ref) = scope.parent(hier) {
+        collect_scope_path(&hier[parent_ref], hier, scopes);
+    }
+    // Add this scope's name
+    scopes.push(scope.name(hier).to_string());
 }
 
 // NOTE: Var equality and hashing are not implemented because:
@@ -952,24 +1008,37 @@ impl Waveform {
         shared_tt.as_ref().map(|tt| TimeTable(tt.clone()))
     }
 
-    /// Assumes a dotted signal
+    /// Get signal by hierarchical path (accepts list of path segments).
+    /// The path is a list where all elements except the last are scope names,
+    /// and the last element is the variable's local name (which may contain dots).
+    ///
+    /// Args:
+    ///     path_segments: List of path segments [scope1, scope2, ..., var_name]
+    ///
+    /// Returns:
+    ///     The Signal if found, error otherwise
     fn get_signal_from_path<'py>(
         &mut self,
-        abs_hierarchy_path: String,
+        path_segments: Vec<String>,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, Signal>> {
-        let path: Vec<&str> = abs_hierarchy_path.split('.').collect();
+        if path_segments.is_empty() {
+            return Err(PyRuntimeError::new_err("Path cannot be empty"));
+        }
 
-        let (path, names) = (
-            &path[0..path.len() - 1],
-            path.last()
-                .ok_or(PyRuntimeError::new_err("Path could not be parsed!")),
-        );
+        // Split into scope path and variable name
+        let (scope_path, var_name) = if path_segments.len() == 1 {
+            (vec![], &path_segments[0])
+        } else {
+            (path_segments[0..path_segments.len() - 1].to_vec(), &path_segments[path_segments.len() - 1])
+        };
+
         let hierarchy = self.get_hierarchy_internal()?;
         let maybe_var = hierarchy
-            .lookup_var(path, names?)
+            .lookup_var(&scope_path, var_name)
             .ok_or(PyRuntimeError::new_err(format!(
-                "No var at path {abs_hierarchy_path}"
+                "No var at path {}",
+                path_segments.join(".")
             )))?;
         let var = &hierarchy[maybe_var];
         // Use the signal handle from the var to get the signal

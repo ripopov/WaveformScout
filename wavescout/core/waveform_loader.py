@@ -9,16 +9,16 @@ from .waveform_db import WaveformDB, AsyncLoadedSignal, Var
 
 def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: SignalHandle, waveform_db: WaveformDB) -> TreeNode:
     """Create a SignalNode from a backend variable."""
-    # Get variable info
-    full_name = var.full_name(hierarchy)
-    local_name = var.name(hierarchy)
-    
+    # Get variable info using new path-based API
+    local_name = var.name(hierarchy)  # Local identifier (may contain dots in VCD)
+    scope_path = tuple(var.scope_path(hierarchy))  # Scope hierarchy as immutable tuple
+
     # Determine display format based on variable type
     display_format = DisplayFormat()
-    
+
     var_type = str(var.var_type())
     is_single_bit = var.is_1bit()
-    
+
     # Determine render type according to specification
     if var_type == "Event":
         display_format.render_type = RenderType.EVENT
@@ -26,7 +26,7 @@ def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: Si
         display_format.render_type = RenderType.BOOL
     else:
         display_format.render_type = RenderType.BUS
-    
+
     # Set appropriate data format based on var_type
     if var_type == "Real":
         display_format.render_type = RenderType.BUS
@@ -43,11 +43,12 @@ def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: Si
     else:
         # Default to unsigned
         display_format.data_format = DataFormat.UNSIGNED
-    
+
     async_signal = AsyncLoadedSignal(handle, waveform_db)
 
     node = SignalNode(
-        name=full_name,
+        local_name=local_name,
+        _waveform_scope=scope_path,  # Store waveform hierarchy scope
         var=var,  # Pass the var object directly
         handle=handle,
         signal=async_signal,
@@ -55,7 +56,7 @@ def create_signal_node_from_var(var: Var, hierarchy: pyrox.Hierarchy, handle: Si
         nickname="",
         is_multi_bit=not is_single_bit  # Multi-bit if NOT 1-bit
     )
-    
+
     return node
 
 def create_sample_session(vcd_path: str) -> WaveformSession:

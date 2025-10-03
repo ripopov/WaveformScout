@@ -24,6 +24,26 @@ from wavescout.core.waveform_loader import create_signal_node_from_var
 from .test_utils import get_test_input_path, TestFiles
 
 
+def get_full_name_from_json(node_data):
+    """Construct full name from local_name and scope_path.
+
+    This helper function reconstructs the full signal name from the JSON
+    representation where nodes have 'local_name' and 'scope_path' instead
+    of a single 'name' field.
+
+    Args:
+        node_data: Dictionary containing node data from JSON
+
+    Returns:
+        str: Full name constructed from scope_path and local_name
+    """
+    scope_path = node_data.get('scope_path', [])
+    local_name = node_data['local_name']
+    if scope_path:
+        return '.'.join(scope_path) + '.' + local_name
+    return local_name
+
+
 # ========================================================================
 # Test Fixtures and Helper Classes
 # ========================================================================
@@ -186,7 +206,8 @@ class WaveScoutTestHelper:
                 for key, (suffix, _) in signal_patterns.items():
                     if full_name.endswith(suffix):
                         node = create_signal_node_from_var(var, hierarchy, handle, db)
-                        node.name = full_name
+                        # Note: node.name is now a property computed from local_name and scope_path
+                        # which are set by create_signal_node_from_var
                         found_nodes[key] = node
                         session.root_nodes.append(node)
                         break  # Don't add the same signal multiple times
@@ -311,7 +332,7 @@ def test_height_scaling_widget_api(qtbot):
         def verify_height_scaling(data):
             nodes = data.get("root_nodes", [])
             prdata_json = next(
-                (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
+                (n for n in nodes if get_full_name_from_json(n).endswith("apb_testbench.prdata")),
                 None
             )
             assert prdata_json is not None, "prdata node not found in saved JSON"
@@ -411,7 +432,7 @@ def test_height_scaling_ui_interaction(qtbot):
         def verify_height_scaling(data):
             nodes = data.get("root_nodes", [])
             prdata_json = next(
-                (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
+                (n for n in nodes if get_full_name_from_json(n).endswith("apb_testbench.prdata")),
                 None
             )
             assert prdata_json is not None
@@ -501,9 +522,9 @@ def test_height_scaling_for_analog_signals(qtbot):
         
         def verify_analog_scaling(data):
             nodes = data.get("root_nodes", [])
-            s1 = next((n for n in nodes if n.get("name", "").endswith("top.sine_1mhz")), None)
-            s2 = next((n for n in nodes if n.get("name", "").endswith("top.sine_2mhz")), None)
-            
+            s1 = next((n for n in nodes if get_full_name_from_json(n).endswith("top.sine_1mhz")), None)
+            s2 = next((n for n in nodes if get_full_name_from_json(n).endswith("top.sine_2mhz")), None)
+
             assert s1 is not None and s2 is not None
             assert s1.get("height_scaling") == 8
             assert s2.get("height_scaling") == 3
@@ -702,8 +723,8 @@ def test_split_mode_keyboard_shortcut(qtbot):
         def verify_signal_count(data):
             root_nodes = data.get("root_nodes", [])
             count = sum(
-                1 for node in root_nodes 
-                if node.get("name", "").endswith(signal_name)
+                1 for node in root_nodes
+                if get_full_name_from_json(node).endswith(signal_name)
             )
             assert count == 3, f"Expected 3 in JSON, found {count}"
         
@@ -817,8 +838,8 @@ def test_split_mode_inner_scope_selection(qtbot):
         def verify_selected_vars(data):
             root_nodes = data.get("root_nodes", [])
             assert len(root_nodes) >= 3
-            
-            json_names = [node.get('name') for node in root_nodes]
+
+            json_names = [get_full_name_from_json(node) for node in root_nodes]
             for var_path in selected_vars:
                 assert var_path in json_names, f"Variable '{var_path}' not found"
         
@@ -905,7 +926,7 @@ def test_event_signal_render_type_assignment(qtbot):
         def verify_event_render_type(data):
             nodes = data.get("root_nodes", [])
             ev_node = next(
-                (n for n in nodes if n.get("name", "").endswith("main.EVENT_IN")),
+                (n for n in nodes if get_full_name_from_json(n).endswith("main.EVENT_IN")),
                 None
             )
             assert ev_node is not None, "EVENT_IN not found in JSON"
@@ -1009,11 +1030,11 @@ def test_analog_scale_visible_menu_integration(qtbot):
         def verify_analog_scale_visible(data):
             nodes = data.get("root_nodes", [])
             prdata_json = next(
-                (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
+                (n for n in nodes if get_full_name_from_json(n).endswith("apb_testbench.prdata")),
                 None
             )
             assert prdata_json is not None, "prdata node not found in saved JSON"
-            
+
             # Check format section
             format_data = prdata_json.get("format", {})
             assert format_data.get("render_type") == "analog", \
@@ -1134,19 +1155,19 @@ def test_signal_rename_and_persistence(qtbot):
         
         def verify_nicknames(data):
             nodes = data.get("root_nodes", [])
-            
+
             # Find prdata node
             prdata_json = next(
-                (n for n in nodes if n.get("name", "").endswith("apb_testbench.prdata")),
+                (n for n in nodes if get_full_name_from_json(n).endswith("apb_testbench.prdata")),
                 None
             )
             assert prdata_json is not None, "prdata node not found in saved JSON"
             assert prdata_json.get("nickname") == "SignalA", \
                 f"Expected nickname 'SignalA', got {prdata_json.get('nickname')}"
-            
+
             # Find paddr node
             paddr_json = next(
-                (n for n in nodes if n.get("name", "").endswith("apb_testbench.paddr")),
+                (n for n in nodes if get_full_name_from_json(n).endswith("apb_testbench.paddr")),
                 None
             )
             assert paddr_json is not None, "paddr node not found in saved JSON"
@@ -1218,7 +1239,7 @@ def test_group_rename_functionality(qtbot):
     # Create a group node
     from wavescout.core.data_model import GroupNode
     group_node = GroupNode(
-        name="Test Group",
+        local_name="Test Group",
         children=[found_nodes["prdata"], found_nodes["paddr"]]
     )
     

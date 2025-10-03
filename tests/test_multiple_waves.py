@@ -91,8 +91,12 @@ class TestMultipleWaveforms:
             var = db1.var_from_handle(handle)
             if var:
                 name = var.full_name(db1.hierarchy)
+                parts = name.split('.')
+                local_name = parts[-1] if parts else name
+                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
                 signal = SignalNode(
-                    name=name,
+                    local_name=local_name,
+                    _waveform_scope=scope_path,
                     var=var,
                     handle=handle,
                     signal=db1.load_signal(handle),
@@ -110,8 +114,12 @@ class TestMultipleWaveforms:
             var = db2.var_from_handle(handle)
             if var:
                 name = var.full_name(db2.hierarchy)
+                parts = name.split('.')
+                local_name = parts[-1] if parts else name
+                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
                 signal = SignalNode(
-                    name=name,
+                    local_name=local_name,
+                    _waveform_scope=scope_path,
                     var=var,
                     handle=handle,
                     signal=db2.load_signal(handle),
@@ -173,8 +181,12 @@ class TestMultipleWaveforms:
             var = db1.var_from_handle(handle)
             if var:
                 name = var.full_name(db1.hierarchy)
+                parts = name.split('.')
+                local_name = parts[-1] if parts else name
+                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
                 signal = SignalNode(
-                    name=name,
+                    local_name=local_name,
+                    _waveform_scope=scope_path,
                     var=var,
                     handle=handle,
                     signal=db1.load_signal(handle),
@@ -187,8 +199,12 @@ class TestMultipleWaveforms:
             var = db2.var_from_handle(handle)
             if var:
                 name = var.full_name(db2.hierarchy)
+                parts = name.split('.')
+                local_name = parts[-1] if parts else name
+                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
                 signal = SignalNode(
-                    name=name,
+                    local_name=local_name,
+                    _waveform_scope=scope_path,
                     var=var,
                     handle=handle,
                     signal=db2.load_signal(handle),
@@ -270,8 +286,11 @@ class TestMultipleWaveforms:
         # Add a signal from each file
         apb_handle = list(db1.get_all_handles())[0]
         apb_var = db1.var_from_handle(apb_handle)
+        apb_name = apb_var.full_name(db1.hierarchy)
+        apb_parts = apb_name.split('.')
         apb_signal = SignalNode(
-            name=apb_var.full_name(db1.hierarchy),
+            local_name=apb_parts[-1] if apb_parts else apb_name,
+            _waveform_scope=tuple(apb_parts[:-1]) if len(apb_parts) > 1 else (),
             var=apb_var,
             handle=apb_handle,
             signal=db1.load_signal(apb_handle),
@@ -281,8 +300,11 @@ class TestMultipleWaveforms:
 
         swerv_handle = list(db2.get_all_handles())[0]
         swerv_var = db2.var_from_handle(swerv_handle)
+        swerv_name = swerv_var.full_name(db2.hierarchy)
+        swerv_parts = swerv_name.split('.')
         swerv_signal = SignalNode(
-            name=swerv_var.full_name(db2.hierarchy),
+            local_name=swerv_parts[-1] if swerv_parts else swerv_name,
+            _waveform_scope=tuple(swerv_parts[:-1]) if len(swerv_parts) > 1 else (),
             var=swerv_var,
             handle=swerv_handle,
             signal=db2.load_signal(swerv_handle),
@@ -335,8 +357,11 @@ class TestMultipleWaveforms:
         # Create signals from both files
         apb_handle = list(db1.get_all_handles())[0]
         apb_var = db1.var_from_handle(apb_handle)
+        apb_name = apb_var.full_name(db1.hierarchy)
+        apb_parts = apb_name.split('.')
         apb_signal = SignalNode(
-            name=apb_var.full_name(db1.hierarchy),
+            local_name=apb_parts[-1] if apb_parts else apb_name,
+            _waveform_scope=tuple(apb_parts[:-1]) if len(apb_parts) > 1 else (),
             var=apb_var,
             handle=apb_handle,
             signal=db1.load_signal(apb_handle),
@@ -347,8 +372,11 @@ class TestMultipleWaveforms:
 
         swerv_handle = list(db2.get_all_handles())[0]
         swerv_var = db2.var_from_handle(swerv_handle)
+        swerv_name = swerv_var.full_name(db2.hierarchy)
+        swerv_parts = swerv_name.split('.')
         swerv_signal = SignalNode(
-            name=swerv_var.full_name(db2.hierarchy),
+            local_name=swerv_parts[-1] if swerv_parts else swerv_name,
+            _waveform_scope=tuple(swerv_parts[:-1]) if len(swerv_parts) > 1 else (),
             var=swerv_var,
             handle=swerv_handle,
             signal=db2.load_signal(swerv_handle),

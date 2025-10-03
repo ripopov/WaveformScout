@@ -111,8 +111,14 @@ def test_analysis_with_analog_signals():
     # Create SignalNode objects for testing
     test_signals = []
     for handle, name in all_signals[:5]:  # Test with first 5 signals
+        # Split full name into scope and local name
+        parts = name.split('.')
+        local_name = parts[-1] if parts else name
+        scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+
         signal = SignalNode(
-            name=name,
+            local_name=local_name,
+            _waveform_scope=scope_path,
             var=MockVar(name.split('.')[-1], 32),  # Use MockVar for tests
             handle=handle,
             signal=db.load_signal(handle),  # Use real AsyncLoadedSignal
@@ -121,8 +127,13 @@ def test_analysis_with_analog_signals():
         test_signals.append(signal)
 
     # Create sampling signal node
+    parts = clk_cnt_name.split('.')
+    local_name = parts[-1] if parts else clk_cnt_name
+    scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+
     sampling_signal = SignalNode(
-        name=clk_cnt_name,
+        local_name=local_name,
+        _waveform_scope=scope_path,
         var=MockVar(clk_cnt_name.split('.')[-1], 32),
         handle=clk_cnt_handle,
         signal=db.load_signal(clk_cnt_handle),  # Use real AsyncLoadedSignal
@@ -210,8 +221,13 @@ def test_analysis_window_integration():
             for handle in waveform_db.get_all_handles()[:10]:  # First 10 signals
                 var = waveform_db.var_from_handle(handle)
                 if var:
+                    # Get local name and scope path from var
+                    local_name = var.name(waveform_db.hierarchy)
+                    scope_path = tuple(var.scope_path(waveform_db.hierarchy))
+
                     signal = SignalNode(
-                        name=var.full_name(waveform_db.hierarchy),
+                        local_name=local_name,
+                        _waveform_scope=scope_path,
                         var=var,  # Use the real var object from waveform_db
                         handle=handle,
                         signal=waveform_db.load_signal(handle),  # Use real AsyncLoadedSignal

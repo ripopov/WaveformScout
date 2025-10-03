@@ -51,7 +51,7 @@ def test_find_handle_by_path():
     
     # Test exact path lookup
     for expected_handle, full_path in test_cases:
-        found_handle = db.find_handle_by_path(full_path)
+        found_handle = db.find_handle_by_path(full_path.split('.'))
         assert found_handle == expected_handle, f"Failed to find {full_path}"
     
     # Test the TOP prefix addition for simple names
@@ -67,12 +67,12 @@ def test_find_handle_by_path():
     if simple_top_signal:
         expected_handle, full_path = simple_top_signal
         short_name = full_path[4:]  # Remove "TOP."
-        found_handle = db.find_handle_by_path(short_name)
+        found_handle = db.find_handle_by_path([short_name])
         assert found_handle == expected_handle, f"Failed to find {short_name} (should resolve to {full_path})"
-    
+
     # Test non-existent path
-    assert db.find_handle_by_path("non.existent.signal") is None
-    assert db.find_handle_by_path("nonexistent") is None
+    assert db.find_handle_by_path(["non", "existent", "signal"]) is None
+    assert db.find_handle_by_path(["nonexistent"]) is None
 
 
 
@@ -120,7 +120,7 @@ def test_methods_with_empty_db():
     db = WaveformDB()
     
     # All methods should handle empty DB gracefully
-    assert db.find_handle_by_path("any.path") is None
+    assert db.find_handle_by_path(["any", "path"]) is None
     assert db.find_handle_by_name("any_name") is None
     assert db.get_var(0) is None
     assert list(db.iter_handles_and_vars()) == []

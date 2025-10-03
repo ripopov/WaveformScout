@@ -696,16 +696,17 @@ class WaveformController:
         if not nodes_to_group:
             return -1
         
-        # Create new group
+        # Determine parent and position first
+        first_node = nodes_to_group[0]
+        parent = first_node.parent
+
+        # Create new group (scope_path will be computed from parent chain)
         group = GroupNode(
-            name=group_name,
+            local_name=group_name,
+            parent=parent,  # Set parent so scope_path() works correctly
             group_render_mode=mode,
             children=[]
         )
-        
-        # Determine parent and position
-        first_node = nodes_to_group[0]
-        parent = first_node.parent
         
         if parent:
             # Insert group at position of first node

@@ -44,6 +44,13 @@ class Var:
             return self._pyrox_var.full_name(hierarchy)
         return ""
 
+    def scope_path(self, hierarchy: Any) -> List[str]:
+        """Get the scope path as a list of scope names (excluding the variable name)."""
+        if self._pyrox_var is not None:
+            result: List[str] = self._pyrox_var.scope_path(hierarchy)  # type: ignore[attr-defined]
+            return result
+        return []
+
     def var_type(self) -> Any:
         """Get the variable type."""
         if self._pyrox_var is not None:
@@ -457,7 +464,7 @@ class WaveformDB:
 
 
     def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
-        """Find handle by variable name.
+        """Find handle by variable name (DEPRECATED - use find_handle_by_path with list).
 
         Args:
             name: Variable name to search for (full hierarchical name)
@@ -467,7 +474,7 @@ class WaveformDB:
         """
         if not self.hierarchy:
             return None
-        # Use the new Rust method to find var by full name
+        # Use the old Rust method for backward compatibility
         var = self.hierarchy.find_var_by_full_name(name)  # type: ignore[attr-defined]
         if var:
             return var.signal_handle()  # type: ignore[no-any-return]
@@ -510,26 +517,34 @@ class WaveformDB:
             handle_to_vars[ref].append(var)
         return list(handle_to_vars.items())
 
-    def find_handle_by_path(self, path: str) -> Optional[SignalHandle]:
+    def find_handle_by_path(self, path: Sequence[str]) -> Optional[SignalHandle]:
         """Find handle by hierarchical path.
 
-        First tries to find by exact name. If not found and path doesn't
-        contain a dot, tries with 'TOP.' prefix.
+        The path is a list where all elements except the last are scope names,
+        and the last element is the variable's local name (which may contain dots).
+
+        If not found and path has only one element, tries with 'TOP' scope prefix.
 
         Args:
-            path: Signal path (e.g., "signal" or "TOP.module.signal")
+            path: Signal path segments (e.g., ["signal"] or ["TOP", "module", "signal"])
 
         Returns:
             Handle ID if found, None otherwise
         """
-        # First try exact match
-        handle = self.find_handle_by_name(path)
-        if handle is not None:
-            return handle
+        if not self.hierarchy:
+            return None
 
-        # If not found and no dot in path, try with TOP prefix
-        if '.' not in path:
-            return self.find_handle_by_name(f"TOP.{path}")
+        # First try exact match using new path-based API
+        var = self.hierarchy.find_var_by_path(list(path))  # type: ignore[attr-defined]
+        if var:
+            return var.signal_handle()  # type: ignore[no-any-return]
+
+        # If not found and single-element path, try with TOP prefix
+        if len(path) == 1:
+            top_path = ["TOP", path[0]]
+            var = self.hierarchy.find_var_by_path(top_path)  # type: ignore[attr-defined]
+            if var:
+                return var.signal_handle()  # type: ignore[no-any-return]
 
         return None
 

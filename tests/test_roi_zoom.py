@@ -68,7 +68,6 @@ class ROITestHelper:
                     break
                 full_name = var.full_name(db.hierarchy)
                 node = create_signal_node_from_var(var, db.hierarchy, handle, db)
-                node.name = full_name
                 session.root_nodes.append(node)
                 signal_count += 1
             if signal_count >= 3:

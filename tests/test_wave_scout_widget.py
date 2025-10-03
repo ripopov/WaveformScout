@@ -343,7 +343,7 @@ def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
 
     # Create two groups with children using real signals
     # Group 1: G1 with first two signals
-    g1 = GroupNode(name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
+    g1 = GroupNode(local_name="G1", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
     signal1 = existing_signals[0]
     signal2 = existing_signals[1]
     signal1.parent = g1
@@ -351,7 +351,7 @@ def test_create_group_of_groups_preserves_hierarchy(wave_widget, monkeypatch):
     g1.children = [signal1, signal2]
 
     # Group 2: G2 with next three signals
-    g2 = GroupNode(name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
+    g2 = GroupNode(local_name="G2", is_expanded=True, group_render_mode=GroupRenderMode.SEPARATE_ROWS)
     signal3 = existing_signals[2]
     signal4 = existing_signals[3]
     signal5 = existing_signals[4]

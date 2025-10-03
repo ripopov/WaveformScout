@@ -47,6 +47,10 @@ if TYPE_CHECKING:
 
 Time = int  # In Timescale units
 
+# NodePath represents a hierarchical path as an immutable tuple of scope/name segments
+# The final element is typically the local identifier; preceding elements are scopes
+NodePath = Tuple[str, ...]
+
 # SignalNodeID is a unique identifier for each SignalNode instance.
 # This allows multiple instances of the same signal (same handle) to be displayed
 # with different settings (e.g., different height_scaling) without cache conflicts.
@@ -100,7 +104,7 @@ class DisplayFormat:
 class TreeNode(ABC):
     """Base node in the signal/group tree with shared attributes."""
 
-    name: str
+    local_name: str  # Local identifier (may contain dots for VCD variables)
     nickname: str = ""
     parent: Optional["GroupNode"] = field(default=None, repr=False)
     height_scaling: int = 1
@@ -138,6 +142,36 @@ class TreeNode(ABC):
         """Convenience discriminator compatible with legacy callers."""
         return isinstance(self, GroupNode)
 
+    def scope_path(self) -> NodePath:
+        """Construct the scope path by walking up the parent chain."""
+        if self.parent is None:
+            return ()
+
+        # Build path from root to this node's parent
+        path_segments: List[str] = []
+        current: Optional["GroupNode"] = self.parent
+        while current is not None:
+            path_segments.insert(0, current.local_name)
+            current = current.parent
+
+        return tuple(path_segments)
+
+    def full_name(self) -> str:
+        """Return the full hierarchical name by joining scope_path and local_name with dots."""
+        scope = self.scope_path()
+        if scope:
+            return ".".join(scope) + "." + self.local_name
+        return self.local_name
+
+    def path(self) -> List[str]:
+        """Return the full path as a list [scope_segments..., local_name]."""
+        return list(self.scope_path()) + [self.local_name]
+
+    @property
+    def name(self) -> str:
+        """Backward compatibility property - returns full_name()."""
+        return self.full_name()
+
 
 @dataclass(eq=False, kw_only=True)
 class SignalNode(TreeNode):
@@ -150,9 +184,18 @@ class SignalNode(TreeNode):
     is_multi_bit: bool = False
     file_id: int = 0  # Track which file this signal belongs to
 
+    # Store waveform hierarchy scope (immutable, from waveform file)
+    # This is separate from UI tree structure (parent/children)
+    _waveform_scope: NodePath = ()
+
+    def scope_path(self) -> NodePath:
+        """Return the waveform file scope path (overrides TreeNode's parent-chain implementation)."""
+        return self._waveform_scope
+
     def _comparison_state(self) -> Tuple[Any, ...]:
         return (
-            self.name,
+            self.local_name,
+            self._waveform_scope,
             self.nickname,
             self.height_scaling,
             self.instance_id,
@@ -172,7 +215,7 @@ class SignalNode(TreeNode):
         )
 
         return SignalNode(
-            name=self.name,
+            local_name=self.local_name,
             nickname=self.nickname,
             height_scaling=self.height_scaling,
             var=self.var,  # Pass the same var reference
@@ -181,6 +224,8 @@ class SignalNode(TreeNode):
             format=format_copy,
             is_multi_bit=self.is_multi_bit,
             file_id=self.file_id,
+            _waveform_scope=self._waveform_scope,  # Copy the waveform scope
+            # Note: parent is not copied, it will be set by the caller if needed
         )
 
 
@@ -194,7 +239,8 @@ class GroupNode(TreeNode):
 
     def _comparison_state(self) -> Tuple[Any, ...]:
         return (
-            self.name,
+            self.local_name,
+            self.scope_path(),
             self.nickname,
             self.height_scaling,
             self.instance_id,
@@ -205,11 +251,12 @@ class GroupNode(TreeNode):
 
     def deep_copy(self) -> "GroupNode":
         new_group = GroupNode(
-            name=self.name,
+            local_name=self.local_name,
             nickname=self.nickname,
             height_scaling=self.height_scaling,
             group_render_mode=self.group_render_mode,
             is_expanded=self.is_expanded,
+            # Note: parent is not copied, it will be set by the caller if needed
         )
 
         if self.children:

@@ -111,7 +111,7 @@ class TestReloadFeature:
 
                 full_name = var.full_name(hierarchy)
                 # Get handle for this signal
-                handle = waveform_db.find_handle_by_path(full_name)
+                handle = waveform_db.find_handle_by_path(full_name.split('.'))
                 if handle is not None:
                     # Create a SignalNode using the proper helper function
                     signal_node = create_signal_node_from_var(var, hierarchy, handle, waveform_db)

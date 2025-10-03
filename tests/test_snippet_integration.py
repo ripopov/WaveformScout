@@ -80,7 +80,7 @@ def find_test_signals(waveform_db: WaveformDB, scope_prefix: str, count: int = 3
                     break
                 var_name = var.name(waveform_db.hierarchy)
                 full_name = f"{full_path}.{var_name}"
-                handle = waveform_db.find_handle_by_path(full_name)
+                handle = waveform_db.find_handle_by_path(full_name.split('.'))
                 if handle is not None:
                     signals.append((full_name, handle))
 
@@ -125,7 +125,7 @@ class TestSnippetSaveLoad:
         
         # Find common parent
         parent_scope = snippet_manager.find_common_parent(
-            GroupNode(name="group", children=signal_nodes)
+            GroupNode(local_name="group", children=signal_nodes)
         )
         
         # Create and save snippet
@@ -234,7 +234,7 @@ class TestSnippetInstantiation:
             signal_nodes.append(node)
         
         parent_scope = snippet_manager.find_common_parent(
-            GroupNode(name="group", children=signal_nodes)
+            GroupNode(local_name="group", children=signal_nodes)
         )
         
         snippet = Snippet(
@@ -383,7 +383,7 @@ class TestSnippetRoundTrip:
         
         # Step 3: Create group and find parent scope
         group = GroupNode(
-            name="Test Group",
+            local_name="Test Group",
             children=signal_nodes
         )
         parent_scope = snippet_manager.find_common_parent(group)
@@ -473,7 +473,7 @@ class TestSnippetRoundTrip:
         
         # Create snippet
         parent_scope = snippet_manager.find_common_parent(
-            GroupNode(name="group", children=signal_nodes)
+            GroupNode(local_name="group", children=signal_nodes)
         )
         
         snippet = Snippet(
@@ -528,7 +528,7 @@ class TestSnippetRoundTrip:
         
         # Wrap in group with custom name as would happen in the UI
         group_node = GroupNode(
-            name=custom_name,  # Use custom name
+            local_name=custom_name,  # Use custom name
             children=remapped,
             is_expanded=True
         )
@@ -566,7 +566,8 @@ class TestSnippetRoundTrip:
         analog_signal.is_multi_bit = True
         
         digital_signal = SignalNode(
-            name=test_signals[1][0],
+            local_name=test_signals[1][0].split('.')[-1],
+            _waveform_scope=tuple(test_signals[1][0].split('.')[:-1]),
             var=MockVar(test_signals[1][0].split('.')[-1], 1),  # Single bit for clock
             handle=test_signals[1][1],
             signal=create_async_signal(test_signals[1][1], waveform_db),
@@ -580,14 +581,15 @@ class TestSnippetRoundTrip:
         )
         
         subgroup1 = GroupNode(
-            name="Analog Signals",
+            local_name="Analog Signals",
             is_expanded=True,  # Expanded
             children=[analog_signal, digital_signal]
         )
-        
+
         # Second subgroup - collapsed, with bus signals
         bus_signal1 = SignalNode(
-            name=test_signals[2][0],
+            local_name=test_signals[2][0].split('.')[-1],
+            _waveform_scope=tuple(test_signals[2][0].split('.')[:-1]),
             var=MockVar(test_signals[2][0].split('.')[-1], 32),
             handle=test_signals[2][1],
             signal=create_async_signal(test_signals[2][1], waveform_db),
@@ -599,9 +601,10 @@ class TestSnippetRoundTrip:
             height_scaling=1.5,
             is_multi_bit=True
         )
-        
+
         bus_signal2 = SignalNode(
-            name=test_signals[3][0],
+            local_name=test_signals[3][0].split('.')[-1],
+            _waveform_scope=tuple(test_signals[3][0].split('.')[:-1]),
             var=MockVar(test_signals[3][0].split('.')[-1], 32),
             handle=test_signals[3][1],
             signal=create_async_signal(test_signals[3][1], waveform_db),
@@ -615,14 +618,15 @@ class TestSnippetRoundTrip:
         )
         
         subgroup2 = GroupNode(
-            name="Bus Signals",
+            local_name="Bus Signals",
             is_expanded=False,  # Collapsed
             children=[bus_signal1, bus_signal2]
         )
         
         # Third subgroup - nested groups
         nested_signal1 = SignalNode(
-            name=test_signals[4][0],
+            local_name=test_signals[4][0].split('.')[-1],
+            _waveform_scope=tuple(test_signals[4][0].split('.')[:-1]),
             var=MockVar(test_signals[4][0].split('.')[-1], 1),  # Single bit for control signal
             handle=test_signals[4][1],
             signal=create_async_signal(test_signals[4][1], waveform_db),
@@ -633,9 +637,10 @@ class TestSnippetRoundTrip:
             ),
             height_scaling=0.8
         )
-        
+
         nested_signal2 = SignalNode(
-            name=test_signals[5][0],
+            local_name=test_signals[5][0].split('.')[-1],
+            _waveform_scope=tuple(test_signals[5][0].split('.')[:-1]),
             var=MockVar(test_signals[5][0].split('.')[-1], 32),  # 32-bit for status bus
             handle=test_signals[5][1],
             signal=create_async_signal(test_signals[5][1], waveform_db),
@@ -648,20 +653,20 @@ class TestSnippetRoundTrip:
         )
         
         inner_group = GroupNode(
-            name="Control Signals",
+            local_name="Control Signals",
             is_expanded=True,
             children=[nested_signal1, nested_signal2]
         )
-        
+
         subgroup3 = GroupNode(
-            name="Nested Group",
+            local_name="Nested Group",
             is_expanded=False,
             children=[inner_group]
         )
-        
+
         # Main group containing all subgroups
         main_group = GroupNode(
-            name="Complex Test Group",
+            local_name="Complex Test Group",
             is_expanded=True,
             children=[subgroup1, subgroup2, subgroup3]
         )
@@ -707,7 +712,7 @@ class TestSnippetRoundTrip:
         
         # Verify first subgroup (analog signals)
         loaded_sub1 = loaded_main.children[0]
-        assert loaded_sub1.name == "Analog Signals"
+        assert loaded_sub1.local_name == "Analog Signals"
         assert loaded_sub1.is_expanded == True
         assert len(loaded_sub1.children) == 2
         
@@ -720,7 +725,7 @@ class TestSnippetRoundTrip:
         
         # Verify second subgroup (bus signals - collapsed)
         loaded_sub2 = loaded_main.children[1]
-        assert loaded_sub2.name == "Bus Signals"
+        assert loaded_sub2.local_name == "Bus Signals"
         assert loaded_sub2.is_expanded == False  # Should be collapsed
         assert len(loaded_sub2.children) == 2
         
@@ -732,13 +737,13 @@ class TestSnippetRoundTrip:
         
         # Verify third subgroup (nested groups)
         loaded_sub3 = loaded_main.children[2]
-        assert loaded_sub3.name == "Nested Group"
+        assert loaded_sub3.local_name == "Nested Group"
         assert loaded_sub3.is_expanded == False
         assert len(loaded_sub3.children) == 1
         
         # Check inner nested group
         loaded_inner = loaded_sub3.children[0]
-        assert loaded_inner.name == "Control Signals"
+        assert loaded_inner.local_name == "Control Signals"
         assert loaded_inner.is_expanded == True
         assert len(loaded_inner.children) == 2
         
@@ -758,7 +763,7 @@ class TestSnippetRoundTrip:
         
         # Wrap in group with custom name
         group1 = GroupNode(
-            name="First Instance",
+            local_name="First Instance",
             children=remapped1,
             is_expanded=True
         )
@@ -770,7 +775,7 @@ class TestSnippetRoundTrip:
         # Verify first instance structure
         instance1_main = remapped1[0]
         assert instance1_main.is_group
-        assert instance1_main.name == "Complex Test Group"
+        assert instance1_main.local_name == "Complex Test Group"
         assert len(instance1_main.children) == 3
         
         # Verify properties preserved in first instance
@@ -792,7 +797,7 @@ class TestSnippetRoundTrip:
         
         # Wrap in group with different custom name
         group2 = GroupNode(
-            name="Second Instance",
+            local_name="Second Instance",
             children=remapped2,
             is_expanded=True
         )
@@ -804,7 +809,7 @@ class TestSnippetRoundTrip:
         # Verify second instance structure
         instance2_main = remapped2[0]
         assert instance2_main.is_group
-        assert instance2_main.name == "Complex Test Group"
+        assert instance2_main.local_name == "Complex Test Group"
         assert len(instance2_main.children) == 3
         
         # Verify properties preserved in second instance
@@ -833,23 +838,23 @@ class TestSnippetRoundTrip:
         
         # Create nested structure
         subgroup1 = GroupNode(
-            name="Subgroup 1",
+            local_name="Subgroup 1",
             children=[
-                SignalNode(name=test_signals[0][0], var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db)),
-                SignalNode(name=test_signals[1][0], var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
+                SignalNode(local_name=test_signals[0][0].split('.')[-1], _waveform_scope=tuple(test_signals[0][0].split('.')[:-1]), var=MockVar(test_signals[0][0].split('.')[-1]), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db)),
+                SignalNode(local_name=test_signals[1][0].split('.')[-1], _waveform_scope=tuple(test_signals[1][0].split('.')[:-1]), var=MockVar(test_signals[1][0].split('.')[-1]), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
             ]
         )
         
         subgroup2 = GroupNode(
-            name="Subgroup 2",
+            local_name="Subgroup 2",
             children=[
-                SignalNode(name=test_signals[2][0], var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db)),
-                SignalNode(name=test_signals[3][0], var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
+                SignalNode(local_name=test_signals[2][0].split('.')[-1], _waveform_scope=tuple(test_signals[2][0].split('.')[:-1]), var=MockVar(test_signals[2][0].split('.')[-1]), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db)),
+                SignalNode(local_name=test_signals[3][0].split('.')[-1], _waveform_scope=tuple(test_signals[3][0].split('.')[:-1]), var=MockVar(test_signals[3][0].split('.')[-1]), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
             ]
         )
         
         main_group = GroupNode(
-            name="Main Group",
+            local_name="Main Group",
             children=[subgroup1, subgroup2]
         )
         
@@ -900,7 +905,7 @@ class TestSnippetBugRegressions:
         
         # Create a group as would be in a session
         group = GroupNode(
-            name="Session Group",
+            local_name="Session Group",
             children=[signal1, signal2, signal3]
         )
         
@@ -1022,17 +1027,17 @@ class TestSnippetBugRegressions:
         test_signals = find_test_signals(waveform_db, "TOP", count=1)
         if not test_signals:
             pytest.skip("No test signals found")
-        signal = SignalNode(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        signal = SignalNode(local_name="signal1", _waveform_scope=(), var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.module")
         assert result.name == "TOP.module.signal1"
-        
+
         # Test case 2: Nested path
-        signal = SignalNode(name="sub.module.signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        signal = SignalNode(local_name="signal", _waveform_scope=("sub", "module"), var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "TOP.parent")
         assert result.name == "TOP.parent.sub.module.signal"
-        
+
         # Test case 3: Empty parent scope
-        signal = SignalNode(name="signal", var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        signal = SignalNode(local_name="signal", _waveform_scope=(), var=MockVar("signal"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
         result = InstantiateSnippetDialog.build_full_paths(signal, "")
         assert result.name == "signal"  # Should keep as-is
         
@@ -1041,10 +1046,10 @@ class TestSnippetBugRegressions:
         test_signals2 = find_test_signals(waveform_db, "TOP", count=2)
         if len(test_signals2) < 2:
             pytest.skip("Not enough test signals found")
-        child1 = SignalNode(name="sig1", var=MockVar("sig1"), handle=test_signals2[0][1], signal=create_async_signal(test_signals2[0][1], waveform_db))
-        child2 = SignalNode(name="sig2", var=MockVar("sig2"), handle=test_signals2[1][1], signal=create_async_signal(test_signals2[1][1], waveform_db))
+        child1 = SignalNode(local_name="sig1", _waveform_scope=(), var=MockVar("sig1"), handle=test_signals2[0][1], signal=create_async_signal(test_signals2[0][1], waveform_db))
+        child2 = SignalNode(local_name="sig2", _waveform_scope=(), var=MockVar("sig2"), handle=test_signals2[1][1], signal=create_async_signal(test_signals2[1][1], waveform_db))
         group = GroupNode(
-            name="MyGroup",
+            local_name="MyGroup",
             children=[child1, child2]
         )
         
@@ -1074,25 +1079,25 @@ class TestSnippetBugRegressions:
         if len(test_signals) < 4:
             pytest.skip("Not enough test signals found")
 
-        leaf1 = SignalNode(name="signal1", var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
-        leaf2 = SignalNode(name="signal2", var=MockVar("signal2"), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
-        leaf3 = SignalNode(name="signal3", var=MockVar("signal3"), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db))
-        leaf4 = SignalNode(name="signal4", var=MockVar("signal4"), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
+        leaf1 = SignalNode(local_name="signal1", _waveform_scope=(), var=MockVar("signal1"), handle=test_signals[0][1], signal=create_async_signal(test_signals[0][1], waveform_db))
+        leaf2 = SignalNode(local_name="signal2", _waveform_scope=(), var=MockVar("signal2"), handle=test_signals[1][1], signal=create_async_signal(test_signals[1][1], waveform_db))
+        leaf3 = SignalNode(local_name="signal3", _waveform_scope=(), var=MockVar("signal3"), handle=test_signals[2][1], signal=create_async_signal(test_signals[2][1], waveform_db))
+        leaf4 = SignalNode(local_name="signal4", _waveform_scope=(), var=MockVar("signal4"), handle=test_signals[3][1], signal=create_async_signal(test_signals[3][1], waveform_db))
         
         inner_group1 = GroupNode(
-            name="Inner1",
+            local_name="Inner1",
             is_expanded=False,
             children=[leaf1, leaf2]
         )
 
         inner_group2 = GroupNode(
-            name="Inner2", 
+            local_name="Inner2",
             is_expanded=True,
             children=[leaf3, leaf4]
         )
 
         outer_group = GroupNode(
-            name="Outer",
+            local_name="Outer",
             is_expanded=True,
             children=[inner_group1, inner_group2]
         )
@@ -1128,9 +1133,9 @@ class TestSnippetBugRegressions:
         assert len(loaded_outer.children) == 2
         
         # Check inner groups
-        assert loaded_outer.children[0].name == "Inner1"
+        assert loaded_outer.children[0].local_name == "Inner1"
         assert loaded_outer.children[0].is_expanded == False
-        assert loaded_outer.children[1].name == "Inner2"
+        assert loaded_outer.children[1].local_name == "Inner2"
         assert loaded_outer.children[1].is_expanded == True
         
         # Check leaf nodes exist
@@ -1153,9 +1158,9 @@ class TestSnippetBugRegressions:
         
         # Test case 1: Valid signal
         # Get the actual handle for the real signal
-        real_handle = waveform_db.find_handle_by_path(real_signal_path)
+        real_handle = waveform_db.find_handle_by_path(real_signal_path.split('.'))
         assert real_handle is not None
-        valid_node = SignalNode(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))
+        valid_node = SignalNode(local_name=real_signal_path.split('.')[-1], _waveform_scope=tuple(real_signal_path.split('.')[:-1]), var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))
         
         validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
             [valid_node], waveform_db
@@ -1186,7 +1191,7 @@ class TestSnippetBugRegressions:
         # Test case 2: Invalid signal should raise ValueError
         # For invalid node, use a dummy handle but still need waveform_db
         # Use a large handle number that doesn't exist
-        invalid_node = SignalNode(name="TOP.does.not.exist", var=MockVar("exist"), handle=-1, signal=create_async_signal(999999, waveform_db))
+        invalid_node = SignalNode(local_name="exist", _waveform_scope=("TOP", "does", "not"), var=MockVar("exist"), handle=-1, signal=create_async_signal(999999, waveform_db))
         
         with pytest.raises(ValueError) as exc_info:
             InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1196,8 +1201,8 @@ class TestSnippetBugRegressions:
         
         # Test case 3: Group with valid child
         group_node = GroupNode(
-            name="TestGroup",
-            children=[SignalNode(name=real_signal_path, var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))]
+            local_name="TestGroup",
+            children=[SignalNode(local_name=real_signal_path.split('.')[-1], _waveform_scope=tuple(real_signal_path.split('.')[:-1]), var=MockVar(real_signal_path.split('.')[-1]), handle=-1, signal=create_async_signal(real_handle, waveform_db))]
         )
         
         validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(
@@ -1258,7 +1263,6 @@ class TestSnippetAPBScenario:
                 full_name = var.full_name(db.hierarchy)
                 if full_name == target_signal:
                     apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
-                    apb_addr_node.name = full_name
                     session.root_nodes.append(apb_addr_node)
                     break
             if apb_addr_node:
@@ -1273,7 +1277,7 @@ class TestSnippetAPBScenario:
 
         # Create a group containing just this signal (simulating UI interaction)
         group_node = GroupNode(
-            name="APB_ADDR",
+            local_name="APB_ADDR",
             children=[apb_addr_node]
         )
 
@@ -1297,7 +1301,9 @@ class TestSnippetAPBScenario:
         relative_name = signal_copy.name
         if parent_scope and signal_copy.name.startswith(f"{parent_scope}."):
             relative_name = signal_copy.name[len(parent_scope) + 1:]  # +1 for the dot
-        signal_copy.name = relative_name
+            # Update local_name and waveform_scope to make the name relative
+            object.__setattr__(signal_copy, 'local_name', relative_name)
+            object.__setattr__(signal_copy, '_waveform_scope', ())
 
         snippet = Snippet(
             name="APB_ADDR",
@@ -1330,7 +1336,7 @@ class TestSnippetAPBScenario:
 
         # Create first instantiation group
         first_instance = GroupNode(
-            name="APB_ADDR_1",
+            local_name="APB_ADDR_1",
             children=validated_nodes1
         )
 
@@ -1350,7 +1356,7 @@ class TestSnippetAPBScenario:
 
         # Create second instantiation group
         second_instance = GroupNode(
-            name="APB_ADDR_2",
+            local_name="APB_ADDR_2",
             children=validated_nodes2
         )
 
@@ -1421,7 +1427,6 @@ class TestSnippetAPBScenario:
                 full_name = var.full_name(db.hierarchy)
                 if full_name == target_signal:
                     apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
-                    apb_addr_node.name = full_name
                     session.root_nodes.append(apb_addr_node)
                     break
             if apb_addr_node:
@@ -1434,7 +1439,7 @@ class TestSnippetAPBScenario:
         session.selected_nodes = [apb_addr_node]
 
         group_node = GroupNode(
-            name="APB_ADDR",
+            local_name="APB_ADDR",
             children=[apb_addr_node]
         )
 
@@ -1453,7 +1458,9 @@ class TestSnippetAPBScenario:
         relative_name = signal_copy.name
         if parent_scope and signal_copy.name.startswith(f"{parent_scope}."):
             relative_name = signal_copy.name[len(parent_scope) + 1:]
-        signal_copy.name = relative_name
+            # Update local_name and waveform_scope to make the name relative
+            object.__setattr__(signal_copy, 'local_name', relative_name)
+            object.__setattr__(signal_copy, '_waveform_scope', ())
 
         snippet = Snippet(
             name="APB_ADDR",
@@ -1480,8 +1487,9 @@ class TestSnippetAPBScenario:
             # Create copy and use different parent scope
             remapped_node = node.deep_copy()
             # Build full path: different_scope + "." + relative_name
-            full_name = f"{different_scope}.{node.name}"
-            remapped_node.name = full_name
+            # Set local_name to the relative name and waveform_scope to the new scope
+            object.__setattr__(remapped_node, 'local_name', node.local_name)
+            object.__setattr__(remapped_node, '_waveform_scope', tuple(different_scope.split('.')))
             remapped_nodes.append(remapped_node)
 
         # Step 6: Wait till signal loading completes and verify handle resolution
@@ -1551,7 +1559,6 @@ class TestSnippetAPBScenario:
                 full_name = var.full_name(db.hierarchy)
                 if full_name == target_signal:
                     apb_addr_node = create_signal_node_from_var(var, db.hierarchy, handle, db)
-                    apb_addr_node.name = full_name
                     break
             if apb_addr_node:
                 break
@@ -1561,7 +1568,9 @@ class TestSnippetAPBScenario:
         # Create snippet from the signal
         parent_scope = "apb_testbench"
         signal_copy = apb_addr_node.deep_copy()
-        signal_copy.name = "paddr"  # Relative name
+        # Set relative name
+        object.__setattr__(signal_copy, 'local_name', "paddr")
+        object.__setattr__(signal_copy, '_waveform_scope', ())
 
         snippet = Snippet(
             name="ASYNC_TEST",
@@ -1592,7 +1601,7 @@ class TestSnippetAPBScenario:
         # Step 4: Simulate the instantiation workflow
         # First add to session without async loading (like original bug)
         group_node = GroupNode(
-            name="ASYNC_TEST_GROUP",
+            local_name="ASYNC_TEST_GROUP",
             children=remapped_nodes,
             is_expanded=True
         )

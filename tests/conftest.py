@@ -60,7 +60,7 @@ def add_signals_from_vcd(session, count=10, include_groups=True):
 
     # Add a group with some children if requested
     if include_groups and len(all_handles) > count:
-        group = GroupNode(name="Test Group", is_expanded=True)
+        group = GroupNode(local_name="Test Group", is_expanded=True)
 
         # Add 3 children to the group
         for handle in all_handles[count:count + 3]:

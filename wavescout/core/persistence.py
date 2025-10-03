@@ -32,7 +32,8 @@ from .waveform_db import WaveformDB
 def _serialize_node(node: TreeNode) -> Dict[str, Any]:
     """Serialize a SignalNode to a dictionary, handling nested children."""
     data: Dict[str, Any] = {
-        'name': node.name,
+        'local_name': node.local_name,
+        'scope_path': list(node.scope_path()),  # Convert tuple to list for JSON
         'nickname': node.nickname,
         'is_group': node.is_group,
         'height_scaling': node.height_scaling,
@@ -97,18 +98,21 @@ def _resolve_signal_handles(nodes: List[TreeNode], waveform_db: WaveformDB) -> L
     # Recursively resolve handles using the current backend's find_handle_by_path
     def resolve_node(node: TreeNode) -> None:
         if isinstance(node, SignalNode):
-            # Always try to resolve the handle by name to ensure it's correct for this backend
-            # First try with the exact name
-            handle = waveform_db.find_handle_by_path(node.name)
+            # Always try to resolve the handle by path to ensure it's correct for this backend
+            # Use path() to get the full path segments
+            path_segments = node.path()
+            handle = waveform_db.find_handle_by_path(path_segments)
 
-            # If not found and name has trailing spaces, try without spaces
+            # If not found and local name has trailing spaces, try without spaces
             # (handles the case where pylibfst adds trailing spaces but pyrox doesn't)
-            if handle is None and node.name.endswith(' '):
-                trimmed_name = node.name.rstrip()
-                handle = waveform_db.find_handle_by_path(trimmed_name)
+            if handle is None and node.local_name.endswith(' '):
+                trimmed_local_name = node.local_name.rstrip()
+                trimmed_path = list(node.scope_path()) + [trimmed_local_name]
+                handle = waveform_db.find_handle_by_path(trimmed_path)
                 if handle is not None:
-                    # Update the node name to match what this backend expects
-                    node.name = trimmed_name
+                    # Update the node local_name to match what this backend expects
+                    # Need to create a new object since dataclass fields are supposed to be immutable
+                    object.__setattr__(node, 'local_name', trimmed_local_name)
 
             # Update the handle if we found it
             if handle is not None:
@@ -164,9 +168,26 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
         # For backward compatibility, generate a new ID
         instance_id = TreeNode._generate_id()
 
+    # Handle backward compatibility for old sessions with 'name' field
+    # New sessions have 'local_name' and 'scope_path'
+    if 'local_name' in data:
+        local_name = data['local_name']
+        scope_path = tuple(data.get('scope_path', []))
+    else:
+        # Old session format - split the name
+        old_name = data['name']
+        parts = old_name.split('.')
+        if len(parts) > 1:
+            local_name = parts[-1]
+            scope_path = tuple(parts[:-1])
+        else:
+            local_name = old_name
+            scope_path = ()
+
     if data.get('is_group', False):
         group_node = GroupNode(
-            name=data['name'],
+            local_name=local_name,
+            # Note: scope_path is computed from parent chain, not stored
             nickname=data.get('nickname', ''),
             parent=parent,
             height_scaling=data.get('height_scaling', 1),
@@ -198,7 +219,8 @@ def _deserialize_node(data: Dict[str, Any], waveform_db: Optional[WaveformDB], p
         signal = AsyncLoadedSignal.placeholder(handle if handle is not None else -1)
 
     signal_node = SignalNode(
-        name=data['name'],
+        local_name=local_name,
+        _waveform_scope=scope_path,
         nickname=data.get('nickname', ''),
         parent=parent,
         height_scaling=data.get('height_scaling', 1),
@@ -331,25 +353,55 @@ def deserialize_snippet_nodes(
             group_render_mode = GroupRenderMode(node_data['group_render_mode'])
         
         # Remap name and resolve handle for non-group nodes
-        name = node_data['name']
+        # Handle backward compatibility for old snippets with 'name' field
+        if 'local_name' in node_data:
+            local_name = node_data['local_name']
+            scope_path_list = list(node_data.get('scope_path', []))
+        else:
+            # Old snippet format - split the name
+            old_name = node_data['name']
+            parts = old_name.split('.')
+            if len(parts) > 1:
+                local_name = parts[-1]
+                scope_path_list = parts[:-1]
+            else:
+                local_name = old_name
+                scope_path_list = []
+
         is_group = node_data.get('is_group', False)
         handle: Optional[int] = None
-        
+
         if not is_group:
-            # Build full name with new parent scope
+            # Build full path with new parent scope
             if parent_scope:
-                name = f"{parent_scope}.{name}"
-            
+                parent_scope_parts = parent_scope.split('.')
+                full_path = parent_scope_parts + scope_path_list + [local_name]
+            else:
+                full_path = scope_path_list + [local_name]
+
             # Resolve handle from waveform database
-            resolved_handle = waveform_db.find_handle_by_path(name)
+            resolved_handle = waveform_db.find_handle_by_path(full_path)
             if resolved_handle is None:
                 # Signal not found in waveform
                 return None
             handle = resolved_handle
 
+            # Update scope_path based on remapping
+            if parent_scope:
+                scope_path = tuple(parent_scope.split('.') + scope_path_list)
+            else:
+                scope_path = tuple(scope_path_list)
+        else:
+            # For groups, also update scope_path if parent_scope provided
+            if parent_scope:
+                scope_path = tuple(parent_scope.split('.') + scope_path_list)
+            else:
+                scope_path = tuple(scope_path_list)
+
         if is_group:
             group_node = GroupNode(
-                name=name,
+                local_name=local_name,
+                # Note: scope_path is computed from parent chain, not stored
                 nickname=node_data.get('nickname', ''),
                 parent=parent,
                 height_scaling=node_data.get('height_scaling', 1),
@@ -384,7 +436,8 @@ def deserialize_snippet_nodes(
         signal = waveform_db.load_signal(handle)
 
         signal_node = SignalNode(
-            name=name,
+            local_name=local_name,
+            _waveform_scope=scope_path,
             nickname=node_data.get('nickname', ''),
             parent=parent,
             height_scaling=node_data.get('height_scaling', 1),
@@ -676,16 +729,19 @@ def load_session(path: pathlib.Path) -> WaveformSession:
             file_id = node.file_id
             waveform_db = file_id_to_db.get(file_id)
 
-            if waveform_db and node.name:
-                # Try to resolve the handle by name
-                handle = waveform_db.find_handle_by_path(node.name)
+            if waveform_db:
+                # Try to resolve the handle by path
+                path_segments = node.path()
+                handle = waveform_db.find_handle_by_path(path_segments)
 
-                # If not found and name has trailing spaces, try without spaces
-                if handle is None and node.name.endswith(' '):
-                    trimmed_name = node.name.rstrip()
-                    handle = waveform_db.find_handle_by_path(trimmed_name)
+                # If not found and local name has trailing spaces, try without spaces
+                if handle is None and node.local_name.endswith(' '):
+                    trimmed_local_name = node.local_name.rstrip()
+                    trimmed_path = list(node.scope_path()) + [trimmed_local_name]
+                    handle = waveform_db.find_handle_by_path(trimmed_path)
                     if handle is not None:
-                        node.name = trimmed_name
+                        # Update the node local_name to match what this backend expects
+                        object.__setattr__(node, 'local_name', trimmed_local_name)
 
                 # Update the handle if we found it
                 if handle is not None:

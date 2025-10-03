@@ -205,7 +205,7 @@ class TestWaveformController:
         controller.set_session(session)
 
         # Find the clock signal
-        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        clock_handle = db.find_handle_by_path(['apb_testbench', 'pclk'])
         assert clock_handle is not None, "Clock signal not found"
 
         # Get the variable and create signal node
@@ -237,7 +237,7 @@ class TestWaveformController:
         controller.set_session(session)
 
         # Find and set a clock signal
-        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        clock_handle = db.find_handle_by_path(['apb_testbench', 'pclk'])
         var = db.var_from_handle(clock_handle)
         hierarchy = db.hierarchy
         node = create_signal_node_from_var(var, hierarchy, clock_handle, db)
@@ -266,8 +266,8 @@ class TestWaveformController:
         controller.set_session(session)
 
         # Find two different signals
-        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
-        data_handle = db.find_handle_by_path('apb_testbench.pwdata')
+        clock_handle = db.find_handle_by_path(['apb_testbench', 'pclk'])
+        data_handle = db.find_handle_by_path(['apb_testbench', 'pwdata'])
 
         hierarchy = db.hierarchy
         clock_var = db.var_from_handle(clock_handle)
@@ -357,7 +357,7 @@ class TestSessionPersistence:
         db = primary_file.waveform_db
 
         # Find and add clock signal to root nodes
-        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        clock_handle = db.find_handle_by_path(['apb_testbench', 'pclk'])
         var = db.var_from_handle(clock_handle)
         hierarchy = db.hierarchy
         clock_node = create_signal_node_from_var(var, hierarchy, clock_handle, db)
@@ -403,7 +403,7 @@ class TestSessionPersistence:
         db = primary_file.waveform_db
 
         # Add a non-clock signal to root nodes
-        data_handle = db.find_handle_by_path('apb_testbench.pwdata')
+        data_handle = db.find_handle_by_path(['apb_testbench', 'pwdata'])
         assert data_handle is not None, "Data signal not found"
         var = db.var_from_handle(data_handle)
         hierarchy = db.hierarchy
@@ -454,7 +454,7 @@ class TestRealWaveform:
                 db.waveform.set_async_callback(db._on_async_event)
 
         # Find the clock signal apb_testbench.pclk
-        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        clock_handle = db.find_handle_by_path(['apb_testbench', 'pclk'])
         assert clock_handle is not None, "Clock signal apb_testbench.pclk not found"
 
         # Load the signal using new async API
@@ -495,7 +495,7 @@ class TestRealWaveform:
         controller.set_session(session)
         
         # Find the clock signal handle
-        clock_handle = db.find_handle_by_path('apb_testbench.pclk')
+        clock_handle = db.find_handle_by_path(['apb_testbench', 'pclk'])
         assert clock_handle is not None
         
         # Create a signal node for the clock using real var

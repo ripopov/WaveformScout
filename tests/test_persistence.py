@@ -50,7 +50,7 @@ def create_test_session():
     # Add group with children
     if len(all_handles) >= 3:
         group = GroupNode(
-            name="CPU",
+            local_name="CPU",
             group_render_mode=GroupRenderMode.OVERLAPPED,
             is_expanded=False
         )
@@ -317,7 +317,7 @@ def test_sampling_signal_in_nested_group():
 
     if len(all_handles) >= 1:
         # Create group with a child from real signal
-        group = GroupNode(name='GROUP', instance_id=1000)
+        group = GroupNode(local_name='GROUP', instance_id=1000)
 
         var = db.get_var(all_handles[0])
         if var:

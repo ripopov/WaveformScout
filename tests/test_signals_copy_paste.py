@@ -241,7 +241,16 @@ def test_copy_paste_signals(qtbot, tmp_path):
         instance_ids.add(instance_id)
     
     # Verify node names to ensure copies were made correctly
-    node_names = [node_data['name'] for node_data in data['root_nodes']]
+    # Construct full names from local_name and scope_path
+    node_names = []
+    for node_data in data['root_nodes']:
+        scope_path = node_data.get('scope_path', [])
+        local_name = node_data['local_name']
+        if scope_path:
+            full_name = '.'.join(scope_path) + '.' + local_name
+        else:
+            full_name = local_name
+        node_names.append(full_name)
     
     # Count occurrences of each name (should have duplicates from pasting)
     from collections import Counter
@@ -675,20 +684,20 @@ def test_copy_paste_recursion_regression(qtbot):
         return
 
     # Create a deeply nested structure with real signals
-    root = GroupNode(name="ROOT")
+    root = GroupNode(local_name="ROOT")
 
     # Level 1
-    level1 = GroupNode(name="L1")
+    level1 = GroupNode(local_name="L1")
     level1.parent = root
     root.children.append(level1)
 
     # Level 2
-    level2 = GroupNode(name="L2")
+    level2 = GroupNode(local_name="L2")
     level2.parent = level1
     level1.children.append(level2)
 
     # Level 3
-    level3 = GroupNode(name="L3")
+    level3 = GroupNode(local_name="L3")
     level3.parent = level2
     level2.children.append(level3)
 
@@ -733,7 +742,8 @@ def test_copy_paste_recursion_regression(qtbot):
 
         # Verify structure
         assert len(deserialized.children) == 2, "Root should have 2 children (L1 + signal)"
-        assert deserialized.children[0].name == "L1", "First child should be L1"
+        # Check local_name instead of full name since L1 is a child of ROOT
+        assert deserialized.children[0].local_name == "L1", "First child should be L1"
         assert len(deserialized.children[0].children) == 2, "L1 should have 2 children"
 
     except RecursionError:

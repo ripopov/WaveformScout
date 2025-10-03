@@ -153,8 +153,8 @@ def test_validate_and_resolve_nodes():
     db.open(test_file)
 
     # Get actual handles for APB signals
-    pclk_handle = db.find_handle_by_path("apb_testbench.pclk")
-    paddr_handle = db.find_handle_by_path("apb_testbench.paddr")
+    pclk_handle = db.find_handle_by_path(["apb_testbench", "pclk"])
+    paddr_handle = db.find_handle_by_path(["apb_testbench", "paddr"])
     assert pclk_handle is not None
     assert paddr_handle is not None
 
@@ -165,13 +165,15 @@ def test_validate_and_resolve_nodes():
     # Create test nodes with real AsyncLoadedSignal instances
     nodes = [
         SignalNode(
-            name="apb_testbench.pclk",
+            local_name="pclk",
+            _waveform_scope=("apb_testbench",),
             var=pclk_var,
             handle=-1,  # Will be resolved
             signal=AsyncLoadedSignal(pclk_handle, db)
         ),
         SignalNode(
-            name="apb_testbench.paddr",
+            local_name="paddr",
+            _waveform_scope=("apb_testbench",),
             var=paddr_var,
             handle=-1,  # Will be resolved
             signal=AsyncLoadedSignal(paddr_handle, db)
@@ -190,7 +192,8 @@ def test_validate_and_resolve_nodes():
     # We need to use a dummy handle since AsyncLoadedSignal requires one
     bad_nodes = [
         SignalNode(
-            name="non_existent.signal",
+            local_name="signal",
+            _waveform_scope=("non_existent",),
             var=MockVar("signal"),
             handle=-1,
             signal=AsyncLoadedSignal(999999, db)  # Use a non-existent handle
@@ -243,8 +246,8 @@ def test_snippet_node_hierarchy():
 
     # Use actual APB signals in a hierarchical structure
     # We'll use pclk and preset_n as our test signals
-    pclk_handle = db.find_handle_by_path("apb_testbench.pclk")
-    preset_handle = db.find_handle_by_path("apb_testbench.preset_n")
+    pclk_handle = db.find_handle_by_path(["apb_testbench", "pclk"])
+    preset_handle = db.find_handle_by_path(["apb_testbench", "preset_n"])
     assert pclk_handle is not None
     assert preset_handle is not None
 
@@ -253,16 +256,18 @@ def test_snippet_node_hierarchy():
 
     # Create hierarchical nodes with renamed paths for the test
     group_node = GroupNode(
-        name="group1",
+        local_name="group1",
         children=[
             SignalNode(
-                name="apb_testbench.pclk",  # Using actual signal path
+                local_name="pclk",
+                _waveform_scope=("apb_testbench",),
                 var=pclk_var,
                 handle=-1,
                 signal=AsyncLoadedSignal(pclk_handle, db)
             ),
             SignalNode(
-                name="apb_testbench.preset_n",  # Using actual signal path
+                local_name="preset_n",
+                _waveform_scope=("apb_testbench",),
                 var=preset_var,
                 handle=-1,
                 signal=AsyncLoadedSignal(preset_handle, db)
@@ -317,7 +322,7 @@ def test_snippet_instantiation_order():
     # Create snippet nodes
     snippets = ["snippet_a", "snippet_b", "snippet_c"]
     for name in snippets:
-        group = GroupNode(name=name)
+        group = GroupNode(local_name=name)
         controller = MockController()
         controller.instantiate_snippet([group])
     

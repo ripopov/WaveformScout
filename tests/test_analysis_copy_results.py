@@ -63,8 +63,13 @@ def test_copy_results():
                     if not async_signal.is_loaded():
                         print(f"WARNING: Signal {handle} did not load in time")
 
+                    # Get scope path and local name from var
+                    local_name = var.name(waveform_db.hierarchy)
+                    scope_path = tuple(var.scope_path(waveform_db.hierarchy))
+
                     signal = SignalNode(
-                        name=var.full_name(waveform_db.hierarchy),
+                        local_name=local_name,
+                        _waveform_scope=scope_path,
                         var=var,  # Add the required var field
                         handle=handle,
                         signal=async_signal,

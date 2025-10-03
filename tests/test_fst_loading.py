@@ -310,7 +310,13 @@ def test_fst_loading():
             # Nodes are serialized as dictionaries with 'node_type' field
             node_type = node.get('node_type', 'signal')
             if node_type == 'signal':
-                name = node['name']
+                # Reconstruct full name from new format (local_name + scope_path)
+                local_name = node['local_name']
+                scope_path = node.get('scope_path', [])
+                if scope_path:
+                    name = '.'.join(scope_path) + '.' + local_name
+                else:
+                    name = local_name
                 signal_names.append(name)
                 assert 'top.des' in name or name in added_signals, \
                     f"Signal name '{name}' doesn't match expected pattern"

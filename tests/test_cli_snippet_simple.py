@@ -26,16 +26,16 @@ def test_validate_and_resolve_nodes_simple():
     db.open(vcd_path)
 
     # Get actual handles and vars
-    pclk_h = db.find_handle_by_path("apb_testbench.pclk")
-    paddr_h = db.find_handle_by_path("apb_testbench.paddr")
+    pclk_h = db.find_handle_by_path(["apb_testbench", "pclk"])
+    paddr_h = db.find_handle_by_path(["apb_testbench", "paddr"])
     assert pclk_h is not None and paddr_h is not None
     pclk_var = db.get_var(pclk_h)
     paddr_var = db.get_var(paddr_h)
 
     # Test successful validation - returns (validated_nodes, handles_to_load)
     nodes = [
-        SignalNode(name="apb_testbench.pclk", var=pclk_var, handle=-1, signal=AsyncLoadedSignal(pclk_h, db)),
-        SignalNode(name="apb_testbench.paddr", var=paddr_var, handle=-1, signal=AsyncLoadedSignal(paddr_h, db))
+        SignalNode(local_name="pclk", _waveform_scope=("apb_testbench",), var=pclk_var, handle=-1, signal=AsyncLoadedSignal(pclk_h, db)),
+        SignalNode(local_name="paddr", _waveform_scope=("apb_testbench",), var=paddr_var, handle=-1, signal=AsyncLoadedSignal(paddr_h, db))
     ]
 
     validated, handles_to_load = InstantiateSnippetDialog.validate_and_resolve_nodes(nodes, db)
@@ -49,9 +49,9 @@ def test_validate_and_resolve_nodes_simple():
 
     # Test validation with group
     group_node = GroupNode(
-        name="mygroup",
+        local_name="mygroup",
         children=[
-            SignalNode(name="apb_testbench.pclk", var=pclk_var, handle=-1, signal=AsyncLoadedSignal(pclk_h, db))
+            SignalNode(local_name="pclk", _waveform_scope=("apb_testbench",), var=pclk_var, handle=-1, signal=AsyncLoadedSignal(pclk_h, db))
         ]
     )
 
@@ -62,7 +62,7 @@ def test_validate_and_resolve_nodes_simple():
     assert validated[0].children[0].handle == pclk_h
 
     # Test validation failure for a non-existent signal
-    bad_nodes = [SignalNode(name="bad.signal", var=MockVar("signal"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))]
+    bad_nodes = [SignalNode(local_name="signal", _waveform_scope=("bad",), var=MockVar("signal"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))]
     with pytest.raises(ValueError) as exc:
         InstantiateSnippetDialog.validate_and_resolve_nodes(bad_nodes, db)
     assert "Signal 'bad.signal' not found" in str(exc.value)
@@ -78,7 +78,7 @@ def test_remap_node_names():
         def _remap_node_names(self, node: TreeNode, old_parent: str, new_parent: str) -> TreeNode:
             """Just remap names without validation."""
             new_node = node.deep_copy()
-            
+
             if not node.is_group:
                 # Calculate relative name
                 if old_parent and node.name.startswith(old_parent + "."):
@@ -88,14 +88,18 @@ def test_remap_node_names():
                 else:
                     # Handle case where node name doesn't start with parent
                     relative_name = node.name.split('.')[-1]
-                
+
                 # Build new name
                 if new_parent:
                     new_name = f"{new_parent}.{relative_name}"
                 else:
                     new_name = relative_name
-                
-                new_node.name = new_name
+
+                # Update node with new path structure
+                parts = new_name.split('.')
+                new_node.local_name = parts[-1] if parts else new_name
+                if isinstance(new_node, SignalNode):
+                    new_node._waveform_scope = tuple(parts[:-1]) if len(parts) > 1 else ()
                 # Don't resolve handle here - leave that to validation
             
             if node.is_group:
@@ -110,19 +114,19 @@ def test_remap_node_names():
     dialog = MockDialog()
     
     # Test remapping
-    node = SignalNode(name="old.scope.signal1", var=MockVar("signal1"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
+    node = SignalNode(local_name="signal1", _waveform_scope=("old", "scope"), var=MockVar("signal1"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
     remapped = dialog._remap_node_names(node, "old.scope", "new.scope")
 
     assert remapped.name == "new.scope.signal1"
     assert remapped.handle == -1  # Handle not resolved during remapping
 
     # Test remapping with no old parent
-    node2 = SignalNode(name="signal2", var=MockVar("signal2"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
+    node2 = SignalNode(local_name="signal2", _waveform_scope=(), var=MockVar("signal2"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
     remapped2 = dialog._remap_node_names(node2, "", "new.scope")
     assert remapped2.name == "new.scope.signal2"
 
     # Test remapping with no new parent
-    node3 = SignalNode(name="old.scope.signal3", var=MockVar("signal3"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
+    node3 = SignalNode(local_name="signal3", _waveform_scope=("old", "scope"), var=MockVar("signal3"), handle=-1, signal=AsyncLoadedSignal.placeholder(-1))
     remapped3 = dialog._remap_node_names(node3, "old.scope", "")
     assert remapped3.name == "signal3"
 

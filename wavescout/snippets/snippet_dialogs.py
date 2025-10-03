@@ -149,9 +149,10 @@ class InstantiateSnippetDialog(QDialog):
 
             if isinstance(node, SignalNode):
                 assert isinstance(new_node, SignalNode)  # Help type checker
-                handle = waveform_db.find_handle_by_path(node.name)
+                path_segments = node.path()
+                handle = waveform_db.find_handle_by_path(path_segments)
                 if handle is None:
-                    raise ValueError(f"Signal '{node.name}' not found in waveform")
+                    raise ValueError(f"Signal '{node.full_name()}' not found in waveform")
                 new_node.handle = handle
 
                 # Create AsyncLoadedSignal for the handle
@@ -341,14 +342,20 @@ class InstantiateSnippetDialog(QDialog):
     def build_full_paths(node: TreeNode, parent_scope: str) -> TreeNode:
         """Build full paths by concatenating parent scope with relative names."""
         new_node = node.deep_copy()
-        
+
         if isinstance(node, SignalNode):
             if parent_scope:
-                new_node.name = f"{parent_scope}.{node.name}"
+                # Update waveform scope to include parent_scope
+                parent_parts = parent_scope.split('.')
+                new_scope_path = tuple(parent_parts) + node.scope_path()
+                object.__setattr__(new_node, '_waveform_scope', new_scope_path)
             return new_node
 
         if isinstance(node, GroupNode):
             assert isinstance(new_node, GroupNode)  # Help type checker
+            # Note: GroupNode scope_path is computed from parent chain,
+            # so we don't need to update it manually - just set children and their parents
+
             new_children = [InstantiateSnippetDialog.build_full_paths(child, parent_scope) for child in node.children]
             new_node.children = new_children
             for child in new_children:

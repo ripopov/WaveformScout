@@ -260,8 +260,27 @@ class DesignTreeView(QWidget):
 
         signal = self.waveform_db.load_signal(handle)
 
+        # Split full_path into scope_path and local_name
+        # Use var.scope_path if available
+        if var_obj and hasattr(var_obj, 'scope_path'):
+            hierarchy = self.waveform_db.hierarchy if hasattr(self.waveform_db, 'hierarchy') else None
+            if hierarchy:
+                local_name = var_obj.name(hierarchy)
+                scope_path = tuple(var_obj.scope_path(hierarchy))
+            else:
+                # Fallback to splitting full_path
+                parts = full_path.split('.')
+                local_name = parts[-1] if parts else full_path
+                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+        else:
+            # Fallback to splitting full_path
+            parts = full_path.split('.')
+            local_name = parts[-1] if parts else full_path
+            scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+
         signal_node = SignalNode(
-            name=full_path,
+            local_name=local_name,
+            _waveform_scope=scope_path,
             handle=handle,
             signal=signal,
             var=var_obj,  # Pass the var object
@@ -276,9 +295,10 @@ class DesignTreeView(QWidget):
         """Find signal handle in waveform database"""
         if not self.waveform_db:
             return None
-        
-        # Use the public find_handle_by_path method
-        handle = self.waveform_db.find_handle_by_path(full_path)
+
+        # Convert dotted string to path segments for new API
+        path_segments = full_path.split('.')
+        handle = self.waveform_db.find_handle_by_path(path_segments)
         return handle
     
     def add_selected_signals(self) -> None:
@@ -593,7 +613,9 @@ class DesignTreeView(QWidget):
         var = var_data.get('var')
 
         # Look up handle by path using the correct WaveformDB
-        handle = current_db.find_handle_by_path(full_path)
+        # Convert dotted string to path segments for new API
+        path_segments = full_path.split('.')
+        handle = current_db.find_handle_by_path(path_segments)
 
         if handle is None:
             return None
@@ -625,8 +647,27 @@ class DesignTreeView(QWidget):
 
         signal = current_db.load_signal(handle)
 
+        # Split full_path into scope_path and local_name
+        # Use var.scope_path if available, otherwise split full_path
+        if var and hasattr(var, 'scope_path'):
+            hierarchy = current_db.hierarchy if hasattr(current_db, 'hierarchy') else None
+            if hierarchy:
+                local_name = var.name(hierarchy)
+                scope_path = tuple(var.scope_path(hierarchy))
+            else:
+                # Fallback to splitting full_path
+                parts = full_path.split('.')
+                local_name = parts[-1] if parts else full_path
+                scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+        else:
+            # Fallback to splitting full_path
+            parts = full_path.split('.')
+            local_name = parts[-1] if parts else full_path
+            scope_path = tuple(parts[:-1]) if len(parts) > 1 else ()
+
         signal_node = SignalNode(
-            name=full_path,
+            local_name=local_name,
+            _waveform_scope=scope_path,
             handle=handle,
             signal=signal,
             var=var,  # Pass the var object
