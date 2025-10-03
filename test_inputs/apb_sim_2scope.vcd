@@ -17,6 +17,8 @@ $var reg 1 & preset_n $end
 $var reg 1 ' psel $end
 $var reg 32 ( pwdata [31:0] $end
 $var reg 1 ) pwrite $end
+$var wire 32 !1 inner.pready $end
+$var bit 10 !2 one.two.three.pready $end
 $scope module dut $end
 $var wire 32 * paddr [31:0] $end
 $var wire 1 $ pclk $end
@@ -28,6 +30,11 @@ $var wire 32 + pwdata [31:0] $end
 $var wire 1 ) pwrite $end
 $var reg 32 , prdata [31:0] $end
 $var integer 32 - i [31:0] $end
+$upscope $end
+$scope module dotted.dot $end
+$var bit 10 !3 one.two $end
+$var wire 32 !4 wide $end
+$var wire 1 ' psel $end
 $upscope $end
 $scope task apb_read $end
 $var reg 32 . addr [31:0] $end
