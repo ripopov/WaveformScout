@@ -21,7 +21,7 @@ This module depends only on QPainter and small data types from the local data mo
 and sampling code; it contains no widget logic.
 """
 
-from typing import Dict, Tuple, Optional, TypedDict, TYPE_CHECKING, Protocol
+from typing import Dict, Tuple, Optional, TypedDict, TYPE_CHECKING, Protocol, List
 from dataclasses import dataclass
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPolygonF
 from PySide6.QtCore import Qt, QPointF
@@ -32,9 +32,10 @@ if TYPE_CHECKING:
     from wavescout.core.waveform_db import Var
     from .canvas_layout import CanvasLayout, GroupContentDescriptor
     from ..core.data_model import WaveformSession
+    from .time_grid_renderer import TickInfo
 
 from ..core.data_model import RenderType, Time, AnalogScalingMode, SignalNodeID, DisplayFormat, TreeNode, SignalRangeCache, DataFormat, GroupRenderMode
-from .signal_sampling import SignalDrawingData, ValueKind
+from .signal_sampling import SignalDrawingData, ValueKind, parse_signal_value
 from ..utils import config
 from ..utils.timing_utils import tprint
 RENDERING = config.RENDERING
@@ -73,6 +74,7 @@ class RenderParams(TypedDict, total=False):
     highlight_selected: bool  # Whether to highlight selected signals
     layout: Optional['CanvasLayout']  # New layout information
     group_draw_data: Dict[SignalNodeID, 'GroupDrawingPayload']  # Group drawing data
+    tick_positions: Optional[List['TickInfo']]  # Time ruler tick positions for value labels
 
 
 @dataclass
@@ -795,16 +797,73 @@ def draw_analog_signal(painter: QPainter, node_info: NodeInfo, drawing_data: Sig
         # Very low opacity (20-30) to make it almost invisible
         aliasing_color = QColor(color)
         aliasing_color.setAlpha(40)  # Very low alpha for minimal visibility
-        
+
         # Use dotted pen style with semi-transparent color
         aliasing_pen = QPen(aliasing_color, 1, Qt.PenStyle.DotLine)
         aliasing_pen.setCosmetic(True)
         painter.setPen(aliasing_pen)
-        
+
         for x_pos in aliasing_regions:
             x_int = int(x_pos)
             # Draw single subtle vertical line
             painter.drawLine(x_int, y_top, x_int, y_bottom)
+
+    # Draw value labels at tick positions (only if height_scaling > 1)
+    if height_scaling > 1 and signal_obj is not None:
+        tick_positions = params.get('tick_positions')
+        if tick_positions:
+            # Filter to every second tick to avoid overcrowding
+            value_ticks = tick_positions[::2]
+
+            # Setup rendering
+            font = QFont("Monospace", 8)
+            painter.setFont(font)
+            fm = painter.fontMetrics()
+            text_color = QColor(config.COLORS.TEXT_MUTED)
+            painter.setPen(QPen(text_color, 0))
+
+            # Track last label position for overlap detection
+            last_label_end_x = float('-inf')
+            padding = 10  # Minimum gap between labels in pixels
+
+            # Get data format and bit width for value formatting
+            data_format = node_info['format'].data_format
+            bit_width = var.bitwidth() if var else 32
+
+            for tick in value_ticks:
+                tick_time = tick['time_value']
+                tick_x = tick['pixel_x']
+
+                # Skip ticks outside valid pixel range
+                if tick_x < min_valid_pixel or tick_x > max_valid_pixel:
+                    continue
+
+                try:
+                    # Get signal value at tick time
+                    qr = signal_obj.query_signal(max(0, int(tick_time)))
+                    raw_value = qr.value if qr.value is not None else None
+                    if raw_value is None:
+                        continue
+
+                    # Format value using existing function
+                    value_str, _, _ = parse_signal_value(raw_value, data_format, bit_width)
+
+                    # Check for overlap
+                    text_width = fm.horizontalAdvance(value_str)
+                    label_start_x = tick_x - text_width / 2
+
+                    if label_start_x < last_label_end_x + padding:
+                        continue  # Skip this label to avoid overlap
+
+                    # Update tracking for next iteration
+                    last_label_end_x = tick_x + text_width / 2
+
+                    # Render the label at bottom of signal (same as min value label)
+                    painter.drawText(int(label_start_x), y_bottom - 2, value_str)
+
+                except Exception:
+                    # Silently skip labels that fail to render
+                    continue
 
 
 def draw_event_signal(painter: QPainter, node_info: NodeInfo, drawing_data: SignalDrawingData, 

@@ -426,6 +426,9 @@ class WaveformCanvas(QWidget):
     
     def _paint_waveforms(self, painter: QPainter) -> None:
         """Render and paint the waveforms."""
+        # Calculate tick positions first (needed for value labels in analog signals)
+        self._calculate_and_store_ruler_info()
+
         # Check if we need to render
         render_params = self._collect_render_params()
         param_hash = self._hash_render_params(render_params)
@@ -717,6 +720,7 @@ class WaveformCanvas(QWidget):
             signal_range_cache=self._signal_range_cache,  # Pass signal range cache for analog rendering
             highlight_selected=self._highlight_selected,  # Pass highlight flag
             layout=self._layout,  # Pass the new layout
+            tick_positions=self._last_tick_positions,  # Pass tick positions for value labels
         )
     
     def _render_to_image(self, params: RenderParams, generation: int) -> Tuple[QImage, int, float]:
