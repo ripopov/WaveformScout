@@ -11,7 +11,7 @@ classifiers = [
 ]
 license = "BSD-3-Clause"
 description = "Fast VCD, GHW and FST wavedump reading."
-readme = "Readme.md"
+readme = "README.md"
 authors = [
   { name = "WaveScout Team" },
 ]

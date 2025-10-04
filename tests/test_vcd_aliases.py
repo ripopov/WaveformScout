@@ -216,10 +216,10 @@ def test_signal_loaded_once_for_aliases(vcd_with_aliases):
     # Clear signal cache to start fresh
     db.clear_signal_cache()
 
-    # Find handle for core_clk aliases
-    handle = db.find_handle_by_name("core_clk")
+    # Find handle for core_clk (try TOP.core_clk first)
+    handle = db.find_handle_by_path(["TOP", "core_clk"])
     if handle is None:
-        # Try finding by full name
+        # Fall back to searching by local name
         for h, vars_list in db.iter_handles_and_vars():
             for var in vars_list:
                 if hasattr(var, 'name') and var.name(db.hierarchy) == "core_clk":

@@ -131,29 +131,6 @@ impl Hierarchy {
         }))
     }
 
-    /// Find a variable by its full hierarchical name (DEPRECATED - use find_var_by_path instead)
-    fn find_var_by_full_name(&self, name: &str) -> Option<Var> {
-        // Parse the dotted path
-        let parts: Vec<&str> = name.split('.').collect();
-        if parts.is_empty() {
-            return None;
-        }
-
-        // Split into scope path and variable name
-        let (path, var_name) = if parts.len() == 1 {
-            // Just a variable name at top level
-            (&[][..], parts[0])
-        } else {
-            // Scope path + variable name
-            (&parts[0..parts.len() - 1], parts[parts.len() - 1])
-        };
-
-        // Use the hierarchy's lookup_var method (expects &str references)
-        self.0
-            .lookup_var(path, &var_name)
-            .map(|var_ref| Var(self.0[var_ref].clone()))
-    }
-
     /// Find a variable by its hierarchical path.
     /// The path is a list where all elements except the last are scope names,
     /// and the last element is the variable's local name (which may contain dots).

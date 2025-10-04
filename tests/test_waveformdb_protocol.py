@@ -17,7 +17,6 @@ def test_waveformdb_has_required_methods():
 
     # Check all methods exist
     assert hasattr(db, 'find_handle_by_path')
-    assert hasattr(db, 'find_handle_by_name')
     assert hasattr(db, 'get_var')
     assert hasattr(db, 'iter_handles_and_vars')
     assert hasattr(db, 'get_time_table')
@@ -121,7 +120,6 @@ def test_methods_with_empty_db():
     
     # All methods should handle empty DB gracefully
     assert db.find_handle_by_path(["any", "path"]) is None
-    assert db.find_handle_by_name("any_name") is None
     assert db.get_var(0) is None
     assert list(db.iter_handles_and_vars()) == []
     assert db.get_time_table() is None

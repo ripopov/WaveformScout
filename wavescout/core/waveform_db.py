@@ -463,23 +463,6 @@ class WaveformDB:
         return list(refs)
 
 
-    def find_handle_by_name(self, name: str) -> Optional[SignalHandle]:
-        """Find handle by variable name (DEPRECATED - use find_handle_by_path with list).
-
-        Args:
-            name: Variable name to search for (full hierarchical name)
-
-        Returns:
-            Handle ID if found, None otherwise
-        """
-        if not self.hierarchy:
-            return None
-        # Use the old Rust method for backward compatibility
-        var = self.hierarchy.find_var_by_full_name(name)  # type: ignore[attr-defined]
-        if var:
-            return var.signal_handle()  # type: ignore[no-any-return]
-        return None
-
     def clear_signal_cache(self) -> None:
         """Clear the signal cache. Primarily for testing.
 
