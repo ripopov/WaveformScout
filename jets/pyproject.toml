@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "pyjets"
+version = "0.1.0"
+description = "GPU microarchitecture trace streaming library implementing JETS (JSON Event Trace Streaming) format"
+authors = ["pyjets contributors"]
+readme = "README.md"
+packages = [{include = "pyjets"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+PySide6 = "^6.9.0"
+
+[tool.poetry.scripts]
+jets-viewer = "pyjets.viewer:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

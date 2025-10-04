@@ -1,0 +1,20 @@
+[package]
+name = "rjets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+eframe = "0.29"
+egui = "0.29"
+anyhow = "1.0"
+rfd = "0.15"
+
+[[bin]]
+name = "rjets-viewer"
+path = "src/main.rs"
+
+[lib]
+name = "rjets"
+path = "src/lib.rs"
