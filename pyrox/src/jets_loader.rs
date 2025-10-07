@@ -263,8 +263,12 @@ impl JetsHierarchy {
     pub(crate) fn generate_signal_changes(&self, record: &TraceRecord) -> Vec<(i64, String)> {
         let mut changes = Vec::new();
 
-        // Initial value at record start time
-        let start_time_us = clock_to_microseconds(record.clk, self.clock_freq_mhz);
+        // Initial value: "Z" at time 0 (outside record range)
+        changes.push((0, "Z".to_string()));
+
+        // Record start: transition to record JSON
+        // Ensure start time is at least 1 to avoid collision with initial Z at time 0
+        let start_time_us = clock_to_microseconds(record.clk, self.clock_freq_mhz).max(1);
         changes.push((start_time_us, record_to_json(record)));
 
         // Events (sorted by clock)
@@ -276,7 +280,7 @@ impl JetsHierarchy {
             changes.push((event_time_us, event_to_json(event)));
         }
 
-        // End marker (if end_clk exists)
+        // End marker (if end_clk exists): transition back to "Z"
         if let Some(end_clk) = record.end_clk {
             let end_time_us = clock_to_microseconds(end_clk, self.clock_freq_mhz);
             changes.push((end_time_us + 1, "Z".to_string()));

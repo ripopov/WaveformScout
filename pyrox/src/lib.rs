@@ -1822,9 +1822,23 @@ impl Signal {
                     .unwrap_or_else(|val| val);
                 self.value_at_idx(val as TimeTableIdx, py)
             }
-            SignalBackend::Jets { .. } => {
-                // JETS signals don't support indexed access
-                None
+            SignalBackend::Jets { changes } => {
+                // Sample the JETS signal changes at the given time
+                // Find the last change that occurred at or before the given time
+                let mut current_value: Option<&String> = None;
+                let time_i64 = time as i64;
+
+                for (change_time, value) in changes.iter() {
+                    if *change_time <= time_i64 {
+                        current_value = Some(value);
+                    } else {
+                        // Changes are sorted, so we can stop here
+                        break;
+                    }
+                }
+
+                // Return the value as a Python string
+                current_value.map(|v| PyString::new(py, v).into_any())
             }
         }
     }
@@ -2004,15 +2018,48 @@ impl Signal {
                     },
                 )
             }
-            SignalBackend::Jets { .. } => {
-                // JETS signals don't support query_signal
+            SignalBackend::Jets { changes } => {
+                // Sample the JETS signal changes at the given time
+                // Find the last change that occurred at or before the given time
+                let query_time_i64 = query_time as i64;
+                let mut current_idx: Option<usize> = None;
+                let mut current_value: Option<&String> = None;
+                let mut current_time: Option<i64> = None;
+
+                for (idx, (change_time, value)) in changes.iter().enumerate() {
+                    if *change_time <= query_time_i64 {
+                        current_idx = Some(idx);
+                        current_value = Some(value);
+                        current_time = Some(*change_time);
+                    } else {
+                        // Changes are sorted, so we can stop here
+                        break;
+                    }
+                }
+
+                // Find the next change
+                let (next_idx, next_time) = if let Some(idx) = current_idx {
+                    if idx + 1 < changes.len() {
+                        (Some((idx + 1) as u32), Some(changes[idx + 1].0 as u64))
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    // No change at or before query time, so the first change is next
+                    if !changes.is_empty() {
+                        (Some(0), Some(changes[0].0 as u64))
+                    } else {
+                        (None, None)
+                    }
+                };
+
                 Bound::new(
                     py,
                     QueryResult {
-                        value: None,
-                        actual_time: None,
-                        next_idx: None,
-                        next_time: None,
+                        value: current_value.map(|v| PyString::new(py, v).into_any().unbind()),
+                        actual_time: current_time.map(|t| t as u64),
+                        next_idx,
+                        next_time,
                     },
                 )
             }

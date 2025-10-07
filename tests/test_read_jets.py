@@ -185,10 +185,14 @@ def test_jets_signal_values_and_timestamps():
     signal = wf.get_signal_by_handle(signal_handle)
 
     changes = list(signal.all_changes())
-    assert len(changes) > 0
+    assert len(changes) > 1  # Should have at least Z and record JSON
 
+    # First change is "Z" at time 0, second change is the record JSON
     first_time, first_value = changes[0]
-    value_obj = json.loads(first_value)
+    assert first_value == "Z", "First change should be 'Z'"
+
+    record_time, record_value = changes[1]
+    value_obj = json.loads(record_value)
     assert "id" in value_obj or "name" in value_obj
 
 
@@ -209,11 +213,15 @@ def test_jets_signal_json_structure():
     signal = wf.get_signal_by_handle(signal_handle)
 
     changes = list(signal.all_changes())
-    if len(changes) == 0:
-        pytest.skip("No signal changes")
+    if len(changes) < 2:
+        pytest.skip("Not enough signal changes")
 
+    # First change is "Z" at time 0, second change is the record JSON
     _, first_value = changes[0]
-    value_obj = json.loads(first_value)
+    assert first_value == "Z", "First change should be 'Z'"
+
+    _, record_value = changes[1]
+    value_obj = json.loads(record_value)
 
     assert isinstance(value_obj, dict)
     assert len(value_obj) > 0
@@ -292,15 +300,20 @@ def test_jets_get_signal_by_handle():
 
     # Verify signal has changes
     changes = list(signal.all_changes())
-    assert len(changes) > 0
+    assert len(changes) > 1  # Should have at least Z and record JSON
 
-    # Verify first change is at record start time
+    # First change should be "Z" at time 0
     first_time, first_value = changes[0]
-    assert first_time >= 0
-    assert isinstance(first_value, str)
+    assert first_time == 0
+    assert first_value == "Z"
+
+    # Second change should be the record JSON
+    record_time, record_value = changes[1]
+    assert record_time >= 0
+    assert isinstance(record_value, str)
 
     # Verify value is valid JSON
-    value_obj = json.loads(first_value)
+    value_obj = json.loads(record_value)
     assert isinstance(value_obj, dict)
 
 
@@ -317,14 +330,19 @@ def test_jets_get_signal_from_path():
 
     # Verify signal has changes
     changes = list(signal.all_changes())
-    assert len(changes) > 0
+    assert len(changes) > 1  # Should have at least Z and record JSON
 
-    # Verify first change
+    # First change should be "Z" at time 0
     first_time, first_value = changes[0]
-    assert first_time >= 0
+    assert first_time == 0
+    assert first_value == "Z"
+
+    # Second change should be the record JSON
+    record_time, record_value = changes[1]
+    assert record_time >= 0
 
     # Verify value is JSON with record info
-    value_obj = json.loads(first_value)
+    value_obj = json.loads(record_value)
     assert "id" in value_obj or "name" in value_obj
 
 
@@ -456,21 +474,25 @@ def test_jets_signal_changes_complete():
 
     changes = list(signal.all_changes())
 
-    # Should have at least: 1 record start + N events + 1 end (if record has end_clk)
-    expected_min_changes = 1 + len(events)
+    # Should have at least: initial Z + record start + N events + end Z (if record has end_clk)
+    expected_min_changes = 2 + len(events)  # Z + record start + events
     if record.end_clk is not None:
-        expected_min_changes += 1
+        expected_min_changes += 1  # + end Z
 
     assert len(changes) >= expected_min_changes
 
-    # First change should be record JSON
+    # First change should be "Z" at time 0
     first_time, first_value = changes[0]
-    value_obj = json.loads(first_value)
+    assert first_value == "Z", "First change should be 'Z'"
+
+    # Second change should be record JSON
+    record_time, record_value = changes[1]
+    value_obj = json.loads(record_value)
     assert "id" in value_obj
     assert value_obj["id"] == record.id
 
     # Subsequent changes should be events
-    for i in range(1, min(len(changes), len(events) + 1)):
+    for i in range(2, min(len(changes), len(events) + 2)):
         time, value = changes[i]
         if value != "Z":  # Skip end marker
             value_obj = json.loads(value)
