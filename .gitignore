@@ -51,3 +51,18 @@ third_party/wellen/target/
 third_party/wellen/pywellen/target/
 third_party/wellen/pywellen/dist/
 third_party/wellen/pywellen/dev/
+
+# Pyrox/Rust build artifacts
+pyrox/target/
+*.pyd
+
+# Poetry configuration
+.poetry-config/
+
+# Session and snapshot files
+*.json
+!pyproject.json
+!tests/**/*.json
+!test_inputs/**/*.json
+snapshot.png
+*.png

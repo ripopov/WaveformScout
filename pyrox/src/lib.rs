@@ -1,4 +1,5 @@
 mod convert;
+mod jets_loader;
 // mod design_tree_model;  // Removed - DesignTreeModel no longer used
 
 use std::sync::{
@@ -10,7 +11,7 @@ use std::thread;
 use convert::Mappable;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use num_bigint::BigUint;
-use pyo3::types::PyInt;
+use pyo3::types::{PyInt, PyString};
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use tokio::runtime::Runtime;
 
@@ -53,6 +54,8 @@ struct SharedState {
     callback: Mutex<Option<PyObject>>,
     header_loaded: AtomicBool,
     body_loaded: AtomicBool,
+    // JETS-specific state
+    jets_hierarchy: Mutex<Option<Arc<jets_loader::JetsHierarchy>>>,
 }
 
 pub trait PyErrExt<T> {
@@ -78,6 +81,7 @@ fn pyrox(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TimescaleUnit>()?;
     m.add_class::<QueryResult>()?;
     m.add_class::<TimeTable>()?;
+    m.add_class::<jets_loader::Record>()?;
     // m.add_class::<design_tree_model::PyDesignTreeModel>()?;  // Removed - DesignTreeModel no longer used
 
     // Export SignalHandle as a type alias (using the int type object)
@@ -86,49 +90,109 @@ fn pyrox(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+/// Backend enum to support both Wellen and JETS hierarchies
+#[derive(Clone)]
+pub(crate) enum HierarchyBackend {
+    Wellen(Arc<wellen::Hierarchy>),
+    Jets(Arc<jets_loader::JetsHierarchy>),
+}
+
 #[pyclass]
 #[derive(Clone)]
-pub(crate) struct Hierarchy(pub(crate) Arc<wellen::Hierarchy>);
+pub(crate) struct Hierarchy(pub(crate) HierarchyBackend);
 
 #[pymethods]
 impl Hierarchy {
     fn all_vars(&self) -> VarIter {
-        // Return ALL variables from all scopes, including aliases
-        let hier = self.0.clone();
-        let mut all_vars = Vec::new();
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => {
+                // Return ALL variables from all scopes, including aliases
+                let hier = hier.clone();
+                let mut all_vars = Vec::new();
 
-        // Recursively collect variables from all scopes
-        fn collect_vars(
-            scope_ref: wellen::ScopeRef,
-            hier: &wellen::Hierarchy,
-            vars: &mut Vec<wellen::Var>,
-        ) {
-            // Add variables from this scope
-            for var_ref in hier[scope_ref].vars(hier) {
-                vars.push(hier[var_ref].clone());
+                // Recursively collect variables from all scopes
+                fn collect_vars(
+                    scope_ref: wellen::ScopeRef,
+                    hier: &wellen::Hierarchy,
+                    vars: &mut Vec<wellen::Var>,
+                ) {
+                    // Add variables from this scope
+                    for var_ref in hier[scope_ref].vars(hier) {
+                        vars.push(hier[var_ref].clone());
+                    }
+                    // Recurse into child scopes
+                    for child_ref in hier[scope_ref].scopes(hier) {
+                        collect_vars(child_ref, hier, vars);
+                    }
+                }
+
+                // Start from all top-level scopes
+                for scope_ref in hier.scopes() {
+                    collect_vars(scope_ref, &hier, &mut all_vars);
+                }
+
+                VarIter(Box::new(all_vars.into_iter().map(|v| Var(VarBackend::Wellen(v)))))
             }
-            // Recurse into child scopes
-            for child_ref in hier[scope_ref].scopes(hier) {
-                collect_vars(child_ref, hier, vars);
+            HierarchyBackend::Jets(jets) => {
+                // Collect all records as vars
+                let mut all_vars = Vec::new();
+                let freq = jets.clock_freq_mhz();
+
+                fn collect_record_vars(
+                    record: &rjets::TraceRecord,
+                    jets: &jets_loader::JetsHierarchy,
+                    freq: f64,
+                    vars: &mut Vec<Var>,
+                ) {
+                    // Add this record as a var
+                    if let Some(handle) = jets.get_handle_by_id(&record.id) {
+                        vars.push(Var(VarBackend::Jets {
+                            record: Arc::new(record.clone()),
+                            signal_handle: handle,
+                            clock_freq_mhz: freq,
+                        }));
+                    }
+                    // Recurse into children
+                    for child in &record.children {
+                        collect_record_vars(child, jets, freq, vars);
+                    }
+                }
+
+                for root in jets.top_records() {
+                    collect_record_vars(root, jets, freq, &mut all_vars);
+                }
+
+                VarIter(Box::new(all_vars.into_iter()))
             }
         }
-
-        // Start from all top-level scopes
-        for scope_ref in hier.scopes() {
-            collect_vars(scope_ref, &hier, &mut all_vars);
-        }
-
-        VarIter(Box::new(all_vars.into_iter().map(Var)))
     }
 
     fn top_scopes(&self) -> ScopeIter {
-        ScopeIter(Box::new({
-            let hier = self.0.clone();
-            hier.scopes()
-                .map(|val| Scope(hier[val].clone()))
-                .collect::<Vec<_>>()
-                .into_iter()
-        }))
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => {
+                ScopeIter(Box::new({
+                    let hier = hier.clone();
+                    hier.scopes()
+                        .map(|val| Scope(ScopeBackend::Wellen(hier[val].clone())))
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                }))
+            }
+            HierarchyBackend::Jets(jets) => {
+                let freq = jets.clock_freq_mhz();
+                let scopes: Vec<Scope> = jets
+                    .top_records()
+                    .iter()
+                    .map(|record| {
+                        Scope(ScopeBackend::Jets {
+                            record: Arc::new(record.clone()),
+                            clock_freq_mhz: freq,
+                        })
+                    })
+                    .collect();
+                ScopeIter(Box::new(scopes.into_iter()))
+            }
+        }
     }
 
     /// Find a variable by its hierarchical path.
@@ -145,136 +209,293 @@ impl Hierarchy {
             return None;
         }
 
-        // Split into scope path and variable name
-        let (scope_path, var_name) = if path.len() == 1 {
-            // Just a variable name at top level
-            (vec![], &path[0])
-        } else {
-            // Scope path + variable name
-            (path[0..path.len() - 1].to_vec(), &path[path.len() - 1])
-        };
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => {
+                // Split into scope path and variable name
+                let (scope_path, var_name) = if path.len() == 1 {
+                    // Just a variable name at top level
+                    (vec![], &path[0])
+                } else {
+                    // Scope path + variable name
+                    (path[0..path.len() - 1].to_vec(), &path[path.len() - 1])
+                };
 
-        // Use the hierarchy's lookup_var method
-        // scope_path is Vec<String>, var_name is &String
-        // lookup_var wants &[N] and &N where N: AsRef<str>
-        self.0
-            .lookup_var(&scope_path, var_name)
-            .map(|var_ref| Var(self.0[var_ref].clone()))
+                // Use the hierarchy's lookup_var method
+                hier.lookup_var(&scope_path, var_name)
+                    .map(|var_ref| Var(VarBackend::Wellen(hier[var_ref].clone())))
+            }
+            HierarchyBackend::Jets(_jets) => {
+                // For JETS, path lookup is not yet supported
+                // TODO: Implement path lookup for JETS if needed
+                None
+            }
+        }
     }
 
     /// Get the first variable that references this signal (0-based index)
     fn get_var_by_signal_ref(&self, handle: SignalHandle) -> Option<Var> {
-        // Convert 0-based handle to wellen SignalRef (which is 1-based internally)
-        let wellen_ref = wellen::SignalRef::from_index(handle)?;
-        self.0
-            .get_var_by_signal_ref(wellen_ref)
-            .map(|var_ref| Var(self.0[var_ref].clone()))
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => {
+                // Convert 0-based handle to wellen SignalRef (which is 1-based internally)
+                let wellen_ref = wellen::SignalRef::from_index(handle)?;
+                hier.get_var_by_signal_ref(wellen_ref)
+                    .map(|var_ref| Var(VarBackend::Wellen(hier[var_ref].clone())))
+            }
+            HierarchyBackend::Jets(jets) => {
+                // For JETS, get the record by handle
+                jets.get_record_by_handle(handle).map(|record| {
+                    Var(VarBackend::Jets {
+                        record,
+                        signal_handle: handle,
+                        clock_freq_mhz: jets.clock_freq_mhz(),
+                    })
+                })
+            }
+        }
     }
 
     /// Get the date metadata from the waveform file
     fn date(&self) -> String {
-        self.0.date().to_string()
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => hier.date().to_string(),
+            HierarchyBackend::Jets(jets) => jets.date(),
+        }
     }
 
     /// Get the version metadata from the waveform file
     fn version(&self) -> String {
-        self.0.version().to_string()
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => hier.version().to_string(),
+            HierarchyBackend::Jets(jets) => jets.version(),
+        }
     }
 
     /// Get the timescale metadata from the waveform file
     fn timescale(&self) -> Option<Timescale> {
-        self.0.timescale().map(Timescale)
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => hier.timescale().map(Timescale),
+            HierarchyBackend::Jets(jets) => {
+                // JETS uses microseconds
+                Some(Timescale(wellen::Timescale::new(1, wellen::TimescaleUnit::MicroSeconds)))
+            }
+        }
     }
 
     /// Get the file format of the waveform file
     fn file_format(&self) -> String {
-        match self.0.file_format() {
-            wellen::FileFormat::Vcd => "VCD".to_string(),
-            wellen::FileFormat::Fst => "FST".to_string(),
-            wellen::FileFormat::Ghw => "GHW".to_string(),
-            wellen::FileFormat::Unknown => "Unknown".to_string(),
+        match &self.0 {
+            HierarchyBackend::Wellen(hier) => match hier.file_format() {
+                wellen::FileFormat::Vcd => "VCD".to_string(),
+                wellen::FileFormat::Fst => "FST".to_string(),
+                wellen::FileFormat::Ghw => "GHW".to_string(),
+                wellen::FileFormat::Unknown => "Unknown".to_string(),
+            },
+            HierarchyBackend::Jets(_) => "JETS".to_string(),
         }
     }
 }
 
+/// Backend enum to support both Wellen and JETS scopes
+#[derive(Clone)]
+pub(crate) enum ScopeBackend {
+    Wellen(wellen::Scope),
+    Jets {
+        record: Arc<rjets::TraceRecord>,
+        clock_freq_mhz: f64,
+    },
+}
+
 #[pyclass]
-pub(crate) struct Scope(pub(crate) wellen::Scope);
+pub(crate) struct Scope(pub(crate) ScopeBackend);
 
 #[pymethods]
 impl Scope {
     pub fn name(&self, hier: Bound<'_, Hierarchy>) -> String {
-        self.0.name(&hier.borrow().0).to_string()
+        match &self.0 {
+            ScopeBackend::Wellen(scope) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => scope.name(h).to_string(),
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen scope with JETS hierarchy"),
+                }
+            }
+            ScopeBackend::Jets { record, .. } => record.name.clone(),
+        }
     }
+
     pub fn full_name(&self, hier: Bound<'_, Hierarchy>) -> String {
-        self.0.full_name(&hier.borrow().0).to_string()
+        match &self.0 {
+            ScopeBackend::Wellen(scope) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => scope.full_name(h).to_string(),
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen scope with JETS hierarchy"),
+                }
+            }
+            ScopeBackend::Jets { record, .. } => {
+                // Build full name from parent chain
+                let mut names = vec![record.name.clone()];
+                let mut current_id = record.parent_id.clone();
+
+                // Get JETS hierarchy to look up parents
+                if let HierarchyBackend::Jets(jets) = &hier.borrow().0 {
+                    while let Some(parent_id) = current_id {
+                        if let Some(handle) = jets.get_handle_by_id(&parent_id) {
+                            if let Some(parent_rec) = jets.get_record_by_handle(handle) {
+                                names.insert(0, parent_rec.name.clone());
+                                current_id = parent_rec.parent_id.clone();
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                names.join(".")
+            }
+        }
     }
 
     pub fn scope_type(&self) -> String {
-        match self.0.scope_type() {
-            ScopeType::Module => "module",
-            ScopeType::Task => "task",
-            ScopeType::Function => "function",
-            ScopeType::Begin => "begin",
-            ScopeType::Fork => "fork",
-            ScopeType::Generate => "generate",
-            ScopeType::Struct => "struct",
-            ScopeType::Union => "union",
-            ScopeType::Class => "class",
-            ScopeType::Interface => "interface",
-            ScopeType::Package => "package",
-            ScopeType::Program => "program",
-            ScopeType::VhdlArchitecture => "vhdl_architecture",
-            ScopeType::VhdlProcedure => "vhdl_procedure",
-            ScopeType::VhdlFunction => "vhdl_function",
-            ScopeType::VhdlRecord => "vhdl_record",
-            ScopeType::VhdlProcess => "vhdl_process",
-            ScopeType::VhdlBlock => "vhdl_block",
-            ScopeType::VhdlForGenerate => "vhdl_for_generate",
-            ScopeType::VhdlIfGenerate => "vhdl_if_generate",
-            ScopeType::VhdlGenerate => "vhdl_generate",
-            ScopeType::VhdlPackage => "vhdl_package",
-            ScopeType::GhwGeneric => "ghw_generic",
-            ScopeType::VhdlArray => "vhdl_array",
-            ScopeType::Unknown => "unknown",
-            _ => "unknown", // `ScopeType` is marked as non-exhaustive
+        match &self.0 {
+            ScopeBackend::Wellen(scope) => {
+                match scope.scope_type() {
+                    ScopeType::Module => "module",
+                    ScopeType::Task => "task",
+                    ScopeType::Function => "function",
+                    ScopeType::Begin => "begin",
+                    ScopeType::Fork => "fork",
+                    ScopeType::Generate => "generate",
+                    ScopeType::Struct => "struct",
+                    ScopeType::Union => "union",
+                    ScopeType::Class => "class",
+                    ScopeType::Interface => "interface",
+                    ScopeType::Package => "package",
+                    ScopeType::Program => "program",
+                    ScopeType::VhdlArchitecture => "vhdl_architecture",
+                    ScopeType::VhdlProcedure => "vhdl_procedure",
+                    ScopeType::VhdlFunction => "vhdl_function",
+                    ScopeType::VhdlRecord => "vhdl_record",
+                    ScopeType::VhdlProcess => "vhdl_process",
+                    ScopeType::VhdlBlock => "vhdl_block",
+                    ScopeType::VhdlForGenerate => "vhdl_for_generate",
+                    ScopeType::VhdlIfGenerate => "vhdl_if_generate",
+                    ScopeType::VhdlGenerate => "vhdl_generate",
+                    ScopeType::VhdlPackage => "vhdl_package",
+                    ScopeType::GhwGeneric => "ghw_generic",
+                    ScopeType::VhdlArray => "vhdl_array",
+                    ScopeType::Unknown => "unknown",
+                    _ => "unknown", // `ScopeType` is marked as non-exhaustive
+                }
+                .to_string()
+            }
+            ScopeBackend::Jets { .. } => "record".to_string(),
         }
-        .to_string()
     }
 
     pub fn vars(&self, hier: Bound<'_, Hierarchy>) -> VarIter {
-        let locahier = hier.borrow().clone();
-        let scope = self.0.clone();
+        match &self.0 {
+            ScopeBackend::Wellen(scope) => {
+                let locahier = hier.borrow().clone();
+                let scope = scope.clone();
 
-        //TODO: optimize me! need to rewrite the logic from `HierarchyItemIdIterator` to use
-        // Arc<Hierarchy> instead of lifetimes
-        //
-        // This is because python does not like lifetimes :)
-        VarIter(Box::new({
-            let hier = locahier.clone();
-            scope
-                .vars(&hier.0)
-                .map(|val| Var(hier.0[val].clone()))
-                .collect::<Vec<_>>()
-                .into_iter()
-        }))
+                //TODO: optimize me! need to rewrite the logic from `HierarchyItemIdIterator` to use
+                // Arc<Hierarchy> instead of lifetimes
+                //
+                // This is because python does not like lifetimes :)
+                VarIter(Box::new({
+                    match &locahier.0 {
+                        HierarchyBackend::Wellen(h) => {
+                            scope
+                                .vars(h)
+                                .map(|val| Var(VarBackend::Wellen(h[val].clone())))
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                        }
+                        HierarchyBackend::Jets(_) => unreachable!("Wellen scope with JETS hierarchy"),
+                    }
+                }))
+            }
+            ScopeBackend::Jets { record, clock_freq_mhz } => {
+                // JETS: Each record exposes itself as a single Var (string signal)
+                let record_clone = record.clone();
+                let freq = *clock_freq_mhz;
+
+                // Get the signal handle from JETS hierarchy
+                let handle = match &hier.borrow().0 {
+                    HierarchyBackend::Jets(jets) => {
+                        jets.get_handle_by_id(&record.id).unwrap_or(0)
+                    }
+                    HierarchyBackend::Wellen(_) => unreachable!("JETS scope with Wellen hierarchy"),
+                };
+
+                VarIter(Box::new(std::iter::once(Var(VarBackend::Jets {
+                    record: record_clone,
+                    signal_handle: handle,
+                    clock_freq_mhz: freq,
+                }))))
+            }
+        }
     }
 
     pub fn scopes(&self, hier: Bound<'_, Hierarchy>) -> ScopeIter {
-        let locahier = hier.borrow().clone();
-        let scope = self.0.clone();
+        match &self.0 {
+            ScopeBackend::Wellen(scope) => {
+                let locahier = hier.borrow().clone();
+                let scope = scope.clone();
 
-        //TODO: optimize me! need to rewrite the logic from `HierarchyItemIdIterator` to use
-        // Arc<Hierarchy> instead of lifetimes
-        //
-        // This is because python does not like lifetimes :)
-        ScopeIter(Box::new({
-            let hier = locahier.clone();
-            scope
-                .scopes(&hier.0)
-                .map(|val| Scope(hier.0[val].clone()))
-                .collect::<Vec<_>>()
-                .into_iter()
-        }))
+                //TODO: optimize me! need to rewrite the logic from `HierarchyItemIdIterator` to use
+                // Arc<Hierarchy> instead of lifetimes
+                //
+                // This is because python does not like lifetimes :)
+                ScopeIter(Box::new({
+                    match &locahier.0 {
+                        HierarchyBackend::Wellen(h) => {
+                            scope
+                                .scopes(h)
+                                .map(|val| Scope(ScopeBackend::Wellen(h[val].clone())))
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                        }
+                        HierarchyBackend::Jets(_) => unreachable!("Wellen scope with JETS hierarchy"),
+                    }
+                }))
+            }
+            ScopeBackend::Jets { record, clock_freq_mhz } => {
+                // JETS: Return child records as child scopes
+                let children: Vec<Scope> = record
+                    .children
+                    .iter()
+                    .map(|child| {
+                        Scope(ScopeBackend::Jets {
+                            record: Arc::new(child.clone()),
+                            clock_freq_mhz: *clock_freq_mhz,
+                        })
+                    })
+                    .collect();
+
+                ScopeIter(Box::new(children.into_iter()))
+            }
+        }
+    }
+
+    /// Check if this scope is a JETS record
+    /// For non-JETS waveforms, always returns false
+    pub fn is_record(&self) -> bool {
+        matches!(&self.0, ScopeBackend::Jets { .. })
+    }
+
+    /// Get the Record object if this scope is a JETS record
+    /// For non-JETS waveforms, always returns None
+    pub fn record(&self) -> Option<jets_loader::Record> {
+        match &self.0 {
+            ScopeBackend::Wellen(_) => None,
+            ScopeBackend::Jets { record, clock_freq_mhz } => {
+                Some(jets_loader::Record {
+                    inner: record.clone(),
+                    clock_freq_mhz: *clock_freq_mhz,
+                })
+            }
+        }
     }
 }
 
@@ -303,83 +524,201 @@ impl VarIndex {
     }
 }
 
+/// Backend enum to support both Wellen and JETS vars
+#[derive(Clone)]
+pub(crate) enum VarBackend {
+    Wellen(wellen::Var),
+    Jets {
+        record: Arc<rjets::TraceRecord>,
+        signal_handle: usize,
+        clock_freq_mhz: f64,
+    },
+}
+
 #[pyclass]
-pub(crate) struct Var(pub(crate) wellen::Var);
+pub(crate) struct Var(pub(crate) VarBackend);
 
 #[pymethods]
 impl Var {
     pub fn name(&self, hier: Bound<'_, Hierarchy>) -> String {
-        self.0.name(&hier.borrow().0).to_string()
+        match &self.0 {
+            VarBackend::Wellen(var) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => var.name(h).to_string(),
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen var with JETS hierarchy"),
+                }
+            }
+            VarBackend::Jets { record, .. } => record.name.clone(),
+        }
     }
     pub fn full_name(&self, hier: Bound<'_, Hierarchy>) -> String {
-        self.0.full_name(&hier.borrow().0).to_string()
+        match &self.0 {
+            VarBackend::Wellen(var) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => var.full_name(h).to_string(),
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen var with JETS hierarchy"),
+                }
+            }
+            VarBackend::Jets { record, .. } => {
+                // Build full name from parent chain - same as Scope.full_name()
+                let mut names = vec![record.name.clone()];
+                let mut current_id = record.parent_id.clone();
+
+                if let HierarchyBackend::Jets(jets) = &hier.borrow().0 {
+                    while let Some(parent_id) = current_id {
+                        if let Some(handle) = jets.get_handle_by_id(&parent_id) {
+                            if let Some(parent_rec) = jets.get_record_by_handle(handle) {
+                                names.insert(0, parent_rec.name.clone());
+                                current_id = parent_rec.parent_id.clone();
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                names.join(".")
+            }
+        }
     }
     pub fn bitwidth(&self) -> Option<u32> {
-        self.0.length()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.length(),
+            VarBackend::Jets { .. } => None, // JETS records are string signals, no bitwidth
+        }
     }
     pub fn var_type(&self) -> String {
-        format!("{:?}", self.0.var_type())
+        match &self.0 {
+            VarBackend::Wellen(var) => format!("{:?}", var.var_type()),
+            VarBackend::Jets { .. } => "String".to_string(), // JETS records are string signals
+        }
     }
     pub fn enum_type(&self, hier: Bound<'_, Hierarchy>) -> Option<(String, Vec<(String, String)>)> {
-        self.0.enum_type(&hier.borrow().0).map(|(name, values)| {
-            (
-                name.to_string(),
-                values
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                    .collect(),
-            )
-        })
+        match &self.0 {
+            VarBackend::Wellen(var) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => var.enum_type(h).map(|(name, values)| {
+                        (
+                            name.to_string(),
+                            values
+                                .into_iter()
+                                .map(|(k, v)| (k.to_string(), v.to_string()))
+                                .collect(),
+                        )
+                    }),
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen var with JETS hierarchy"),
+                }
+            }
+            VarBackend::Jets { .. } => None,
+        }
     }
     pub fn vhdl_type_name(&self, hier: Bound<'_, Hierarchy>) -> Option<String> {
-        self.0
-            .vhdl_type_name(&hier.borrow().0)
-            .map(|s| s.to_string())
+        match &self.0 {
+            VarBackend::Wellen(var) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => var.vhdl_type_name(h).map(|s| s.to_string()),
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen var with JETS hierarchy"),
+                }
+            }
+            VarBackend::Jets { .. } => None,
+        }
     }
     pub fn direction(&self) -> String {
-        format!("{:?}", self.0.direction())
+        match &self.0 {
+            VarBackend::Wellen(var) => format!("{:?}", var.direction()),
+            VarBackend::Jets { .. } => "None".to_string(),
+        }
     }
     pub fn length(&self) -> Option<u32> {
-        self.0.length()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.length(),
+            VarBackend::Jets { .. } => None,
+        }
     }
     pub fn is_real(&self) -> bool {
-        self.0.is_real()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.is_real(),
+            VarBackend::Jets { .. } => false,
+        }
     }
     pub fn is_string(&self) -> bool {
-        self.0.is_string()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.is_string(),
+            VarBackend::Jets { .. } => true, // JETS records are string signals
+        }
     }
     pub fn is_bit_vector(&self) -> bool {
-        self.0.is_bit_vector()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.is_bit_vector(),
+            VarBackend::Jets { .. } => false,
+        }
     }
     pub fn is_1bit(&self) -> bool {
-        self.0.is_1bit()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.is_1bit(),
+            VarBackend::Jets { .. } => false,
+        }
     }
 
     pub fn index(&self) -> Option<VarIndex> {
-        self.0.index().map(VarIndex)
+        match &self.0 {
+            VarBackend::Wellen(var) => var.index().map(VarIndex),
+            VarBackend::Jets { .. } => None,
+        }
     }
 
     /// Get the signal reference as an integer for internal use.
     /// Two vars with the same `signal_handle()` are aliases.
     /// Returns a 0-based `SignalHandle` for Python code.
     pub fn signal_handle(&self) -> SignalHandle {
-        self.0.signal_ref().index()
+        match &self.0 {
+            VarBackend::Wellen(var) => var.signal_ref().index(),
+            VarBackend::Jets { signal_handle, .. } => *signal_handle,
+        }
     }
 
     /// Get the scope path for this variable as a list of scope names.
     /// The returned list contains scope names from root to immediate parent (excluding the variable name itself).
     /// Returns an empty list for top-level variables.
     pub fn scope_path(&self, hier: Bound<'_, Hierarchy>) -> Vec<String> {
-        let hierarchy = &hier.borrow().0;
-        let mut scopes = Vec::new();
+        match &self.0 {
+            VarBackend::Wellen(var) => {
+                match &hier.borrow().0 {
+                    HierarchyBackend::Wellen(h) => {
+                        let mut scopes = Vec::new();
+                        // Walk up the parent chain collecting scope names
+                        if let Some(parent_scope) = var.parent(h) {
+                            let scope = &h[parent_scope];
+                            collect_scope_path(scope, h, &mut scopes);
+                        }
+                        scopes
+                    }
+                    HierarchyBackend::Jets(_) => unreachable!("Wellen var with JETS hierarchy"),
+                }
+            }
+            VarBackend::Jets { record, .. } => {
+                // Build scope path from parent chain
+                let mut scopes = Vec::new();
+                let mut current_id = record.parent_id.clone();
 
-        // Walk up the parent chain collecting scope names
-        if let Some(parent_scope) = self.0.parent(hierarchy) {
-            let scope = &hierarchy[parent_scope];
-            collect_scope_path(scope, hierarchy, &mut scopes);
+                if let HierarchyBackend::Jets(jets) = &hier.borrow().0 {
+                    while let Some(parent_id) = current_id {
+                        if let Some(handle) = jets.get_handle_by_id(&parent_id) {
+                            if let Some(parent_rec) = jets.get_record_by_handle(handle) {
+                                scopes.insert(0, parent_rec.name.clone());
+                                current_id = parent_rec.parent_id.clone();
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                scopes
+            }
         }
-
-        scopes
     }
 }
 
@@ -752,8 +1091,10 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                             if let Ok(py_signal) = Bound::new(
                                 py,
                                 Signal {
-                                    signal: signal_arc.clone(),
-                                    all_times: TimeTable(tt.clone()),
+                                    backend: SignalBackend::Wellen {
+                                        signal: signal_arc.clone(),
+                                        all_times: TimeTable(tt.clone()),
+                                    },
                                 },
                             ) {
                                 let tuple = pyo3::types::PyTuple::new(py, &[handle.to_object(py), py_signal.to_object(py)]).unwrap();
@@ -799,6 +1140,33 @@ impl Waveform {
         load_header: bool,
         load_body: bool,
     ) -> PyResult<Self> {
+        // Check if this is a JETS file
+        let is_jets_file = path.ends_with(".jets") || path.ends_with(".jsonl");
+
+        if is_jets_file {
+            // Load JETS file
+            let jets_hier = jets_loader::load_jets_file(&path)
+                .map_err(|e| PyRuntimeError::new_err(format!("Failed to load JETS file: {}", e)))?;
+
+            let shared_state = Arc::new(SharedState {
+                file_path: path.clone(),
+                hierarchy: Mutex::new(None),
+                wave_source: Mutex::new(None),
+                time_table: Mutex::new(None),
+                body_continuation: Mutex::new(None),
+                callback: Mutex::new(None),
+                header_loaded: AtomicBool::new(true),
+                body_loaded: AtomicBool::new(true),
+                jets_hierarchy: Mutex::new(Some(Arc::new(jets_hier))),
+            });
+
+            return Ok(Self {
+                shared_state,
+                request_sender: None,
+                _worker_handle: None,
+            });
+        }
+
         let opts = LoadOptions {
             multi_thread: multi_threaded,
             remove_scopes_with_empty_name,
@@ -823,6 +1191,7 @@ impl Waveform {
                     callback: Mutex::new(None),
                     header_loaded: AtomicBool::new(true),
                     body_loaded: AtomicBool::new(true),
+                    jets_hierarchy: Mutex::new(None),
                 })
             } else {
                 // Create shared state with header only
@@ -835,6 +1204,7 @@ impl Waveform {
                     callback: Mutex::new(None),
                     header_loaded: AtomicBool::new(true),
                     body_loaded: AtomicBool::new(false),
+                    jets_hierarchy: Mutex::new(None),
                 })
             }
         } else {
@@ -848,6 +1218,7 @@ impl Waveform {
                 callback: Mutex::new(None),
                 header_loaded: AtomicBool::new(false),
                 body_loaded: AtomicBool::new(false),
+                jets_hierarchy: Mutex::new(None),
             })
         };
 
@@ -914,12 +1285,18 @@ impl Waveform {
     /// Get the hierarchy (returns None if not loaded)
     #[getter]
     fn hierarchy(&self) -> Option<Hierarchy> {
+        // Check if this is a JETS file first
+        if let Some(jets_hier) = self.shared_state.jets_hierarchy.lock().unwrap().as_ref() {
+            return Some(Hierarchy(HierarchyBackend::Jets(jets_hier.clone())));
+        }
+
+        // Otherwise, return Wellen hierarchy
         self.shared_state
             .hierarchy
             .lock()
             .unwrap()
             .as_ref()
-            .map(|h| Hierarchy(h.clone()))
+            .map(|h| Hierarchy(HierarchyBackend::Wellen(h.clone())))
     }
 
     /// Set the async callback for receiving events
@@ -1019,7 +1396,7 @@ impl Waveform {
             )))?;
         let var = &hierarchy[maybe_var];
         // Use the signal handle from the var to get the signal
-        let handle = Var(var.clone()).signal_handle();
+        let handle = Var(VarBackend::Wellen(var.clone())).signal_handle();
         self.get_signal_by_handle(handle, py)
     }
 
@@ -1044,7 +1421,13 @@ impl Waveform {
             .map(|tt| TimeTable(tt.clone()))
             .ok_or_else(|| PyRuntimeError::new_err("Time table not available"))?;
 
-        let signal_refs: Vec<SignalRef> = vars.iter().map(|var| var.0.signal_ref()).collect(); // These are Wellen SignalRefs
+        let signal_refs: Vec<SignalRef> = vars
+            .iter()
+            .filter_map(|var| match &var.0 {
+                VarBackend::Wellen(w) => Some(w.signal_ref()),
+                VarBackend::Jets { .. } => None, // JETS vars not supported in multithreaded loading
+            })
+            .collect();
 
         // Release GIL while loading signals (heavy I/O operation)
         // Always use multithreaded loading
@@ -1059,19 +1442,31 @@ impl Waveform {
         // Return signals in the same order as the input vars
         let mut result = Vec::new();
         for var in vars.iter() {
-            let signal_ref = var.0.signal_ref(); // This is the actual Wellen SignalRef
-            if let Some(sig) = signal_map.remove(&signal_ref) {
-                let signal = Bound::new(
-                    py,
-                    Signal {
-                        signal: Arc::new(sig),
-                        all_times: time_table.clone(),
-                    },
-                )?;
-                result.push(signal);
-            } else {
-                // If signal not found, return an error
-                return Err(PyRuntimeError::new_err("Signal not found for variable"));
+            match &var.0 {
+                VarBackend::Wellen(w) => {
+                    let signal_ref = w.signal_ref(); // This is the actual Wellen SignalRef
+                    if let Some(sig) = signal_map.remove(&signal_ref) {
+                        let signal = Bound::new(
+                            py,
+                            Signal {
+                                backend: SignalBackend::Wellen {
+                                    signal: Arc::new(sig),
+                                    all_times: time_table.clone(),
+                                },
+                            },
+                        )?;
+                        result.push(signal);
+                    } else {
+                        // If signal not found, return an error
+                        return Err(PyRuntimeError::new_err("Signal not found for variable"));
+                    }
+                }
+                VarBackend::Jets { .. } => {
+                    // JETS vars not supported in multithreaded loading yet
+                    return Err(PyRuntimeError::new_err(
+                        "JETS signals not supported in multithreaded loading",
+                    ));
+                }
             }
         }
         Ok(result)
@@ -1086,6 +1481,18 @@ impl Waveform {
         handle: SignalHandle,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, Signal>> {
+        // Check if this is a JETS file
+        if let Some(jets_hier) = self.shared_state.jets_hierarchy.lock().unwrap().as_ref() {
+            // Generate JETS signal
+            let record = jets_hier
+                .get_record_by_handle(handle)
+                .ok_or_else(|| PyRuntimeError::new_err(format!("No record found for handle {}", handle)))?;
+
+            let changes = jets_hier.generate_signal_changes(&record);
+
+            // Create JETS signal
+            return create_jets_signal(changes, py);
+        }
 
         // Ensure body is loaded
         self.load_body()?;
@@ -1123,8 +1530,10 @@ impl Waveform {
         let py_signal = Bound::new(
             py,
             Signal {
-                signal: signal_arc,
-                all_times: time_table,
+                backend: SignalBackend::Wellen {
+                    signal: signal_arc,
+                    all_times: time_table,
+                },
             },
         )?;
 
@@ -1142,6 +1551,21 @@ impl Waveform {
             .clone()
             .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not loaded yet"))
     }
+}
+
+/// Helper function to create a JETS signal from changes
+fn create_jets_signal<'py>(
+    changes: Vec<(i64, String)>,
+    py: Python<'py>,
+) -> PyResult<Bound<'py, Signal>> {
+    Bound::new(
+        py,
+        Signal {
+            backend: SignalBackend::Jets {
+                changes: Arc::new(changes),
+            },
+        },
+    )
 }
 
 #[pyclass]
@@ -1165,11 +1589,22 @@ struct QueryResult {
     next_time: Option<wellen::Time>,
 }
 
+/// Backend enum for Signal to support both Wellen and JETS
+#[derive(Clone)]
+enum SignalBackend {
+    Wellen {
+        signal: Arc<wellen::Signal>,
+        all_times: TimeTable,
+    },
+    Jets {
+        changes: Arc<Vec<(i64, String)>>,
+    },
+}
+
 #[pyclass]
 #[derive(Clone)]
 struct Signal {
-    signal: Arc<wellen::Signal>,
-    all_times: TimeTable,
+    backend: SignalBackend,
 }
 
 #[pymethods]
@@ -1179,33 +1614,57 @@ impl Signal {
         time: wellen::Time,
         py: Python<'a>,
     ) -> Option<Bound<'a, PyAny>> {
-        let val = self
-            .all_times
-            .0
-            .as_ref()
-            .binary_search(&time)
-            .unwrap_or_else(|val| val);
-        self.value_at_idx(val as TimeTableIdx, py)
+        match &self.backend {
+            SignalBackend::Wellen { all_times, .. } => {
+                let val = all_times
+                    .0
+                    .as_ref()
+                    .binary_search(&time)
+                    .unwrap_or_else(|val| val);
+                self.value_at_idx(val as TimeTableIdx, py)
+            }
+            SignalBackend::Jets { .. } => {
+                // JETS signals don't support indexed access
+                None
+            }
+        }
     }
 
     pub fn value_at_idx<'a>(&self, idx: TimeTableIdx, py: Python<'a>) -> Option<Bound<'a, PyAny>> {
-        let maybe_signal = self
-            .signal
-            .get_offset(idx)
-            .map(|data_offset| self.signal.get_value_at(&data_offset, 0));
-        if let Some(signal) = maybe_signal {
-            convert_signal_value_to_py(signal, py)
-                .ok()
-                .map(|py_val| py_val.into_bound(py))
-        } else {
-            None
+        match &self.backend {
+            SignalBackend::Wellen { signal, .. } => {
+                let maybe_signal = signal
+                    .get_offset(idx)
+                    .map(|data_offset| signal.get_value_at(&data_offset, 0));
+                if let Some(signal_val) = maybe_signal {
+                    convert_signal_value_to_py(signal_val, py)
+                        .ok()
+                        .map(|py_val| py_val.into_bound(py))
+                } else {
+                    None
+                }
+            }
+            SignalBackend::Jets { .. } => {
+                // JETS signals don't support indexed access
+                None
+            }
         }
     }
 
     pub fn all_changes(&self) -> SignalChangeIter {
-        SignalChangeIter {
-            signal: self.clone(),
-            offset: 0,
+        match &self.backend {
+            SignalBackend::Wellen { .. } => {
+                SignalChangeIter {
+                    signal: self.clone(),
+                    offset: 0,
+                }
+            }
+            SignalBackend::Jets { .. } => {
+                SignalChangeIter {
+                    signal: self.clone(),
+                    offset: 0,
+                }
+            }
         }
     }
 
@@ -1217,33 +1676,51 @@ impl Signal {
     /// Returns:
     ///     Iterator yielding tuples of (time, value) for each signal change after start_time
     pub fn all_changes_after(&self, start_time: wellen::Time) -> SignalChangeIter {
-        // Find the first change after start_time
-        let time_indices = &self.signal.time_indices();
+        match &self.backend {
+            SignalBackend::Wellen { signal, all_times } => {
+                // Find the first change after start_time
+                let time_indices = signal.time_indices();
 
-        // Binary search in the time table to find where to start
-        let start_idx = match self.all_times.0.binary_search(&start_time) {
-            Ok(idx) => {
-                // Exact match - start from the next change
-                // Find the corresponding offset in time_indices
-                let time_table_idx = idx as TimeTableIdx;
-                time_indices
-                    .iter()
-                    .position(|&t| t > time_table_idx)
-                    .unwrap_or(time_indices.len())
-            }
-            Err(idx) => {
-                // Not exact match - idx is the insertion point
-                let time_table_idx = idx as TimeTableIdx;
-                time_indices
-                    .iter()
-                    .position(|&t| t >= time_table_idx)
-                    .unwrap_or(time_indices.len())
-            }
-        };
+                // Binary search in the time table to find where to start
+                let start_idx = match all_times.0.binary_search(&start_time) {
+                    Ok(idx) => {
+                        // Exact match - start from the next change
+                        // Find the corresponding offset in time_indices
+                        let time_table_idx = idx as TimeTableIdx;
+                        time_indices
+                            .iter()
+                            .position(|&t| t > time_table_idx)
+                            .unwrap_or(time_indices.len())
+                    }
+                    Err(idx) => {
+                        // Not exact match - idx is the insertion point
+                        let time_table_idx = idx as TimeTableIdx;
+                        time_indices
+                            .iter()
+                            .position(|&t| t >= time_table_idx)
+                            .unwrap_or(time_indices.len())
+                    }
+                };
 
-        SignalChangeIter {
-            signal: self.clone(),
-            offset: start_idx,
+                SignalChangeIter {
+                    signal: self.clone(),
+                    offset: start_idx,
+                }
+            }
+            SignalBackend::Jets { changes } => {
+                // Find first change after start_time
+                // JETS uses i64 for time (microseconds), convert from Wellen u64
+                let start_time_i64 = start_time as i64;
+                let start_idx = changes
+                    .iter()
+                    .position(|(time, _)| *time > start_time_i64)
+                    .unwrap_or(changes.len());
+
+                SignalChangeIter {
+                    signal: self.clone(),
+                    offset: start_idx,
+                }
+            }
         }
     }
 
@@ -1260,85 +1737,113 @@ impl Signal {
         query_time: wellen::Time,
         py: Python<'a>,
     ) -> PyResult<Bound<'a, QueryResult>> {
-        // Binary search to find the time index
-        let time_idx = match self.all_times.0.as_ref().binary_search(&query_time) {
-            Ok(idx) => idx as TimeTableIdx, // Exact match
-            Err(idx) => {
-                if idx == 0 {
-                    // Query time is before first timestamp
-                    0
+        match &self.backend {
+            SignalBackend::Wellen { signal, all_times } => {
+                // Binary search to find the time index
+                let time_idx = match all_times.0.as_ref().binary_search(&query_time) {
+                    Ok(idx) => idx as TimeTableIdx, // Exact match
+                    Err(idx) => {
+                        if idx == 0 {
+                            // Query time is before first timestamp
+                            0
+                        } else {
+                            (idx - 1) as TimeTableIdx // Get the index before
+                        }
+                    }
+                };
+
+                // Get the signal offset at this time index (for value at or before query time)
+                let offset = signal.get_offset(time_idx);
+
+                let (value, actual_time) = if let Some(ref data_offset) = offset {
+                    // Get the time when this value was actually set
+                    let offset_time_idx = signal.get_time_idx_at(data_offset);
+                    let actual_time = all_times.0.get(offset_time_idx as usize).cloned();
+
+                    // Get the signal value (last value in the time step)
+                    let signal_value = signal
+                        .get_value_at(data_offset, data_offset.elements - 1);
+                    let value = convert_signal_value_to_py(signal_value, py)?;
+
+                    (Some(value), actual_time)
                 } else {
-                    (idx - 1) as TimeTableIdx // Get the index before
-                }
-            }
-        };
-
-        // Get the signal offset at this time index (for value at or before query time)
-        let offset = self.signal.get_offset(time_idx);
-
-        let (value, actual_time) = if let Some(ref data_offset) = offset {
-            // Get the time when this value was actually set
-            let offset_time_idx = self.signal.get_time_idx_at(data_offset);
-            let actual_time = self.all_times.0.get(offset_time_idx as usize).cloned();
-
-            // Get the signal value (last value in the time step)
-            let signal_value = self
-                .signal
-                .get_value_at(data_offset, data_offset.elements - 1);
-            let value = convert_signal_value_to_py(signal_value, py)?;
-
-            (Some(value), actual_time)
-        } else {
-            // No change at or before the requested time
-            (None, None)
-        };
-
-        // Find the next transition
-        let (next_idx, next_time) = if let Some(offset) = offset {
-            // Check if there's a next index from this offset
-            if let Some(next_index) = offset.next_index {
-                let next_idx = next_index.get() as TimeTableIdx;
-                let next_time = self.all_times.0.get(next_idx as usize).cloned();
-                (Some(next_idx), next_time)
-            } else {
-                (None, None)
-            }
-        } else {
-            // If no offset at time_idx, check if there's a first change after this time
-            if let Some(first_idx) = self.signal.get_first_time_idx() {
-                if first_idx > time_idx {
-                    let next_time = self.all_times.0.get(first_idx as usize).cloned();
-                    (Some(first_idx), next_time)
-                } else {
+                    // No change at or before the requested time
                     (None, None)
-                }
-            } else {
-                (None, None)
-            }
-        };
+                };
 
-        Bound::new(
-            py,
-            QueryResult {
-                value,
-                actual_time,
-                next_idx,
-                next_time,
-            },
-        )
+                // Find the next transition
+                let (next_idx, next_time) = if let Some(offset) = offset {
+                    // Check if there's a next index from this offset
+                    if let Some(next_index) = offset.next_index {
+                        let next_idx = next_index.get() as TimeTableIdx;
+                        let next_time = all_times.0.get(next_idx as usize).cloned();
+                        (Some(next_idx), next_time)
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    // If no offset at time_idx, check if there's a first change after this time
+                    if let Some(first_idx) = signal.get_first_time_idx() {
+                        if first_idx > time_idx {
+                            let next_time = all_times.0.get(first_idx as usize).cloned();
+                            (Some(first_idx), next_time)
+                        } else {
+                            (None, None)
+                        }
+                    } else {
+                        (None, None)
+                    }
+                };
+
+                Bound::new(
+                    py,
+                    QueryResult {
+                        value,
+                        actual_time,
+                        next_idx,
+                        next_time,
+                    },
+                )
+            }
+            SignalBackend::Jets { .. } => {
+                // JETS signals don't support query_signal
+                Bound::new(
+                    py,
+                    QueryResult {
+                        value: None,
+                        actual_time: None,
+                        next_idx: None,
+                        next_time: None,
+                    },
+                )
+            }
+        }
     }
 
-    /// Check if two Signal objects reference the same underlying wellen::Signal
+    /// Check if two Signal objects reference the same underlying signal
     fn __eq__(&self, other: &Signal) -> bool {
-        // Two signals are equal if they have the same signal reference
-        self.signal.signal_ref() == other.signal.signal_ref()
+        match (&self.backend, &other.backend) {
+            (SignalBackend::Wellen { signal: s1, .. }, SignalBackend::Wellen { signal: s2, .. }) => {
+                s1.signal_ref() == s2.signal_ref()
+            }
+            (SignalBackend::Jets { changes: c1 }, SignalBackend::Jets { changes: c2 }) => {
+                Arc::ptr_eq(c1, c2)
+            }
+            _ => false,
+        }
     }
 
     /// Compute hash based on the signal reference
     fn __hash__(&self) -> u64 {
-        // Use the signal reference index as hash
-        let signal_ref = self.signal.signal_ref();
-        signal_ref.index() as u64
+        match &self.backend {
+            SignalBackend::Wellen { signal, .. } => {
+                signal.signal_ref().index() as u64
+            }
+            SignalBackend::Jets { changes } => {
+                // Use Arc pointer address as hash
+                Arc::as_ptr(changes) as u64
+            }
+        }
     }
 
     /// Compute global min/max range for analog signals across entire waveform.
@@ -1358,46 +1863,53 @@ impl Signal {
         bit_width: u32,
         _py: Python<'_>,
     ) -> PyResult<(f64, f64)> {
-        let mut min_val = f64::INFINITY;
-        let mut max_val = f64::NEG_INFINITY;
+        match &self.backend {
+            SignalBackend::Wellen { signal, .. } => {
+                let mut min_val = f64::INFINITY;
+                let mut max_val = f64::NEG_INFINITY;
 
-        // Iterate through all signal changes
-        let time_indices = self.signal.time_indices();
-        for time_idx in time_indices {
-            // Get the signal value at this time index
-            if let Some(data_offset) = self.signal.get_offset(*time_idx) {
-                // Get the last value in the time step
-                let signal_value = self
-                    .signal
-                    .get_value_at(&data_offset, data_offset.elements - 1);
+                // Iterate through all signal changes
+                let time_indices = signal.time_indices();
+                for time_idx in time_indices {
+                    // Get the signal value at this time index
+                    if let Some(data_offset) = signal.get_offset(*time_idx) {
+                        // Get the last value in the time step
+                        let signal_value = signal
+                            .get_value_at(&data_offset, data_offset.elements - 1);
 
-                // Convert to float based on data format
-                if let Some(value_float) = convert_signal_value_to_float(signal_value, data_format, bit_width) {
-                    if !value_float.is_nan() && value_float.is_finite() {
-                        min_val = min_val.min(value_float);
-                        max_val = max_val.max(value_float);
+                        // Convert to float based on data format
+                        if let Some(value_float) = convert_signal_value_to_float(signal_value, data_format, bit_width) {
+                            if !value_float.is_nan() && value_float.is_finite() {
+                                min_val = min_val.min(value_float);
+                                max_val = max_val.max(value_float);
+                            }
+                        }
                     }
                 }
+
+                // Handle case where no valid values found
+                if !min_val.is_finite() || !max_val.is_finite() {
+                    return Ok((0.0, 1.0));
+                }
+
+                // Add margin if range is zero
+                if (min_val - max_val).abs() < f64::EPSILON {
+                    let margin = if min_val.abs() > f64::EPSILON {
+                        min_val.abs() * 0.1
+                    } else {
+                        1.0
+                    };
+                    min_val -= margin;
+                    max_val += margin;
+                }
+
+                Ok((min_val, max_val))
+            }
+            SignalBackend::Jets { .. } => {
+                // JETS signals are strings, not analog - return default range
+                Ok((0.0, 1.0))
             }
         }
-
-        // Handle case where no valid values found
-        if !min_val.is_finite() || !max_val.is_finite() {
-            return Ok((0.0, 1.0));
-        }
-
-        // Add margin if range is zero
-        if (min_val - max_val).abs() < f64::EPSILON {
-            let margin = if min_val.abs() > f64::EPSILON {
-                min_val.abs() * 0.1
-            } else {
-                1.0
-            };
-            min_val -= margin;
-            max_val += margin;
-        }
-
-        Ok((min_val, max_val))
     }
 }
 
@@ -1415,21 +1927,44 @@ impl SignalChangeIter {
     }
 
     fn __len__(&self) -> usize {
-        let total_changes = self.signal.signal.time_indices().len();
-        total_changes.saturating_sub(self.offset)
+        match &self.signal.backend {
+            SignalBackend::Wellen { signal, .. } => {
+                let total_changes = signal.time_indices().len();
+                total_changes.saturating_sub(self.offset)
+            }
+            SignalBackend::Jets { changes } => {
+                changes.len().saturating_sub(self.offset)
+            }
+        }
     }
 
     fn __next__<'a>(
         mut slf: PyRefMut<'_, Self>,
         python: Python<'a>,
     ) -> Option<(wellen::Time, Bound<'a, PyAny>)> {
-        if let Some(time_idx) = slf.signal.signal.time_indices().get(slf.offset) {
-            let data = slf.signal.value_at_idx(*time_idx, python);
-            let time = slf.signal.all_times.0.get(*time_idx as usize).cloned()?;
-            slf.offset += 1;
-            data.map(|val| (time, val))
-        } else {
-            None
+        match &slf.signal.backend {
+            SignalBackend::Wellen { signal, all_times } => {
+                if let Some(time_idx) = signal.time_indices().get(slf.offset) {
+                    let data = slf.signal.value_at_idx(*time_idx, python);
+                    let time = all_times.0.get(*time_idx as usize).cloned()?;
+                    slf.offset += 1;
+                    data.map(|val| (time, val))
+                } else {
+                    None
+                }
+            }
+            SignalBackend::Jets { changes } => {
+                if let Some((time, value)) = changes.get(slf.offset) {
+                    // Clone values before mutating slf
+                    let time_val = *time as wellen::Time;
+                    let value_str = value.clone();
+                    slf.offset += 1;
+                    let py_value = PyString::new(python, &value_str).into_any();
+                    Some((time_val, py_value))
+                } else {
+                    None
+                }
+            }
         }
     }
 }
