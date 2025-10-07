@@ -196,8 +196,10 @@ class TestAsyncLoading:
         # Get some signal handles to test signal loading
         hier = wf.hierarchy
         all_vars = list(hier.all_vars())
-        # Get a few signal handles
+        # Get a few signal handles (may contain duplicates if vars are aliases)
         handles = [v.signal_handle() for v in all_vars[:5]]
+        # De-duplicate for comparison (pyrox de-duplicates internally)
+        unique_handles = list(dict.fromkeys(handles))  # Preserves order
 
         # Clear events
         collector.clear()
@@ -226,8 +228,9 @@ class TestAsyncLoading:
                 # Runtime validation for SignalLoadedEvent
                 assert "signals" in event
                 assert isinstance(event["signals"], list)
-                # Verify we got the right number of signals
-                assert len(event["signals"]) == len(handles)
+                # Verify we got the right number of unique signals
+                # (pyrox de-duplicates handles internally if vars are aliases)
+                assert len(event["signals"]) == len(unique_handles)
                 signals_list = event["signals"]
                 for handle, signal in signals_list:
                     assert isinstance(handle, int)
