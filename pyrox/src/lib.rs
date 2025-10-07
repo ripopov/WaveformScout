@@ -1266,11 +1266,18 @@ impl Waveform {
             let jets_hier = jets_loader::load_jets_file(&path)
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to load JETS file: {}", e)))?;
 
+            // Create synthetic time table for JETS: [0, max_time]
+            let time_table = if let Some(max_time) = jets_hier.get_max_time() {
+                vec![0, max_time as u64]
+            } else {
+                vec![0]
+            };
+
             let shared_state = Arc::new(SharedState {
                 file_path: path.clone(),
                 hierarchy: Mutex::new(None),
                 wave_source: Mutex::new(None),
-                time_table: Mutex::new(None),
+                time_table: Mutex::new(Some(Arc::new(time_table))),
                 body_continuation: Mutex::new(None),
                 callback: Mutex::new(None),
                 header_loaded: AtomicBool::new(true),

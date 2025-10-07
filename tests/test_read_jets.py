@@ -557,6 +557,77 @@ def test_jets_load_signals_async():
         assert len(changes) > 0
 
 
+def test_jets_time_table_timestamps():
+    """Test that Pyrox generates correct time table for JETS files.
+
+    JETS files create a synthetic time table with [0, max_time] where max_time
+    is calculated from capture_end_clk * clock_period. This allows JETS files
+    to work with the existing time_table infrastructure.
+
+    The gpu_sim.jets file has:
+    - clock_frequency_mhz: 1830
+    - capture_end_clk: 4855
+
+    Expected time calculation:
+    - Clock period = 1_000_000 ps / 1830 MHz ≈ 546.448 ps
+    - End time = 4855 clk * 546.448 ps ≈ 2,652,503 ps ≈ 2.65 µs
+    """
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Read JETS header to get clock frequency and capture_end_clk
+    with open(jets_file) as f:
+        header = json.loads(f.readline())
+        clock_mhz = header["metadata"]["clock_frequency_mhz"]
+
+    # Get footer to find capture_end_clk
+    with open(jets_file) as f:
+        # Read last line (footer)
+        for line in f:
+            pass
+        footer = json.loads(line)
+        capture_end_clk = footer["capture_end_clk"]
+
+    # Calculate expected end time in picoseconds
+    clock_period_ps = 1_000_000 / clock_mhz  # ≈ 546.448 ps for 1830 MHz
+    expected_end_time_ps = int(capture_end_clk * clock_period_ps)
+
+    # Verify JETS file has a synthetic time table
+    time_table = wf.time_table
+    assert time_table is not None, "JETS files should have a synthetic time table"
+    assert len(time_table) == 2, f"JETS time table should have 2 elements, got {len(time_table)}"
+
+    # Verify time table structure: [0, max_time]
+    assert time_table[0] == 0, f"First time table entry should be 0, got {time_table[0]}"
+    assert time_table[1] == expected_end_time_ps, \
+        f"Last time table entry should be {expected_end_time_ps} ps, got {time_table[1]} ps"
+
+    # Verify the max time is approximately 2.65 µs
+    max_time_us = time_table[-1] / 1_000_000
+    assert abs(max_time_us - 2.653) < 0.001, \
+        f"Max time should be ~2.653 µs, got {max_time_us:.3f} µs"
+
+    print(f"✓ Clock frequency: {clock_mhz} MHz")
+    print(f"✓ Capture end clk: {capture_end_clk}")
+    print(f"✓ Expected end time: {expected_end_time_ps} ps ({expected_end_time_ps / 1_000_000:.3f} µs)")
+    print(f"✓ Time table: [0, {time_table[1]}] ({len(time_table)} elements)")
+    print(f"✓ Max time: {time_table[-1]} ps ({max_time_us:.3f} µs)")
+
+    # Also verify signal timestamps are correct
+    top_scopes = list(hier.top_scopes())
+    if len(top_scopes) > 0:
+        first_scope = top_scopes[0]
+        vars_list = list(first_scope.vars(hier))
+        if len(vars_list) > 0:
+            signal = wf.get_signal_by_handle(vars_list[0].signal_handle())
+            changes = list(signal.all_changes())
+            if len(changes) > 0:
+                first_time, first_value = changes[0]
+                last_time, last_value = changes[-1]
+                print(f"✓ Signal timestamps: first={first_time} ps, last={last_time} ps")
+
+
 # Helper functions (used by skipped tests)
 
 def find_record_by_id(hier: pyrox.Hierarchy, record_id: str):

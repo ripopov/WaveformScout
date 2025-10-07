@@ -79,6 +79,8 @@ def create_sample_session(vcd_path: str) -> WaveformSession:
         session.timescale = timescale
 
     # Set the total duration from the waveform's time table
+    # For VCD/FST: time_table contains all timestamps
+    # For JETS: time_table is synthetic [0, max_time_from_capture_end_clk]
     time_table = db.get_time_table()
     if time_table and len(time_table) > 0:
         # The last time in the time table is the total duration in timescale units

@@ -445,6 +445,7 @@ class WaveformSession:
         """Update waveform time boundaries from all loaded waveform files.
 
         Finds the maximum time across all loaded waveforms in multi-file mode.
+        For JETS files, the time_table is synthetic [0, max_time].
         """
         max_time = None
 

@@ -306,6 +306,13 @@ impl JetsHierarchy {
     pub(crate) fn version(&self) -> String {
         self.trace_data.header.version.clone()
     }
+
+    /// Get the maximum time in picoseconds based on capture_end_clk
+    pub(crate) fn get_max_time(&self) -> Option<i64> {
+        self.trace_data.footer.as_ref()
+            .and_then(|footer| footer.capture_end_clk)
+            .map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz))
+    }
 }
 
 /// Load JETS file and create hierarchy
