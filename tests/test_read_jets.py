@@ -267,6 +267,271 @@ def test_jets_event_timestamps():
         assert event["clk"] > 0
 
 
+# =============================================================================
+# PHASE 3 TESTS - Signal Loading APIs
+# =============================================================================
+
+def test_jets_get_signal_by_handle():
+    """Test loading signal using get_signal_by_handle()."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Get first var
+    top_scopes = list(hier.top_scopes())
+    first_scope = top_scopes[0]
+    vars_list = list(first_scope.vars(hier))
+    assert len(vars_list) >= 1
+
+    var = vars_list[0]
+    handle = var.signal_handle()
+
+    # Load signal by handle
+    signal = wf.get_signal_by_handle(handle)
+    assert signal is not None
+
+    # Verify signal has changes
+    changes = list(signal.all_changes())
+    assert len(changes) > 0
+
+    # Verify first change is at record start time
+    first_time, first_value = changes[0]
+    assert first_time >= 0
+    assert isinstance(first_value, str)
+
+    # Verify value is valid JSON
+    value_obj = json.loads(first_value)
+    assert isinstance(value_obj, dict)
+
+
+def test_jets_get_signal_from_path():
+    """Test loading signal using get_signal_from_path()."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Load signal from root record path
+    # The root record is "flash_attention_fwd" based on gpu_sim.jets
+    signal = wf.get_signal_from_path(["flash_attention_fwd"])
+    assert signal is not None
+
+    # Verify signal has changes
+    changes = list(signal.all_changes())
+    assert len(changes) > 0
+
+    # Verify first change
+    first_time, first_value = changes[0]
+    assert first_time >= 0
+
+    # Verify value is JSON with record info
+    value_obj = json.loads(first_value)
+    assert "id" in value_obj or "name" in value_obj
+
+
+def test_jets_get_signal_from_nested_path():
+    """Test loading signal from nested record path."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Find a nested record by traversing hierarchy
+    top_scopes = list(hier.top_scopes())
+    if len(top_scopes) == 0:
+        pytest.skip("No top scopes")
+
+    root_scope = top_scopes[0]
+    child_scopes = list(root_scope.scopes(hier))
+    if len(child_scopes) == 0:
+        pytest.skip("No child scopes")
+
+    # Get the path [root_name, child_name]
+    root_name = root_scope.name(hier)
+    child_name = child_scopes[0].name(hier)
+
+    # Load signal from nested path
+    signal = wf.get_signal_from_path([root_name, child_name])
+    assert signal is not None
+
+    # Verify signal has changes
+    changes = list(signal.all_changes())
+    assert len(changes) > 0
+
+
+def test_jets_load_signals_multithreaded():
+    """Test loading multiple signals using load_signals_multithreaded()."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Get multiple vars
+    top_scopes = list(hier.top_scopes())
+    root_scope = top_scopes[0]
+
+    # Get vars from root and children
+    vars_to_load = []
+
+    # Add root var
+    root_vars = list(root_scope.vars(hier))
+    if root_vars:
+        vars_to_load.append(root_vars[0])
+
+    # Add child vars
+    child_scopes = list(root_scope.scopes(hier))
+    for child_scope in child_scopes[:3]:  # Load up to 3 children
+        child_vars = list(child_scope.vars(hier))
+        if child_vars:
+            vars_to_load.append(child_vars[0])
+
+    if len(vars_to_load) < 2:
+        pytest.skip("Not enough vars to test multithreaded loading")
+
+    # Load signals
+    signals = wf.load_signals_multithreaded(vars_to_load)
+    assert len(signals) == len(vars_to_load)
+
+    # Verify each signal
+    for signal in signals:
+        assert signal is not None
+        changes = list(signal.all_changes())
+        assert len(changes) > 0
+
+
+def test_jets_load_signals_preserves_order():
+    """Test that load_signals_multithreaded preserves input order."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Get multiple vars in specific order
+    top_scopes = list(hier.top_scopes())
+    root_scope = top_scopes[0]
+    child_scopes = list(root_scope.scopes(hier))
+
+    vars_to_load = []
+    expected_names = []
+
+    for child_scope in child_scopes[:5]:
+        child_vars = list(child_scope.vars(hier))
+        if child_vars:
+            var = child_vars[0]
+            vars_to_load.append(var)
+            expected_names.append(var.name(hier))
+
+    if len(vars_to_load) < 2:
+        pytest.skip("Not enough vars to test order preservation")
+
+    # Load signals
+    signals = wf.load_signals_multithreaded(vars_to_load)
+
+    # Verify order is preserved by checking signal content
+    for i, signal in enumerate(signals):
+        changes = list(signal.all_changes())
+        if len(changes) > 0:
+            _, first_value = changes[0]
+            value_obj = json.loads(first_value)
+            # The signal should contain the record name
+            if "name" in value_obj:
+                assert value_obj["name"] == expected_names[i]
+
+
+def test_jets_signal_changes_complete():
+    """Test that signal includes all changes (record + events)."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Find a record with events
+    record = find_record_by_id(hier, "inst_warp_tb_000_1_0x0000")
+    if record is None:
+        pytest.skip("Test record not found")
+
+    events = record.events()
+    if len(events) == 0:
+        pytest.skip("No events in record")
+
+    # Load signal
+    scope = find_scope_by_record_id(hier, "inst_warp_tb_000_1_0x0000")
+    vars_list = list(scope.vars(hier))
+    signal = wf.get_signal_by_handle(vars_list[0].signal_handle())
+
+    changes = list(signal.all_changes())
+
+    # Should have at least: 1 record start + N events + 1 end (if record has end_clk)
+    expected_min_changes = 1 + len(events)
+    if record.end_clk is not None:
+        expected_min_changes += 1
+
+    assert len(changes) >= expected_min_changes
+
+    # First change should be record JSON
+    first_time, first_value = changes[0]
+    value_obj = json.loads(first_value)
+    assert "id" in value_obj
+    assert value_obj["id"] == record.id
+
+    # Subsequent changes should be events
+    for i in range(1, min(len(changes), len(events) + 1)):
+        time, value = changes[i]
+        if value != "Z":  # Skip end marker
+            value_obj = json.loads(value)
+            assert "name" in value_obj  # Events have "name" field
+
+
+def test_jets_load_signals_async():
+    """Test async signal loading API for JETS (for compatibility)."""
+    jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
+    wf = pyrox.Waveform(str(jets_file))
+    hier = wf.hierarchy
+
+    # Get some signal handles by collecting vars from hierarchy
+    all_vars = list(hier.all_vars())
+
+    # Take first few vars
+    handles = [v.signal_handle() for v in all_vars[:5]]
+
+    if len(handles) < 2:
+        pytest.skip("Not enough handles for async loading test")
+
+    # Track events
+    events_received = []
+
+    def callback(event):
+        events_received.append(event)
+
+    # Set callback
+    wf.set_async_callback(callback)
+
+    # Load signals async
+    wf.load_signals_async(handles)
+
+    # Wait a bit for async operation to complete
+    import time
+    time.sleep(0.1)
+
+    # Verify we received events
+    assert len(events_received) > 0
+
+    # Should have SignalStartLoad and SignalLoaded events
+    event_types = [e['type'] for e in events_received]
+    assert 'SignalStartLoad' in event_types
+    assert 'SignalLoaded' in event_types
+
+    # Find the SignalLoaded event
+    loaded_event = next(e for e in events_received if e['type'] == 'SignalLoaded')
+    assert 'signals' in loaded_event
+
+    # Verify signals were loaded
+    signals_list = loaded_event['signals']
+    assert len(signals_list) == len(handles)
+
+    # Each entry should be a tuple (handle, Signal)
+    for handle, signal in signals_list:
+        assert handle in handles
+        assert signal is not None
+        changes = list(signal.all_changes())
+        assert len(changes) > 0
+
+
 # Helper functions (used by skipped tests)
 
 def find_record_by_id(hier: pyrox.Hierarchy, record_id: str):

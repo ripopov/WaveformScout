@@ -8,6 +8,9 @@ use std::sync::{
 };
 use std::thread;
 
+use jets_loader::JetsHierarchy;
+use rjets::TraceRecord;
+
 use convert::Mappable;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use num_bigint::BigUint;
@@ -32,6 +35,7 @@ enum AsyncEvent {
     BodyLoaded,
     SignalStartLoad(Vec<SignalHandle>),
     SignalLoaded(Vec<(SignalHandle, Arc<wellen::Signal>)>),
+    JetsSignalLoaded(Vec<(SignalHandle, Vec<(i64, String)>)>),
     Error(String),
 }
 
@@ -1001,42 +1005,59 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                     // Emit start event
                     emit_event(&shared_state, AsyncEvent::SignalStartLoad(handles.clone()));
 
-                    // Check if wave source and hierarchy are available
-                    let has_source = shared_state.wave_source.lock().unwrap().is_some();
-                    let hierarchy = shared_state.hierarchy.lock().unwrap().clone();
-
-                    if has_source && hierarchy.is_some() {
+                    // Check if this is JETS
+                    if let Some(jets_hier) = shared_state.jets_hierarchy.lock().unwrap().as_ref() {
+                        // JETS signal loading - generate signal changes
                         let mut loaded_signals = Vec::new();
 
-                        // Load signals one by one
-                        for handle in handles.iter() {
-                            // Always load signals fresh - no caching in Rust
-                            // Load signal - need to access wave_source for each signal
-                            let signal_ref = SignalRef::from_index(*handle).unwrap();
-
-                            // We need to load signals within the lock scope
-                            if let Some(source) = &mut *shared_state.wave_source.lock().unwrap()
-                            {
-                                if let Some(hier) = &hierarchy {
-                                    let signals =
-                                        source.load_signals(&[signal_ref], hier, true);
-                                    if let Some((_ref, sig)) = signals.into_iter().next() {
-                                        // Store both handle and signal
-                                        loaded_signals.push((*handle, Arc::new(sig)));
-                                    }
-                                }
+                        for handle in &handles {
+                            if let Some(record) = jets_hier.get_record_by_handle(*handle) {
+                                let changes = jets_hier.generate_signal_changes(&record);
+                                loaded_signals.push((*handle, changes));
                             }
                         }
 
-                        // Emit loaded event with actual loaded signals
+                        // Emit JETS-specific loaded event with raw changes
                         if !loaded_signals.is_empty() {
-                            emit_event(&shared_state, AsyncEvent::SignalLoaded(loaded_signals));
+                            emit_event(&shared_state, AsyncEvent::JetsSignalLoaded(loaded_signals));
                         }
                     } else {
-                        emit_event(
-                            &shared_state,
-                            AsyncEvent::Error("Wave source or hierarchy not loaded".to_string()),
-                        );
+                        // Wellen signal loading - batch load all signals at once
+                        let hierarchy = shared_state.hierarchy.lock().unwrap().clone();
+
+                        if let Some(hier) = hierarchy {
+                            // Convert handles to SignalRefs
+                            let signal_refs: Vec<SignalRef> = handles
+                                .iter()
+                                .filter_map(|h| SignalRef::from_index(*h))
+                                .collect();
+
+                            // Batch load all signals
+                            if let Some(source) = &mut *shared_state.wave_source.lock().unwrap() {
+                                let signals = source.load_signals(&signal_refs, &hier, true);
+
+                                // Convert to (handle, Arc<Signal>) pairs
+                                let loaded_signals: Vec<(SignalHandle, Arc<wellen::Signal>)> = signals
+                                    .into_iter()
+                                    .map(|(sig_ref, sig)| (sig_ref.index(), Arc::new(sig)))
+                                    .collect();
+
+                                // Emit loaded event with actual loaded signals
+                                if !loaded_signals.is_empty() {
+                                    emit_event(&shared_state, AsyncEvent::SignalLoaded(loaded_signals));
+                                }
+                            } else {
+                                emit_event(
+                                    &shared_state,
+                                    AsyncEvent::Error("Wave source not available".to_string()),
+                                );
+                            }
+                        } else {
+                            emit_event(
+                                &shared_state,
+                                AsyncEvent::Error("Hierarchy not loaded".to_string()),
+                            );
+                        }
                     }
                 }
             }
@@ -1105,6 +1126,29 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                     dict.set_item("signals", py_list).ok();
                     dict
                 }
+                AsyncEvent::JetsSignalLoaded(jets_signals) => {
+                    let dict = pyo3::types::PyDict::new(py);
+                    dict.set_item("type", "SignalLoaded").ok();
+
+                    // Create Python Signal objects from JETS changes
+                    let py_list = pyo3::types::PyList::empty(py);
+                    for (handle, changes) in jets_signals.iter() {
+                        // Create JETS Signal object
+                        if let Ok(py_signal) = Bound::new(
+                            py,
+                            Signal {
+                                backend: SignalBackend::Jets {
+                                    changes: Arc::new(changes.clone()),
+                                },
+                            },
+                        ) {
+                            let tuple = pyo3::types::PyTuple::new(py, &[handle.to_object(py), py_signal.to_object(py)]).unwrap();
+                            py_list.append(tuple).ok();
+                        }
+                    }
+                    dict.set_item("signals", py_list).ok();
+                    dict
+                }
                 AsyncEvent::Error(msg) => {
                     let dict = pyo3::types::PyDict::new(py);
                     dict.set_item("type", "Error").ok();
@@ -1160,10 +1204,17 @@ impl Waveform {
                 jets_hierarchy: Mutex::new(Some(Arc::new(jets_hier))),
             });
 
+            // Create async worker even for JETS to support async API
+            let (sender, receiver) = unbounded();
+            let shared_state_clone = shared_state.clone();
+            let worker_handle = thread::spawn(move || {
+                async_worker(receiver, shared_state_clone);
+            });
+
             return Ok(Self {
                 shared_state,
-                request_sender: None,
-                _worker_handle: None,
+                request_sender: Some(sender),
+                _worker_handle: Some(worker_handle),
             });
         }
 
@@ -1380,7 +1431,59 @@ impl Waveform {
             return Err(PyRuntimeError::new_err("Path cannot be empty"));
         }
 
-        // Split into scope path and variable name
+        // Check if this is a JETS file
+        if let Some(jets_hier) = self.shared_state.jets_hierarchy.lock().unwrap().as_ref() {
+            // For JETS, path segments represent the hierarchy of record names
+            // We need to traverse the record tree to find the matching record
+
+            // Build full path string
+            let full_path = path_segments.join(".");
+
+            // Search for record by path
+            fn find_record_by_path<'a>(
+                records: &'a [TraceRecord],
+                path_segments: &[String],
+                jets: &JetsHierarchy,
+            ) -> Option<(Arc<TraceRecord>, usize)> {
+                if path_segments.is_empty() {
+                    return None;
+                }
+
+                // Look for matching record at current level
+                for record in records {
+                    if record.name == path_segments[0] {
+                        if path_segments.len() == 1 {
+                            // Found the target record
+                            let handle = jets.get_handle_by_id(&record.id)?;
+                            return Some((Arc::new(record.clone()), handle));
+                        } else {
+                            // Recurse into children
+                            return find_record_by_path(
+                                &record.children,
+                                &path_segments[1..],
+                                jets,
+                            );
+                        }
+                    }
+                }
+                None
+            }
+
+            let (record, handle) = find_record_by_path(
+                jets_hier.top_records(),
+                &path_segments,
+                jets_hier,
+            )
+            .ok_or_else(|| {
+                PyRuntimeError::new_err(format!("No record found at path {}", full_path))
+            })?;
+
+            // Generate signal for this record
+            let changes = jets_hier.generate_signal_changes(&record);
+            return create_jets_signal(changes, py);
+        }
+
+        // Wellen path
         let (scope_path, var_name) = if path_segments.len() == 1 {
             (vec![], &path_segments[0])
         } else {
@@ -1406,6 +1509,29 @@ impl Waveform {
         vars: Vec<PyRef<'py, Var>>,
         py: Python<'py>,
     ) -> PyResult<Vec<Bound<'py, Signal>>> {
+        // Check if this is a JETS file
+        if let Some(jets_hier) = self.shared_state.jets_hierarchy.lock().unwrap().as_ref() {
+            // For JETS, load signals synchronously (no multi-threading needed)
+            let mut result = Vec::new();
+            for var in vars.iter() {
+                match &var.0 {
+                    VarBackend::Jets { record, signal_handle, .. } => {
+                        // Generate signal for this record
+                        let changes = jets_hier.generate_signal_changes(record);
+                        let signal = create_jets_signal(changes, py)?;
+                        result.push(signal);
+                    }
+                    VarBackend::Wellen(_) => {
+                        return Err(PyRuntimeError::new_err(
+                            "Cannot mix JETS and Wellen vars in same load operation",
+                        ));
+                    }
+                }
+            }
+            return Ok(result);
+        }
+
+        // Wellen multi-threaded loading
         // Ensure body is loaded
         self.load_body()?;
 
@@ -1425,7 +1551,7 @@ impl Waveform {
             .iter()
             .filter_map(|var| match &var.0 {
                 VarBackend::Wellen(w) => Some(w.signal_ref()),
-                VarBackend::Jets { .. } => None, // JETS vars not supported in multithreaded loading
+                VarBackend::Jets { .. } => None,
             })
             .collect();
 
@@ -1462,9 +1588,8 @@ impl Waveform {
                     }
                 }
                 VarBackend::Jets { .. } => {
-                    // JETS vars not supported in multithreaded loading yet
                     return Err(PyRuntimeError::new_err(
-                        "JETS signals not supported in multithreaded loading",
+                        "Cannot mix JETS and Wellen vars in same load operation",
                     ));
                 }
             }

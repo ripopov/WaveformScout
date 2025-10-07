@@ -916,7 +916,65 @@ QT_QPA_PLATFORM=offscreen poetry run pytest tests/test_read_jets.py::test_jets_w
 
 ---
 
-**Document Version**: 1.1
+### Phase 3: Signal Loading APIs (2025-10-06)
+
+**Status**: ✅ COMPLETE
+
+**What was implemented**:
+
+1. **`get_signal_by_handle(handle)` for JETS** (Already working)
+   - Loads signal for a JETS record by its signal handle
+   - Returns Signal with JSON string values
+   - Signal changes include record start, events, and end marker ("Z")
+
+2. **`get_signal_from_path(path_segments)` for JETS** (NEW)
+   - Supports hierarchical path lookup for JETS records
+   - Path segments represent record name hierarchy (e.g., `["flash_attention_fwd", "kernel"]`)
+   - Traverses record tree to find matching record
+   - Implementation in `lib.rs:1374-1453`
+
+3. **`load_signals_multithreaded(vars)` for JETS** (NEW)
+   - Batch loading of multiple JETS signals
+   - Synchronous implementation (no multi-threading needed for JETS)
+   - Preserves input order in returned signals
+   - Implementation in `lib.rs:1455-1547`
+
+**Tests added** (`tests/test_read_jets.py`):
+- ✅ `test_jets_get_signal_by_handle` - Basic signal loading by handle
+- ✅ `test_jets_get_signal_from_path` - Path-based signal loading (root level)
+- ✅ `test_jets_get_signal_from_nested_path` - Path-based signal loading (nested)
+- ✅ `test_jets_load_signals_multithreaded` - Batch signal loading
+- ✅ `test_jets_load_signals_preserves_order` - Order preservation in batch loading
+- ✅ `test_jets_signal_changes_complete` - Verify all changes included (record + events)
+- ✅ `test_jets_load_signals_async` - Async signal loading with callback
+
+**Test results**:
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest tests/test_read_jets.py -v
+22 passed, 1 skipped in 1.22s
+```
+
+**Async APIs**:
+- `set_async_callback()` and `load_signals_async()` **ARE** implemented for JETS (for compatibility)
+- JETS signal generation is fast (JSON-based), but async API provides consistent interface
+- Async worker thread created even for JETS files to support the async API
+- `load_header_async()` and `load_body_async()` are not applicable (JETS loads synchronously)
+
+**API Coverage Summary**:
+
+| API Method | Wellen (VCD/FST/GHW) | JETS | Notes |
+|------------|---------------------|------|-------|
+| `get_signal_by_handle()` | ✅ | ✅ | Returns Signal with changes |
+| `get_signal_from_path()` | ✅ | ✅ | Hierarchical path lookup |
+| `load_signals_multithreaded()` | ✅ | ✅ | Batch loading (synchronous for JETS) |
+| `set_async_callback()` | ✅ | ✅ | Async event callback |
+| `load_signals_async()` | ✅ | ✅ | **Async signal loading** |
+| `load_header_async()` | ✅ | ❌ | Not applicable (JETS loads synchronously) |
+| `load_body_async()` | ✅ | ❌ | Not applicable (JETS loads synchronously) |
+
+---
+
+**Document Version**: 1.2
 **Author**: Claude (AI Coding Agent)
 **Date**: 2025-10-06 (Updated)
-**Status**: Integration Test Implemented
+**Status**: Phase 3 Complete - Signal Loading APIs Implemented
