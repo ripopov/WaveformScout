@@ -47,7 +47,7 @@ class Var:
     def scope_path(self, hierarchy: Any) -> List[str]:
         """Get the scope path as a list of scope names (excluding the variable name)."""
         if self._pyrox_var is not None:
-            result: List[str] = self._pyrox_var.scope_path(hierarchy)  # type: ignore[attr-defined]
+            result: List[str] = self._pyrox_var.scope_path(hierarchy)
             return result
         return []
 
@@ -518,16 +518,16 @@ class WaveformDB:
             return None
 
         # First try exact match using new path-based API
-        var = self.hierarchy.find_var_by_path(list(path))  # type: ignore[attr-defined]
+        var = self.hierarchy.find_var_by_path(list(path))
         if var:
-            return var.signal_handle()  # type: ignore[no-any-return]
+            return var.signal_handle()
 
         # If not found and single-element path, try with TOP prefix
         if len(path) == 1:
             top_path = ["TOP", path[0]]
-            var = self.hierarchy.find_var_by_path(top_path)  # type: ignore[attr-defined]
+            var = self.hierarchy.find_var_by_path(top_path)
             if var:
-                return var.signal_handle()  # type: ignore[no-any-return]
+                return var.signal_handle()
 
         return None
 

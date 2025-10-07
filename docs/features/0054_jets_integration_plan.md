@@ -974,7 +974,119 @@ QT_QPA_PLATFORM=offscreen poetry run pytest tests/test_read_jets.py -v
 
 ---
 
-**Document Version**: 1.2
+---
+
+## 12. UI Integration Test Added (2025-10-06)
+
+**Test**: `test_jets_record_var_view_and_signal_loading` in `tests/test_read_jets.py:732`
+
+**What it validates** (Complete JETS UI Workflow):
+1. ✅ JETS file loads into WaveScoutMainWindow
+2. ✅ Records appear in DesignTreeView as scopes
+3. ✅ Can select 2 different records in the tree
+4. ✅ Selecting a record populates VarsView with its variables
+5. ✅ VarsView shows JETS record variables (e.g., `flash_attention_fwd.GPU_Context_0`)
+6. ✅ Double-click on var in VarsView triggers signal addition handler
+7. ✅ Signal successfully added to session.root_nodes
+8. ✅ Signal appears in SignalNamesView
+
+**Test workflow** (Matches standard VCD/FST workflow):
+```python
+# 1. Select record in DesignTreeView scope tree
+tree_view.setCurrentIndex(first_child_idx)
+selection_model.setCurrentIndex(first_child_idx, ClearAndSelect)
+
+# 2. Wait for VarsView to populate (automatic via _on_scope_selection_changed)
+# VarsView shows: "flash_attention_fwd.GPU_Context_0"
+
+# 3. Double-click on var in VarsView
+table_view = vars_view.table_view
+var_idx = vars_view.filter_proxy.index(0, 0)
+table_view.doubleClicked.emit(var_idx)
+
+# 4. Verify signal in session.root_nodes and SignalNamesView
+```
+
+**Observed behavior** (from test logs):
+```
+[DESIGN_TREE] _on_variables_selected: 1 variables
+[DESIGN_TREE]   Variable: flash_attention_fwd.GPU_Context_0
+[DESIGN_TREE] _emit_signal_nodes_from_variables: 1 variables
+[WAVEFORM_DB] load_signals_async called with 1 handles
+[WAVEFORM_DB] SignalLoaded: 1 signals
+✓ JETS signal added successfully: flash_attention_fwd.GPU_Context_0
+✓ Variable name: GPU_Context_0
+✓ Total signals in session: 1
+PASSED
+```
+
+The workflow executes correctly:
+- VarsView populates with JETS record variable
+- Double-click handler fires (`_emit_signal_nodes_from_variables`)
+- Signal is created, loaded asynchronously, and added to session
+- Signal appears in SignalNamesView
+
+**Test execution**:
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest tests/test_read_jets.py::test_jets_record_var_view_and_signal_loading -xvs
+```
+
+**Current status**: ✅ **TEST PASSES** - Complete JETS signal addition workflow working!
+
+---
+
+## 13. Pyrox API Fix - `find_var_by_path` for JETS (2025-10-06)
+
+**Issue**: JETS record signals could not be added via UI because `Hierarchy.find_var_by_path()` returned `None` for JETS files.
+
+**Root Cause**: In `pyrox/src/lib.rs:231-235`, the JETS case was not implemented:
+```rust
+HierarchyBackend::Jets(_jets) => {
+    // For JETS, path lookup is not yet supported
+    // TODO: Implement path lookup for JETS if needed
+    None
+}
+```
+
+**Fix Implemented** (`pyrox/src/lib.rs:231-309`):
+- Implemented hierarchical path lookup for JETS records
+- Navigate through record tree using path segments
+- Keep Arc alive across loop iterations to satisfy borrow checker
+- Handle both top-level (single path element) and nested records
+
+**Algorithm**:
+1. For single-element paths: search in top-level records
+2. For nested paths:
+   - Start at top-level records
+   - For each path segment, find matching record and move to its children
+   - Keep Arc alive to allow borrowing children slice
+   - Return final record as Var when path is complete
+
+**Type Stubs Added** (`pyrox/pyrox.pyi`):
+```python
+class Var:
+    def scope_path(self, hier: Hierarchy) -> List[str]: ...
+
+class Hierarchy:
+    def find_var_by_path(self, path: List[str]) -> Optional[Var]: ...
+```
+
+**Test Results**:
+```bash
+$ QT_QPA_PLATFORM=offscreen poetry run pytest tests/test_read_jets.py -v
+22 passed, 1 skipped in 2.03s
+```
+
+**Files Modified**:
+1. `pyrox/src/lib.rs` - Implemented JETS `find_var_by_path`
+2. `pyrox/pyrox.pyi` - Added type stubs for `scope_path` and `find_var_by_path`
+3. `tests/test_read_jets.py` - Fixed attribute name (`_names_view`)
+
+**Impact**: JETS records can now be added as signals through the standard WaveScout UI workflow (DesignTreeView → VarsView → double-click → signal added).
+
+---
+
+**Document Version**: 1.4
 **Author**: Claude (AI Coding Agent)
 **Date**: 2025-10-06 (Updated)
-**Status**: Phase 3 Complete - Signal Loading APIs Implemented
+**Status**: Phase 3 Complete - JETS UI Integration Fully Working!

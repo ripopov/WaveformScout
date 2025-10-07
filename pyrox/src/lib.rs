@@ -228,9 +228,83 @@ impl Hierarchy {
                 hier.lookup_var(&scope_path, var_name)
                     .map(|var_ref| Var(VarBackend::Wellen(hier[var_ref].clone())))
             }
-            HierarchyBackend::Jets(_jets) => {
-                // For JETS, path lookup is not yet supported
-                // TODO: Implement path lookup for JETS if needed
+            HierarchyBackend::Jets(jets) => {
+                // For JETS: path is [scope_names..., record_name]
+                // Navigate through record hierarchy to find matching record
+
+                if path.is_empty() {
+                    return None;
+                }
+
+                // Helper function to find record by name in a slice
+                fn find_record_by_name<'a>(
+                    records: &'a [rjets::TraceRecord],
+                    name: &str,
+                ) -> Option<&'a rjets::TraceRecord> {
+                    records.iter().find(|r| r.name == name)
+                }
+
+                // Navigate: we need to either work with top_records or keep Arc alive
+                // Start with top-level records (these are owned by JetsHierarchy)
+                let top_records = jets.top_records();
+
+                // For paths with just one element, search in top records
+                if path.len() == 1 {
+                    if let Some(record) = find_record_by_name(top_records, &path[0]) {
+                        if let Some(handle) = jets.get_handle_by_id(&record.id) {
+                            if let Some(record_arc) = jets.get_record_by_handle(handle) {
+                                return Some(Var(VarBackend::Jets {
+                                    record: record_arc,
+                                    signal_handle: handle,
+                                    clock_freq_mhz: jets.clock_freq_mhz(),
+                                }));
+                            }
+                        }
+                    }
+                    return None;
+                }
+
+                // For nested paths, we need to keep Arc alive while navigating
+                let mut current_arc: Option<Arc<rjets::TraceRecord>> = None;
+
+                for (i, scope_name) in path.iter().enumerate() {
+                    let records_to_search = if i == 0 {
+                        // First level: search in top_records
+                        top_records
+                    } else {
+                        // Nested levels: search in current record's children
+                        if let Some(ref arc) = current_arc {
+                            &arc.children
+                        } else {
+                            return None;
+                        }
+                    };
+
+                    if let Some(found_record) = find_record_by_name(records_to_search, scope_name) {
+                        // Get the Arc for this record
+                        if let Some(handle) = jets.get_handle_by_id(&found_record.id) {
+                            if let Some(record_arc) = jets.get_record_by_handle(handle) {
+                                // If this is the last element in path, return it
+                                if i == path.len() - 1 {
+                                    return Some(Var(VarBackend::Jets {
+                                        record: record_arc,
+                                        signal_handle: handle,
+                                        clock_freq_mhz: jets.clock_freq_mhz(),
+                                    }));
+                                }
+                                // Otherwise, keep it for next iteration
+                                current_arc = Some(record_arc);
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None; // Record not found at this level
+                    }
+                }
+
                 None
             }
         }
