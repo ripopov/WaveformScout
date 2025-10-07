@@ -353,8 +353,8 @@ impl Hierarchy {
         match &self.0 {
             HierarchyBackend::Wellen(hier) => hier.timescale().map(Timescale),
             HierarchyBackend::Jets(jets) => {
-                // JETS uses microseconds
-                Some(Timescale(wellen::Timescale::new(1, wellen::TimescaleUnit::MicroSeconds)))
+                // JETS uses picoseconds
+                Some(Timescale(wellen::Timescale::new(1, wellen::TimescaleUnit::PicoSeconds)))
             }
         }
     }
@@ -1922,7 +1922,7 @@ impl Signal {
             }
             SignalBackend::Jets { changes } => {
                 // Find first change after start_time
-                // JETS uses i64 for time (microseconds), convert from Wellen u64
+                // JETS uses i64 for time (picoseconds), convert from Wellen u64
                 let start_time_i64 = start_time as i64;
                 let start_idx = changes
                     .iter()

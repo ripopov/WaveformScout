@@ -4,14 +4,11 @@ use rjets::{parse_trace, TraceData, TraceRecord, TraceAnnotation, TraceEvent, Tr
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Convert clock cycles to microseconds using clock frequency
-fn clock_to_microseconds(clk: i64, freq_mhz: f64) -> i64 {
-    // clk * 1_000_000 / (freq_mhz * 1_000_000)
-    // Simplified: clk / freq_mhz
-    // But we want microseconds, so: clk * 1000 / (freq_mhz * 1000) = clk / freq_mhz
-    // Actually: clk cycles * (1 second / freq_mhz MHz) * 1e6 us/s
-    // = clk * 1e6 / (freq_mhz * 1e6) = clk / freq_mhz microseconds
-    (clk as f64 / freq_mhz) as i64
+/// Convert clock cycles to picoseconds using clock frequency
+fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
+    // clk cycles * (1/freq_mhz microseconds) * 1_000_000 ps/us
+    // = clk * 1_000_000 / freq_mhz picoseconds
+    (clk as f64 * 1_000_000.0 / freq_mhz) as i64
 }
 
 /// Serialize TraceRecord to pretty-printed JSON string
@@ -146,12 +143,12 @@ impl Record {
             .collect()
     }
 
-    fn start_time_us(&self) -> i64 {
-        clock_to_microseconds(self.inner.clk, self.clock_freq_mhz)
+    fn start_time_ps(&self) -> i64 {
+        clock_to_picoseconds(self.inner.clk, self.clock_freq_mhz)
     }
 
-    fn end_time_us(&self) -> Option<i64> {
-        self.inner.end_clk.map(|end_clk| clock_to_microseconds(end_clk, self.clock_freq_mhz))
+    fn end_time_ps(&self) -> Option<i64> {
+        self.inner.end_clk.map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz))
     }
 }
 
@@ -268,22 +265,22 @@ impl JetsHierarchy {
 
         // Record start: transition to record JSON
         // Ensure start time is at least 1 to avoid collision with initial Z at time 0
-        let start_time_us = clock_to_microseconds(record.clk, self.clock_freq_mhz).max(1);
-        changes.push((start_time_us, record_to_json(record)));
+        let start_time_ps = clock_to_picoseconds(record.clk, self.clock_freq_mhz).max(1);
+        changes.push((start_time_ps, record_to_json(record)));
 
         // Events (sorted by clock)
         let mut events = record.events.clone();
         events.sort_by_key(|e| e.clk);
 
         for event in &events {
-            let event_time_us = clock_to_microseconds(event.clk, self.clock_freq_mhz);
-            changes.push((event_time_us, event_to_json(event)));
+            let event_time_ps = clock_to_picoseconds(event.clk, self.clock_freq_mhz);
+            changes.push((event_time_ps, event_to_json(event)));
         }
 
         // End marker (if end_clk exists): transition back to "Z"
         if let Some(end_clk) = record.end_clk {
-            let end_time_us = clock_to_microseconds(end_clk, self.clock_freq_mhz);
-            changes.push((end_time_us + 1, "Z".to_string()));
+            let end_time_ps = clock_to_picoseconds(end_clk, self.clock_freq_mhz);
+            changes.push((end_time_ps + 1, "Z".to_string()));
         }
 
         changes
@@ -294,7 +291,7 @@ impl JetsHierarchy {
     }
 
     pub(crate) fn timescale_str(&self) -> String {
-        "1us".to_string()
+        "1ps".to_string()
     }
 
     pub(crate) fn date(&self) -> String {
@@ -325,16 +322,16 @@ mod tests {
 
     #[test]
     fn test_clock_conversion() {
-        // At 1830 MHz, 1830 clocks = 1 microsecond
-        let us = clock_to_microseconds(1830, 1830.0);
-        assert_eq!(us, 1);
+        // At 1830 MHz, 1 clock = 1_000_000 / 1830 ≈ 546.4 picoseconds
+        let ps = clock_to_picoseconds(1, 1830.0);
+        assert_eq!(ps, 546);
 
-        // At 1000 MHz (1 GHz), 1000 clocks = 1 microsecond
-        let us = clock_to_microseconds(1000, 1000.0);
-        assert_eq!(us, 1);
+        // At 1000 MHz (1 GHz), 1 clock = 1_000_000 / 1000 = 1000 picoseconds
+        let ps = clock_to_picoseconds(1, 1000.0);
+        assert_eq!(ps, 1000);
 
-        // At 1830 MHz, 2181 clocks ≈ 1.19 microseconds
-        let us = clock_to_microseconds(2181, 1830.0);
-        assert_eq!(us, 1); // floor(2181 / 1830) = 1
+        // At 1830 MHz, 2181 clocks = 2181 * 1_000_000 / 1830 ≈ 1,191,803 picoseconds
+        let ps = clock_to_picoseconds(2181, 1830.0);
+        assert_eq!(ps, 1_191_803);
     }
 }

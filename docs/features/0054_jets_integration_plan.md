@@ -12,12 +12,12 @@ Integrate JETS (JSON Event Trace Streaming) format support into the Pyrox wavefo
 - **Parse hierarchical structure**: Records form tree (parent-child relationships via `parent_id`)
 - **Handle all line types**: `header`, `record`, `record_end`, `annotation`, `event`, `footer`
 - **Support streaming format**: JSON Lines (one object per line)
-- **Clock timestamp conversion**: Convert hardware clock cycles to microseconds using metadata clock frequency
+- **Clock timestamp conversion**: Convert hardware clock cycles to picoseconds using metadata clock frequency
 
 #### 1.2 Pyrox API Extensions
 - **Extend Hierarchy API**:
   - `file_format()` → return `"JETS"`
-  - `timescale()` → return microseconds (converted from clock cycles)
+  - `timescale()` → return picoseconds (converted from clock cycles)
   - `top_scopes()` → return top-level Records as Scopes
   - `all_vars()` → return all Records wrapped as Vars
 
@@ -43,7 +43,7 @@ Integrate JETS (JSON Event Trace Streaming) format support into the Pyrox wavefo
     - **Inside record time range**: Pretty-printed JSON of record + events
     - **Initial value**: Record JSON representation
     - **Updates**: Event JSON representations at event timestamps
-    - **Timestamp conversion**: Clock ticks → microseconds using `clock_frequency_mhz` from header metadata
+    - **Timestamp conversion**: Clock ticks → picoseconds using `clock_frequency_mhz` from header metadata
 
 #### 1.3 Backward Compatibility
 - **All existing Pyrox API must remain functional** for VCD/FST/GHW files
@@ -57,7 +57,7 @@ Integrate JETS (JSON Event Trace Streaming) format support into the Pyrox wavefo
   - Verify annotations and events parsing
   - Load Record as Signal via `get_signal_by_handle()`
   - Iterate `all_changes()` and verify:
-    - Timestamps match (start, end, events) in microseconds
+    - Timestamps match (start, end, events) in picoseconds
     - Values are pretty-printed JSON strings
     - Outside record range: value is `"Z"`
 - **Run all existing tests** to verify backward compatibility
@@ -174,7 +174,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData>;
    - Record ID → SignalHandle mapping (integer conversion)
    - Dynamic signal generation from Record + Events
    - JSON serialization of record/event data
-   - Clock cycle → microsecond timestamp conversion
+   - Clock cycle → picosecond timestamp conversion
 
 4. **Scope/Var Extensions**
    - Add `is_record()` method to Scope
@@ -246,7 +246,7 @@ JETS Hierarchy:
 5. **`JetsSignal` struct**
    - Generates string signal from Record + Events
    - Implements lazy evaluation (compute on demand)
-   - Timestamp conversion: `clk * 1_000_000 / clock_freq_mhz` → microseconds
+   - Timestamp conversion: `clk * 1_000_000 / clock_freq_mhz` → picoseconds
    - Value generation:
      - Before `record.clk`: `"Z"`
      - At `record.clk`: JSON of record (pretty-printed)
@@ -254,7 +254,7 @@ JETS Hierarchy:
      - After `record.end_clk`: `"Z"` (or extend if no end)
 
 **Helper Functions**:
-- `clock_to_microseconds(clk: i64, freq_mhz: f64) -> i64`
+- `clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64`
 - `record_to_json(record: &TraceRecord) -> String`
 - `event_to_json(event: &TraceEvent) -> String`
 
@@ -286,7 +286,7 @@ JETS Hierarchy:
    - Add JETS case: `"JETS".to_string()`
 
 6. **Hierarchy::timescale** (line 185-187):
-   - For JETS: return fixed microsecond timescale
+   - For JETS: return fixed picosecond timescale
    - For Wellen: existing implementation
 
 7. **Scope::scope_type** (line 212-242):
@@ -356,8 +356,8 @@ impl Record {
     fn children(&self) -> Vec<Record> { ... }
 
     // Timestamp conversions
-    fn start_time_us(&self) -> i64 { ... }
-    fn end_time_us(&self) -> Option<i64> { ... }
+    fn start_time_ps(&self) -> i64 { ... }
+    fn end_time_ps(&self) -> Option<i64> { ... }
 }
 ```
 
@@ -408,8 +408,8 @@ class Record:
     def annotations(self) -> List[Dict[str, Any]]: ...
     def events(self) -> List[Dict[str, Any]]: ...
     def children(self) -> List[Record]: ...
-    def start_time_us(self) -> int: ...
-    def end_time_us(self) -> Optional[int]: ...
+    def start_time_ps(self) -> int: ...
+    def end_time_ps(self) -> Optional[int]: ...
 ```
 
 #### File: `pyrox/Cargo.toml` (DEPENDENCY UPDATE)
@@ -440,10 +440,10 @@ def test_jets_file_loading():
     # Verify file format
     assert wf.hierarchy.file_format() == "JETS"
 
-    # Verify timescale is microseconds
+    # Verify timescale is picoseconds
     ts = wf.hierarchy.timescale()
     assert ts is not None
-    assert ts.to_str() == "1us"  # or similar
+    assert ts.to_str() == "1ps"  # or similar
 
 def test_jets_hierarchy():
     """Test JETS hierarchy structure (Records as Scopes)."""
@@ -521,7 +521,7 @@ def test_jets_signal_values_and_timestamps():
     assert record is not None
 
     # Expected: clk=2181, end_clk=2186, clock_freq=1830 MHz
-    # start_time_us = 2181 * 1_000_000 / 1830_000_000 = 1.19... us
+    # start_time_ps = 2181 * 1_000_000 / 1830 = 1,191,803 ps
 
     # Load as signal
     vars_list = list(get_scope_for_record(hier, record).vars(hier))
@@ -533,9 +533,9 @@ def test_jets_signal_values_and_timestamps():
     # First change should be at record start time
     first_time, first_value = changes[0]
 
-    # Verify timestamp conversion (clk 2181 → ~1192 us with 1830 MHz)
-    expected_us = int(2181 * 1_000_000 / 1830)
-    assert abs(first_time - expected_us) < 2  # Allow 1us tolerance
+    # Verify timestamp conversion (clk 2181 → ~1,191,803 ps with 1830 MHz)
+    expected_ps = int(2181 * 1_000_000 / 1830)
+    assert abs(first_time - expected_ps) < 2  # Allow 2ps tolerance
 
     # Verify value is JSON
     import json
@@ -569,15 +569,15 @@ def test_jets_high_impedance_outside_record():
     signal = wf.get_signal_by_handle(signal_handle)
 
     # Query before record start
-    start_us = record.start_time_us()
-    before_value = signal.value_at_time(start_us - 100)
+    start_ps = record.start_time_ps()
+    before_value = signal.value_at_time(start_ps - 100)
 
     assert before_value == "Z"
 
     # Query after record end (if has end_clk)
     if record.end_clk is not None:
-        end_us = record.end_time_us()
-        after_value = signal.value_at_time(end_us + 100)
+        end_ps = record.end_time_ps()
+        after_value = signal.value_at_time(end_ps + 100)
         assert after_value == "Z"
 
 # Helper functions
@@ -602,26 +602,26 @@ def get_scope_for_record(hier, record):
 
 **Algorithm**:
 ```
-1. Calculate start_time_us = record.clk * 1_000_000 / clock_frequency_mhz
-2. Create initial change at start_time_us:
+1. Calculate start_time_ps = record.clk * 1_000_000 / clock_frequency_mhz
+2. Create initial change at start_time_ps:
    - value = pretty_print_json(record)  // Include id, name, record_type, data, etc.
 
 3. For each event in record.events (sorted by clk):
-   - event_time_us = event.clk * 1_000_000 / clock_frequency_mhz
+   - event_time_ps = event.clk * 1_000_000 / clock_frequency_mhz
    - value = pretty_print_json(event)  // Include name, clk, data
-   - Add (event_time_us, value) to changes list
+   - Add (event_time_ps, value) to changes list
 
 4. If record.end_clk exists:
-   - end_time_us = record.end_clk * 1_000_000 / clock_frequency_mhz
-   - Add (end_time_us + 1, "Z") to mark end
+   - end_time_ps = record.end_clk * 1_000_000 / clock_frequency_mhz
+   - Add (end_time_ps + 1, "Z") to mark end
 
 5. Return sorted changes list
 ```
 
 **Query Behavior**:
 - `value_at_time(t)`:
-  - If t < start_time_us: return "Z"
-  - If t > end_time_us: return "Z"
+  - If t < start_time_ps: return "Z"
+  - If t > end_time_ps: return "Z"
   - Else: find latest change <= t, return its value
 
 #### Hierarchy Construction from JETS
@@ -833,7 +833,7 @@ pytest tests/ -k "not jets"
 - ✅ Hierarchy reflects JETS record structure
 - ✅ Records accessible as Scopes with `scope_type="record"`
 - ✅ Records loadable as string signals
-- ✅ Signal timestamps converted to microseconds
+- ✅ Signal timestamps converted to picoseconds
 - ✅ Signal values are pretty-printed JSON
 - ✅ All existing tests pass (backward compatibility)
 - ✅ New test `test_read_jets.py` passes all assertions
