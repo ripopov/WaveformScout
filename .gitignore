@@ -55,6 +55,17 @@ third_party/wellen/pywellen/dev/
 # Pyrox/Rust build artifacts
 pyrox/target/
 *.pyd
+Cargo.lock
+
+# Nuitka build artifacts
+*.build/
+*.dist/
+*.onefile-build/
+
+# MyPy cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
 # Poetry configuration
 .poetry-config/
