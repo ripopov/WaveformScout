@@ -279,3 +279,60 @@ pub trait WaveSourceTrait: Send + Sync {
         hier: &dyn HierarchyTrait,
     ) -> Vec<(SignalHandle, Arc<dyn SignalTrait>)>;
 }
+
+// === WaveformTrait ===
+
+/// Backend-agnostic waveform file loading interface.
+///
+/// This trait abstracts the process of loading waveform files into their constituent parts:
+/// hierarchy (design structure), time table (timestamp index), and signal source (waveform data).
+///
+/// Backends may implement different loading strategies:
+/// - **Two-phase loading** (Wellen): `load_header()` reads hierarchy, `load_body()` reads signal data
+/// - **Atomic loading** (JETS): `load_header()` loads everything, `load_body()` is a no-op
+///
+/// All methods are synchronous; async orchestration is handled by the PyO3 layer.
+///
+/// # Non-Blocking Constructor Requirement
+///
+/// Backend constructors (`new()`) **must not perform I/O** to ensure non-blocking construction
+/// for GUI applications. All file parsing must be deferred to `load_header()` / `load_body()`.
+pub trait WaveformTrait: Send + Sync {
+    /// Get the hierarchy (returns None if header not loaded)
+    fn hierarchy(&self) -> Option<Arc<dyn HierarchyTrait>>;
+
+    /// Get the time table (returns None if body not loaded)
+    fn time_table(&self) -> Option<Arc<dyn TimeTableTrait>>;
+
+    /// Load file header/hierarchy synchronously.
+    ///
+    /// For backends with two-phase loading (Wellen), this reads the hierarchy and prepares
+    /// for body loading. For backends with atomic loading (JETS), this may load everything.
+    ///
+    /// This method is idempotent: calling multiple times has no additional effect.
+    ///
+    /// Returns: Ok(()) on success, Err(msg) on failure
+    fn load_header(&mut self) -> Result<(), String>;
+
+    /// Check if header is loaded
+    fn header_loaded(&self) -> bool;
+
+    /// Load signal waveform data synchronously.
+    ///
+    /// For backends with two-phase loading (Wellen), this reads the signal data using
+    /// a continuation from the header phase. For backends with atomic loading (JETS),
+    /// this is a no-op (returns immediately).
+    ///
+    /// This method is idempotent: calling multiple times has no additional effect.
+    ///
+    /// Returns: Ok(()) on success, Err(msg) on failure
+    fn load_body(&mut self) -> Result<(), String>;
+
+    /// Check if body is loaded
+    fn body_loaded(&self) -> bool;
+
+    /// Get mutable access to signal source (returns None if body not loaded).
+    ///
+    /// Mutable access is required because signal loading may update internal caches.
+    fn wave_source(&mut self) -> Option<&mut dyn WaveSourceTrait>;
+}

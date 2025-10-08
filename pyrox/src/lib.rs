@@ -5,12 +5,8 @@ mod wellen_backend;
 mod jets_backend;
 // mod design_tree_model;  // Removed - DesignTreeModel no longer used
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::{Arc, Mutex};
 use std::thread;
-
 
 use convert::Mappable;
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -19,10 +15,8 @@ use pyo3::types::PyInt;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use tokio::runtime::Runtime;
 
-use wellen::{
-    viewers::{self, ReadBodyContinuation},
-    LoadOptions, SignalRef, SignalValue, TimeTableIdx,
-};
+use traits::{SignalValue, TimeTableIdx};
+use wellen::LoadOptions;
 
 /// Opaque handle exposed to Python for signal lookups (0-based index).
 pub type SignalHandle = usize;
@@ -51,13 +45,8 @@ enum AsyncRequest {
 /// Shared state between main thread and worker
 struct SharedState {
     file_path: String,
-    hierarchy: Mutex<Option<Arc<dyn traits::HierarchyTrait>>>,
-    wave_source: Mutex<Option<Box<dyn traits::WaveSourceTrait>>>,
-    time_table: Mutex<Option<Arc<dyn traits::TimeTableTrait>>>,
-    body_continuation: Mutex<Option<Box<ReadBodyContinuation<std::io::BufReader<std::fs::File>>>>>,
+    backend: Mutex<Option<Box<dyn traits::WaveformTrait>>>,
     callback: Mutex<Option<PyObject>>,
-    header_loaded: AtomicBool,
-    body_loaded: AtomicBool,
 }
 
 pub trait PyErrExt<T> {
@@ -408,30 +397,12 @@ fn convert_py_idx(idx: isize, len: usize) -> usize {
     }
 }
 
-/// Convert a signal value to a Python object (Wellen-specific)
+/// Convert a backend-agnostic SignalValue to a Python object
 fn convert_signal_value_to_py<'a>(signal: SignalValue, py: Python<'a>) -> PyResult<Py<PyAny>> {
     match signal {
-        SignalValue::Real(inner) => Ok(inner.into_pyobject(py).unwrap().into()),
-        SignalValue::String(str) => Ok(str.into_pyobject(py).unwrap().into()),
-        _ => match BigUint::try_from_signal(signal) {
-            // If this signal is 2bits, this function will return an int
-            Some(number) => Ok(number.into_pyobject(py).unwrap().into()),
-            // if this signal is not 2bits (e.g. it contains z,x, etc) then this function
-            // will return a string
-            None => signal
-                .to_bit_string()
-                .map(|val| val.into_pyobject(py).unwrap().into())
-                .ok_or_else(|| PyRuntimeError::new_err("Failed to convert signal value")),
-        },
-    }
-}
-
-/// Convert a trait SignalValue to a Python object
-fn convert_trait_signal_value_to_py<'a>(signal: traits::SignalValue, py: Python<'a>) -> PyResult<Py<PyAny>> {
-    match signal {
-        traits::SignalValue::Real(val) => Ok(val.into_pyobject(py).unwrap().into()),
-        traits::SignalValue::String(s) => Ok(s.into_pyobject(py).unwrap().into()),
-        traits::SignalValue::Scalar(scalar) => {
+        SignalValue::Real(val) => Ok(val.into_pyobject(py).unwrap().into()),
+        SignalValue::String(s) => Ok(s.into_pyobject(py).unwrap().into()),
+        SignalValue::Scalar(scalar) => {
             // For single-bit scalars, return as "0" or "1" string (or x/z)
             let s = match scalar {
                 traits::SignalScalar::Zero => "0",
@@ -441,13 +412,13 @@ fn convert_trait_signal_value_to_py<'a>(signal: traits::SignalValue, py: Python<
             };
             Ok(s.into_pyobject(py).unwrap().into())
         }
-        traits::SignalValue::Integer(bytes, _bit_width) => {
+        SignalValue::Integer(bytes, _bit_width) => {
             // Convert bytes to BigUint then to Python int
-            // Bytes are in wellen format (little-endian)
+            // Bytes are in little-endian format
             let biguint = num_bigint::BigUint::from_bytes_le(&bytes);
             Ok(biguint.into_pyobject(py).unwrap().into())
         }
-        traits::SignalValue::Vector(bits) => {
+        SignalValue::Vector(bits) => {
             // Check if this is a 2-state vector (no X or Z values)
             let has_xz = bits.iter().any(|b| {
                 matches!(b, traits::SignalScalar::X | traits::SignalScalar::Z)
@@ -473,77 +444,16 @@ fn convert_trait_signal_value_to_py<'a>(signal: traits::SignalValue, py: Python<
                 Ok(s.into_pyobject(py).unwrap().into())
             }
         }
-        traits::SignalValue::EnumVariant { name, index: _ } => {
+        SignalValue::EnumVariant { name, index: _ } => {
             Ok(name.into_pyobject(py).unwrap().into())
         }
-        traits::SignalValue::Opaque(bytes) => {
+        SignalValue::Opaque(bytes) => {
             // Convert bytes to hex string
             let hex_string = bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
             Ok(hex_string.into_pyobject(py).unwrap().into())
         }
-        traits::SignalValue::Unknown => {
+        SignalValue::Unknown => {
             Ok("?".into_pyobject(py).unwrap().into())
-        }
-    }
-}
-
-/// Convert a signal value to a float based on data format
-/// Returns None for undefined/high-impedance values
-///
-/// Data format codes: 0=unsigned, 1=signed, 2=hex, 3=bin, 4=float
-fn convert_signal_value_to_float(signal: SignalValue, data_format: u8, bit_width: u32) -> Option<f64> {
-    match signal {
-        SignalValue::Real(val) => Some(val),
-        SignalValue::String(_) => None, // Strings can't be converted to numeric values
-        _ => {
-            // Try to convert to integer
-            if let Some(biguint) = BigUint::try_from_signal(signal.clone()) {
-                // Convert BigUint to u64 (or return None if too large)
-                let bytes = biguint.to_bytes_le();
-                if bytes.len() > 8 {
-                    // Value too large to fit in u64, skip
-                    return None;
-                }
-
-                let mut value_u64 = 0u64;
-                for (i, &byte) in bytes.iter().enumerate() {
-                    value_u64 |= (byte as u64) << (i * 8);
-                }
-
-                // Apply data format conversion
-                match data_format {
-                    0 | 2 | 3 => {
-                        // UNSIGNED (0), HEX (2), BIN (3) - all treated as unsigned
-                        Some(value_u64 as f64)
-                    }
-                    1 => {
-                        // SIGNED (1) - 2's complement conversion
-                        let max_val = 1u64 << (bit_width.saturating_sub(1));
-                        if value_u64 >= max_val {
-                            let signed_value = (value_u64 as i64) - (1i64 << bit_width);
-                            Some(signed_value as f64)
-                        } else {
-                            Some(value_u64 as f64)
-                        }
-                    }
-                    4 => {
-                        // FLOAT (4) - IEEE 754 float conversion
-                        if bit_width == 32 && bytes.len() <= 4 {
-                            let bits = value_u64 as u32;
-                            Some(f32::from_bits(bits) as f64)
-                        } else if bit_width == 64 && bytes.len() <= 8 {
-                            Some(f64::from_bits(value_u64))
-                        } else {
-                            // Unsupported float width
-                            Some(value_u64 as f64)
-                        }
-                    }
-                    _ => Some(value_u64 as f64), // Default to unsigned
-                }
-            } else {
-                // Value contains X/Z - undefined or high impedance
-                None
-            }
         }
     }
 }
@@ -564,6 +474,34 @@ impl TimeTable {
     }
 }
 
+/// Create a waveform backend based on file extension
+fn create_waveform_backend(
+    path: &str,
+    opts: LoadOptions,
+) -> Result<Box<dyn traits::WaveformTrait>, String> {
+    // Detect file type from extension
+    let path_lower = path.to_lowercase();
+
+    if path_lower.ends_with(".jets") || path_lower.ends_with(".jsonl") {
+        // JETS backend
+        Ok(Box::new(jets_backend::JetsWaveform::new(
+            path.to_string(),
+            opts,
+        )))
+    } else if path_lower.ends_with(".vcd")
+        || path_lower.ends_with(".fst")
+        || path_lower.ends_with(".ghw")
+    {
+        // Wellen backend
+        Ok(Box::new(wellen_backend::WellenWaveform::new(
+            path.to_string(),
+            opts,
+        )))
+    } else {
+        Err(format!("Unsupported file format: {}", path))
+    }
+}
+
 /// Worker thread function for async operations
 fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>) {
     // Create a tokio runtime for this thread
@@ -574,31 +512,23 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
             match request {
                 AsyncRequest::Shutdown => break,
 
-                AsyncRequest::LoadHeader(opts) => {
+                AsyncRequest::LoadHeader(_opts) => {
                     // Emit start event
                     emit_event(&shared_state, AsyncEvent::HeaderStartLoad);
 
-                    // Get the file path from shared state
-                    let path = shared_state.file_path.clone();
+                    // Acquire backend lock only during header loading (minimize lock holding time)
+                    let result = {
+                        let mut backend_guard = shared_state.backend.lock().unwrap();
+                        backend_guard
+                            .as_mut()
+                            .ok_or_else(|| "Backend not initialized".to_string())
+                            .and_then(|b| b.load_header())
+                    }; // backend_guard dropped here
 
-                    // Load header
-                    match viewers::read_header_from_file(&path, &opts) {
-                        Ok(header_result) => {
-                            let hier_trait: Arc<dyn traits::HierarchyTrait> =
-                                Arc::new(wellen_backend::WellenHierarchy::new(Arc::new(header_result.hierarchy)));
-
-                            // Update shared state
-                            *shared_state.hierarchy.lock().unwrap() = Some(hier_trait);
-                            *shared_state.body_continuation.lock().unwrap() =
-                                Some(Box::new(header_result.body));
-                            shared_state.header_loaded.store(true, Ordering::Relaxed);
-
-                            // Emit loaded event
-                            emit_event(&shared_state, AsyncEvent::HeaderLoaded);
-                        }
-                        Err(e) => {
-                            emit_event(&shared_state, AsyncEvent::Error(e.to_string()));
-                        }
+                    // Process results after releasing the lock
+                    match result {
+                        Ok(()) => emit_event(&shared_state, AsyncEvent::HeaderLoaded),
+                        Err(e) => emit_event(&shared_state, AsyncEvent::Error(e)),
                     }
                 }
 
@@ -606,55 +536,19 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                     // Emit start event
                     emit_event(&shared_state, AsyncEvent::BodyStartLoad);
 
-                    // Get body continuation
-                    let body_cont = shared_state.body_continuation.lock().unwrap().take();
-                    if let Some(body_cont) = body_cont {
-                        let hierarchy = shared_state.hierarchy.lock().unwrap().clone();
-                        if let Some(hier_trait) = hierarchy {
-                            // Downcast to WellenHierarchy to get inner wellen::Hierarchy
-                            if let Some(wellen_hier) = hier_trait.as_any().downcast_ref::<wellen_backend::WellenHierarchy>() {
-                                match viewers::read_body(*body_cont, wellen_hier.inner(), None) {
-                                    Ok(body) => {
-                                        // Update shared state
-                                        let time_table_trait: Arc<dyn traits::TimeTableTrait> =
-                                            Arc::new(wellen_backend::WellenTimeTable {
-                                                inner: Arc::new(body.time_table.clone()),
-                                            });
-                                        let wave_source_trait: Box<dyn traits::WaveSourceTrait> =
-                                            Box::new(wellen_backend::WellenSignalSource::new(
-                                                body.source,
-                                                Arc::new(wellen_backend::WellenTimeTable {
-                                                    inner: Arc::new(body.time_table),
-                                                }),
-                                            ));
-                                        *shared_state.wave_source.lock().unwrap() = Some(wave_source_trait);
-                                        *shared_state.time_table.lock().unwrap() = Some(time_table_trait);
-                                        shared_state.body_loaded.store(true, Ordering::Relaxed);
+                    // Acquire backend lock only during body loading (minimize lock holding time)
+                    let result = {
+                        let mut backend_guard = shared_state.backend.lock().unwrap();
+                        backend_guard
+                            .as_mut()
+                            .ok_or_else(|| "Backend not initialized".to_string())
+                            .and_then(|b| b.load_body())
+                    }; // backend_guard dropped here
 
-                                        // Emit loaded event
-                                        emit_event(&shared_state, AsyncEvent::BodyLoaded);
-                                    }
-                                    Err(e) => {
-                                        emit_event(&shared_state, AsyncEvent::Error(e.to_string()));
-                                    }
-                                }
-                            } else {
-                                emit_event(
-                                    &shared_state,
-                                    AsyncEvent::Error("Body loading only supported for Wellen hierarchies".to_string()),
-                                );
-                            }
-                        } else {
-                            emit_event(
-                                &shared_state,
-                                AsyncEvent::Error("Hierarchy not loaded".to_string()),
-                            );
-                        }
-                    } else {
-                        emit_event(
-                            &shared_state,
-                            AsyncEvent::Error("Body continuation not available".to_string()),
-                        );
+                    // Process results after releasing the lock
+                    match result {
+                        Ok(()) => emit_event(&shared_state, AsyncEvent::BodyLoaded),
+                        Err(e) => emit_event(&shared_state, AsyncEvent::Error(e)),
                     }
                 }
 
@@ -662,31 +556,33 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                     // Emit start event
                     emit_event(&shared_state, AsyncEvent::SignalStartLoad(handles.clone()));
 
-                    // Get hierarchy and wave source
-                    let hierarchy = shared_state.hierarchy.lock().unwrap().clone();
+                    // Acquire backend lock only during signal loading (minimize lock holding time)
+                    let result = {
+                        let mut backend_guard = shared_state.backend.lock().unwrap();
+                        if let Some(backend) = backend_guard.as_mut() {
+                            match (backend.hierarchy(), backend.wave_source()) {
+                                (Some(hier_trait), Some(source)) => {
+                                    // Load signals while holding the lock (but in a minimal scope)
+                                    Ok(source.load_signals(&handles, &*hier_trait))
+                                }
+                                (None, _) => Err("Hierarchy not loaded".to_string()),
+                                (_, None) => Err("Wave source not available".to_string()),
+                            }
+                        } else {
+                            Err("Backend not initialized".to_string())
+                        }
+                    }; // backend_guard dropped here
 
-                    if let Some(hier_trait) = hierarchy {
-                        // Backend-agnostic signal loading via WaveSourceTrait
-                        let mut wave_source_guard = shared_state.wave_source.lock().unwrap();
-
-                        if let Some(source) = wave_source_guard.as_mut() {
-                            let loaded_signals = source.load_signals(&handles, &*hier_trait);
-
-                            // Emit unified loaded event
+                    // Process results after releasing the lock
+                    match result {
+                        Ok(loaded_signals) => {
                             if !loaded_signals.is_empty() {
                                 emit_event(&shared_state, AsyncEvent::SignalLoaded(loaded_signals));
                             }
-                        } else {
-                            emit_event(
-                                &shared_state,
-                                AsyncEvent::Error("Wave source not available".to_string()),
-                            );
                         }
-                    } else {
-                        emit_event(
-                            &shared_state,
-                            AsyncEvent::Error("Hierarchy not loaded".to_string()),
-                        );
+                        Err(err_msg) => {
+                            emit_event(&shared_state, AsyncEvent::Error(err_msg));
+                        }
                     }
                 }
             }
@@ -783,120 +679,37 @@ impl Waveform {
         load_header: bool,
         load_body: bool,
     ) -> PyResult<Self> {
-        // Check if this is a JETS file
-        let is_jets_file = path.ends_with(".jets") || path.ends_with(".jsonl");
-
-        if is_jets_file {
-            // Load JETS file
-            let trace_data = rjets::parse_trace(&path)
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to load JETS file: {}", e)))?;
-
-            let jets_hier = Arc::new(jets_backend::JetsHierarchy::new(Arc::new(trace_data)));
-            let max_time = jets_hier.get_max_time();
-
-            // Create trait objects
-            let hier_trait: Arc<dyn traits::HierarchyTrait> = jets_hier.clone();
-            let time_table_trait: Arc<dyn traits::TimeTableTrait> =
-                Arc::new(jets_backend::JetsTimeTable::new(max_time));
-            let wave_source_trait: Box<dyn traits::WaveSourceTrait> =
-                Box::new(jets_backend::JetsSignalSource::new(jets_hier));
-
-            let shared_state = Arc::new(SharedState {
-                file_path: path.clone(),
-                hierarchy: Mutex::new(Some(hier_trait)),
-                wave_source: Mutex::new(Some(wave_source_trait)),
-                time_table: Mutex::new(Some(time_table_trait)),
-                body_continuation: Mutex::new(None),
-                callback: Mutex::new(None),
-                header_loaded: AtomicBool::new(true),
-                body_loaded: AtomicBool::new(true),
-            });
-
-            // Create async worker even for JETS to support async API
-            let (sender, receiver) = unbounded();
-            let shared_state_clone = shared_state.clone();
-            let worker_handle = thread::spawn(move || {
-                async_worker(receiver, shared_state_clone);
-            });
-
-            return Ok(Self {
-                shared_state,
-                request_sender: Some(sender),
-                _worker_handle: Some(worker_handle),
-            });
-        }
-
         let opts = LoadOptions {
             multi_thread: multi_threaded,
             remove_scopes_with_empty_name,
         };
 
-        // Create shared state based on what we're loading
-        let shared_state = if load_header {
-            let header_result = viewers::read_header_from_file(path.as_str(), &opts).toerr()?;
-            let wellen_hier = Arc::new(header_result.hierarchy);
-            let hier_trait: Arc<dyn traits::HierarchyTrait> =
-                Arc::new(wellen_backend::WellenHierarchy::new(wellen_hier.clone()));
+        // Create backend using factory function
+        let mut backend = create_waveform_backend(&path, opts)
+            .map_err(|e| PyRuntimeError::new_err(e))?;
+
+        // Optionally load header and/or body
+        if load_header {
+            backend
+                .load_header()
+                .map_err(|e| PyRuntimeError::new_err(e))?;
 
             if load_body {
-                let body = viewers::read_body(header_result.body, &wellen_hier, None)
-                    .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
-
-                let time_table_trait: Arc<dyn traits::TimeTableTrait> =
-                    Arc::new(wellen_backend::WellenTimeTable {
-                        inner: Arc::new(body.time_table.clone()),
-                    });
-
-                let wave_source_trait: Box<dyn traits::WaveSourceTrait> =
-                    Box::new(wellen_backend::WellenSignalSource::new(
-                        body.source,
-                        Arc::new(wellen_backend::WellenTimeTable {
-                            inner: Arc::new(body.time_table),
-                        }),
-                    ));
-
-                // Create shared state with loaded header and body
-                Arc::new(SharedState {
-                    file_path: path.clone(),
-                    hierarchy: Mutex::new(Some(hier_trait)),
-                    wave_source: Mutex::new(Some(wave_source_trait)),
-                    time_table: Mutex::new(Some(time_table_trait)),
-                    body_continuation: Mutex::new(None),
-                    callback: Mutex::new(None),
-                    header_loaded: AtomicBool::new(true),
-                    body_loaded: AtomicBool::new(true),
-                })
-            } else {
-                // Create shared state with header only
-                Arc::new(SharedState {
-                    file_path: path.clone(),
-                    hierarchy: Mutex::new(Some(hier_trait)),
-                    wave_source: Mutex::new(None),
-                    time_table: Mutex::new(None),
-                    body_continuation: Mutex::new(Some(Box::new(header_result.body))),
-                    callback: Mutex::new(None),
-                    header_loaded: AtomicBool::new(true),
-                    body_loaded: AtomicBool::new(false),
-                })
+                backend
+                    .load_body()
+                    .map_err(|e| PyRuntimeError::new_err(e))?;
             }
-        } else {
-            // Nothing loaded - store path for later async loading
-            Arc::new(SharedState {
-                file_path: path,
-                hierarchy: Mutex::new(None),
-                wave_source: Mutex::new(None),
-                time_table: Mutex::new(None),
-                body_continuation: Mutex::new(None),
-                callback: Mutex::new(None),
-                header_loaded: AtomicBool::new(false),
-                body_loaded: AtomicBool::new(false),
-            })
-        };
+        }
 
-        // Create channel for async requests
+        // Create shared state
+        let shared_state = Arc::new(SharedState {
+            file_path: path.clone(),
+            backend: Mutex::new(Some(backend)),
+            callback: Mutex::new(None),
+        });
+
+        // Create async worker
         let (sender, receiver) = unbounded();
-
-        // Spawn worker thread
         let shared_state_clone = shared_state.clone();
         let worker_handle = thread::spawn(move || {
             async_worker(receiver, shared_state_clone);
@@ -911,68 +724,52 @@ impl Waveform {
 
     /// Load the waveform body if not already loaded
     fn load_body(&mut self) -> PyResult<()> {
-        // Check if body is already loaded
-        if self.shared_state.body_loaded.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-
-        // Get body continuation from shared state
-        let body_continuation = self
-            .shared_state
-            .body_continuation
-            .lock()
-            .unwrap()
-            .take()
-            .ok_or_else(|| {
-                PyRuntimeError::new_err("Body continuation already consumed or not available")
-            })?;
-
-        // Release GIL while reading body (heavy I/O operation)
-        let hierarchy = self.get_hierarchy_internal()?;
-        let body = Python::with_gil(|py| {
-            py.allow_threads(|| viewers::read_body(*body_continuation, &hierarchy, None))
+        // Release GIL while loading body (heavy I/O operation)
+        Python::with_gil(|py| {
+            py.allow_threads(|| {
+                // Lock backend only for the duration of the I/O operation
+                let mut backend_guard = self.shared_state.backend.lock().unwrap();
+                let backend = backend_guard
+                    .as_mut()
+                    .ok_or_else(|| "Backend not initialized".to_string())?;
+                backend.load_body()
+            })
         })
-        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
-
-        // Update shared state
-        let time_table_trait: Arc<dyn traits::TimeTableTrait> =
-            Arc::new(wellen_backend::WellenTimeTable {
-                inner: Arc::new(body.time_table.clone()),
-            });
-        let wave_source_trait: Box<dyn traits::WaveSourceTrait> =
-            Box::new(wellen_backend::WellenSignalSource::new(
-                body.source,
-                Arc::new(wellen_backend::WellenTimeTable {
-                    inner: Arc::new(body.time_table),
-                }),
-            ));
-        *self.shared_state.wave_source.lock().unwrap() = Some(wave_source_trait);
-        *self.shared_state.time_table.lock().unwrap() = Some(time_table_trait);
-        self.shared_state.body_loaded.store(true, Ordering::Relaxed);
-
-        Ok(())
+        .map_err(|err| PyRuntimeError::new_err(err))
     }
 
     /// Check if the body has been loaded
     fn body_loaded(&self) -> bool {
-        // Check the shared state for async operations
-        self.shared_state.body_loaded.load(Ordering::Relaxed)
+        // Check backend for body load status
+        self.shared_state
+            .backend
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map_or(false, |b| b.body_loaded())
     }
 
     /// Check if the header has been loaded (for async API)
     fn header_loaded(&self) -> bool {
-        self.shared_state.header_loaded.load(Ordering::Relaxed)
+        // Check backend for header load status
+        self.shared_state
+            .backend
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map_or(false, |b| b.header_loaded())
     }
 
     /// Get the hierarchy (returns None if not loaded)
     #[getter]
     fn hierarchy(&self) -> Option<Hierarchy> {
         self.shared_state
-            .hierarchy
+            .backend
             .lock()
             .unwrap()
             .as_ref()
-            .map(|h| Hierarchy(h.clone()))
+            .and_then(|b| b.hierarchy())
+            .map(|h| Hierarchy(h))
     }
 
     /// Set the async callback for receiving events
@@ -1034,8 +831,13 @@ impl Waveform {
     /// Get the time table (returns None if body not loaded)
     #[getter]
     fn time_table(&self) -> Option<TimeTable> {
-        let shared_tt = self.shared_state.time_table.lock().unwrap();
-        shared_tt.as_ref().map(|tt| TimeTable(tt.clone()))
+        self.shared_state
+            .backend
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|b| b.time_table())
+            .map(|tt| TimeTable(tt))
     }
 
     /// Get signal by hierarchical path (accepts list of path segments).
@@ -1056,12 +858,11 @@ impl Waveform {
             return Err(PyRuntimeError::new_err("Path cannot be empty"));
         }
 
-        // Get hierarchy trait and find var
-        let hier_trait = self.shared_state
-            .hierarchy
-            .lock()
-            .unwrap()
-            .clone()
+        // Get hierarchy from backend
+        let backend_guard = self.shared_state.backend.lock().unwrap();
+        let hier_trait = backend_guard
+            .as_ref()
+            .and_then(|b| b.hierarchy())
             .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not loaded yet"))?;
 
         let var_trait = hier_trait
@@ -1073,6 +874,7 @@ impl Waveform {
 
         // Use the signal handle from the var to get the signal
         let handle = var_trait.signal_handle();
+        drop(backend_guard); // Release lock before calling get_signal_by_handle
         self.get_signal_by_handle(handle, py)
     }
 
@@ -1082,71 +884,32 @@ impl Waveform {
         vars: Vec<PyRef<'py, Var>>,
         py: Python<'py>,
     ) -> PyResult<Vec<Bound<'py, Signal>>> {
-        // Get hierarchy to determine backend type
-        let hier_trait = self.shared_state
-            .hierarchy
-            .lock()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not loaded yet"))?;
-
-        // Check if this is a JETS hierarchy
-        if let Some(jets_hier) = hier_trait.as_any().downcast_ref::<jets_backend::JetsHierarchy>() {
-            // For JETS, load signals synchronously (no multi-threading needed)
-            let mut result = Vec::new();
-            for var in vars.iter() {
-                let handle = var.0.signal_handle();
-
-                // Get record and generate signal
-                let record = jets_hier
-                    .get_record_by_handle(handle)
-                    .ok_or_else(|| PyRuntimeError::new_err(format!("No record found for handle {}", handle)))?;
-
-                let changes = jets_hier.generate_signal_changes(&record);
-
-                // changes is already Vec<(Time, SignalValue)>
-                let signal_trait: Arc<dyn traits::SignalTrait> =
-                    Arc::new(jets_backend::JetsSignal::new(changes));
-
-                let signal = Bound::new(
-                    py,
-                    Signal {
-                        backend: signal_trait,
-                    },
-                )?;
-                result.push(signal);
-            }
-            return Ok(result);
-        }
-
-        // Wellen multi-threaded loading
-        // Ensure body is loaded
-        self.load_body()?;
-
-        // Get wave_source and hierarchy from shared state
-        let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let wave_source = wave_source_guard
-            .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
-
-        let hierarchy_guard = self.shared_state.hierarchy.lock().unwrap();
-        let hierarchy = hierarchy_guard
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not available"))?;
-
-        // Convert vars to signal handles
+        // Convert vars to signal handles (before releasing GIL, as vars are Python objects)
         let handles: Vec<SignalHandle> = vars
             .iter()
             .map(|var| var.0.signal_handle())
             .collect();
 
-        // Release GIL while loading signals (heavy I/O operation)
-        // Use WaveSourceTrait to load signals
-        let signals =
-            py.allow_threads(|| wave_source.load_signals(&handles, &**hierarchy));
+        // Backend-agnostic path: release GIL and acquire backend lock only during signal loading
+        let signals = py.allow_threads(|| -> Result<Vec<(SignalHandle, Arc<dyn traits::SignalTrait>)>, String> {
+            let mut backend_guard = self.shared_state.backend.lock().unwrap();
+            let backend = backend_guard
+                .as_mut()
+                .ok_or_else(|| "Backend not initialized".to_string())?;
+
+            let hier_trait = backend
+                .hierarchy()
+                .ok_or_else(|| "Hierarchy not loaded yet".to_string())?;
+
+            let wave_source = backend
+                .wave_source()
+                .ok_or_else(|| "Wave source not available".to_string())?;
+
+            Ok(wave_source.load_signals(&handles, &*hier_trait))
+        })
+        .map_err(|e| PyRuntimeError::new_err(e))?;
 
         // Build a map from handle to Signal for quick lookup
-        // This ensures we return signals in the same order as requested
         let mut signal_map: std::collections::HashMap<usize, Arc<dyn traits::SignalTrait>> = signals
             .into_iter()
             .collect();
@@ -1164,7 +927,6 @@ impl Waveform {
                 )?;
                 result.push(signal);
             } else {
-                // If signal not found, return an error
                 return Err(PyRuntimeError::new_err("Signal not found for variable"));
             }
         }
@@ -1180,62 +942,24 @@ impl Waveform {
         handle: SignalHandle,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, Signal>> {
-        // Get hierarchy to determine backend type
-        let hier_trait = self.shared_state
-            .hierarchy
-            .lock()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not loaded yet"))?;
+        // Backend-agnostic path: release GIL and acquire backend lock only during signal loading
+        let mut signals = py.allow_threads(|| -> Result<Vec<(SignalHandle, Arc<dyn traits::SignalTrait>)>, String> {
+            let mut backend_guard = self.shared_state.backend.lock().unwrap();
+            let backend = backend_guard
+                .as_mut()
+                .ok_or_else(|| "Backend not initialized".to_string())?;
 
-        // Check if this is a JETS hierarchy
-        if let Some(jets_hier) = hier_trait.as_any().downcast_ref::<jets_backend::JetsHierarchy>() {
-            // Generate JETS signal
-            let record = jets_hier
-                .get_record_by_handle(handle)
-                .ok_or_else(|| PyRuntimeError::new_err(format!("No record found for handle {}", handle)))?;
+            let hier_trait = backend
+                .hierarchy()
+                .ok_or_else(|| "Hierarchy not loaded yet".to_string())?;
 
-            let changes = jets_hier.generate_signal_changes(&record);
+            let wave_source = backend
+                .wave_source()
+                .ok_or_else(|| "Wave source not available".to_string())?;
 
-            // changes is already Vec<(Time, SignalValue)>
-            let signal_trait: Arc<dyn traits::SignalTrait> =
-                Arc::new(jets_backend::JetsSignal::new(changes));
-
-            return Bound::new(
-                py,
-                Signal {
-                    backend: signal_trait,
-                },
-            );
-        }
-
-        // Wellen signal loading
-        // Ensure body is loaded
-        self.load_body()?;
-
-        // Convert 0-based handle to wellen SignalRef and get the var
-        let wellen_ref = wellen::SignalRef::from_index(handle)
-            .ok_or_else(|| PyRuntimeError::new_err(format!("Invalid handle {}", handle)))?;
-        let hierarchy = self.get_hierarchy_internal()?;
-        let _var_ref = hierarchy.get_var_by_signal_ref(wellen_ref).ok_or_else(|| {
-            PyRuntimeError::new_err(format!("No variable found for handle {}", handle))
-        })?;
-
-        // Load the signal
-        let mut wave_source_guard = self.shared_state.wave_source.lock().unwrap();
-        let wave_source = wave_source_guard
-            .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("Wave source not available"))?;
-
-        let hierarchy_guard = self.shared_state.hierarchy.lock().unwrap();
-        let hierarchy = hierarchy_guard
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not available"))?;
-
-        // Release GIL while loading signal (heavy I/O operation)
-        // Use WaveSourceTrait to load signal
-        let mut signals =
-            py.allow_threads(|| wave_source.load_signals(&[handle], &**hierarchy));
+            Ok(wave_source.load_signals(&[handle], &*hier_trait))
+        })
+        .map_err(|e| PyRuntimeError::new_err(e))?;
 
         if signals.is_empty() {
             return Err(PyRuntimeError::new_err("Failed to load signal"));
@@ -1243,36 +967,14 @@ impl Waveform {
 
         let (_handle, signal_trait) = signals.swap_remove(0);
 
-        let py_signal = Bound::new(
+        Bound::new(
             py,
             Signal {
                 backend: signal_trait,
             },
-        )?;
-
-        Ok(py_signal)
+        )
     }
 }
-
-impl Waveform {
-    /// Internal helper to get Wellen hierarchy - returns error if not loaded or not Wellen
-    fn get_hierarchy_internal(&self) -> PyResult<Arc<wellen::Hierarchy>> {
-        let hier_trait = self.shared_state
-            .hierarchy
-            .lock()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| PyRuntimeError::new_err("Hierarchy not loaded yet"))?;
-
-        // Downcast to WellenHierarchy
-        if let Some(wellen_hier) = hier_trait.as_any().downcast_ref::<wellen_backend::WellenHierarchy>() {
-            Ok(wellen_hier.inner().clone())
-        } else {
-            Err(PyRuntimeError::new_err("Operation only supported for Wellen hierarchies"))
-        }
-    }
-}
-
 
 #[pyclass]
 /// Result of querying a signal at a specific time.
@@ -1309,13 +1011,13 @@ impl Signal {
         py: Python<'a>,
     ) -> Option<Bound<'a, PyAny>> {
         self.backend.value_at_time(time)
-            .and_then(|val| convert_trait_signal_value_to_py(val, py).ok())
+            .and_then(|val| convert_signal_value_to_py(val, py).ok())
             .map(|py_val| py_val.into_bound(py))
     }
 
     pub fn value_at_idx<'a>(&self, idx: TimeTableIdx, py: Python<'a>) -> Option<Bound<'a, PyAny>> {
         self.backend.value_at_idx(idx)
-            .and_then(|val| convert_trait_signal_value_to_py(val, py).ok())
+            .and_then(|val| convert_signal_value_to_py(val, py).ok())
             .map(|py_val| py_val.into_bound(py))
     }
 
@@ -1356,7 +1058,7 @@ impl Signal {
         let result = self.backend.query_signal(query_time)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        let value = convert_trait_signal_value_to_py(result.value, py).ok();
+        let value = convert_signal_value_to_py(result.value, py).ok();
 
         Bound::new(
             py,
@@ -1426,7 +1128,7 @@ impl SignalChangeIter {
         let (time, value) = slf.changes[slf.index].clone();
         slf.index += 1;
 
-        convert_trait_signal_value_to_py(value, python).ok()
+        convert_signal_value_to_py(value, python).ok()
             .map(|py_val| (time, py_val.into_bound(python)))
     }
 

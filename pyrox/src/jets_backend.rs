@@ -735,3 +735,92 @@ impl WaveSourceTrait for JetsSignalSource {
         loaded_signals
     }
 }
+
+// === WaveformTrait Implementation ===
+
+/// JETS waveform backend implementing WaveformTrait
+pub struct JetsWaveform {
+    path: String,
+    _opts: wellen::LoadOptions, // Unused by JETS, but kept for API consistency
+
+    // State management
+    hierarchy: Option<Arc<JetsHierarchy>>,
+    time_table: Option<Arc<JetsTimeTable>>,
+    wave_source: Option<JetsSignalSource>,
+
+    // Loading status (both set to true after load_header)
+    loaded: bool,
+}
+
+impl JetsWaveform {
+    /// Create a new JETS waveform backend.
+    ///
+    /// IMPORTANT: This constructor performs NO I/O and returns immediately.
+    /// All file parsing is deferred to load_header() to ensure non-blocking
+    /// construction for GUI applications.
+    pub fn new(path: String, opts: wellen::LoadOptions) -> Self {
+        Self {
+            path,
+            _opts: opts,
+            hierarchy: None,
+            time_table: None,
+            wave_source: None,
+            loaded: false,
+        }
+    }
+}
+
+impl WaveformTrait for JetsWaveform {
+    fn hierarchy(&self) -> Option<Arc<dyn HierarchyTrait>> {
+        self.hierarchy
+            .as_ref()
+            .map(|h| h.clone() as Arc<dyn HierarchyTrait>)
+    }
+
+    fn time_table(&self) -> Option<Arc<dyn TimeTableTrait>> {
+        self.time_table
+            .as_ref()
+            .map(|tt| tt.clone() as Arc<dyn TimeTableTrait>)
+    }
+
+    fn load_header(&mut self) -> Result<(), String> {
+        if self.loaded {
+            return Ok(()); // Idempotent
+        }
+
+        // JETS loads ENTIRE FILE in load_header() (all data in one shot)
+        // This is the ONLY place where rjets::parse_trace() is called
+        let trace_data = rjets::parse_trace(&self.path)
+            .map_err(|e| format!("Failed to load JETS file: {}", e))?;
+
+        let jets_hier = Arc::new(JetsHierarchy::new(Arc::new(trace_data)));
+        let max_time = jets_hier.get_max_time();
+
+        self.hierarchy = Some(jets_hier.clone());
+        self.time_table = Some(Arc::new(JetsTimeTable::new(max_time)));
+        self.wave_source = Some(JetsSignalSource::new(jets_hier));
+        self.loaded = true;
+
+        Ok(())
+    }
+
+    fn header_loaded(&self) -> bool {
+        self.loaded
+    }
+
+    fn load_body(&mut self) -> Result<(), String> {
+        // JETS loads everything in load_header(), so this is a no-op
+        // Returns Ok immediately (no error if header not loaded - backend decision)
+        Ok(())
+    }
+
+    fn body_loaded(&self) -> bool {
+        self.loaded
+    }
+
+    fn wave_source(&mut self) -> Option<&mut dyn WaveSourceTrait> {
+        self.wave_source
+            .as_mut()
+            .map(|ws| ws as &mut dyn WaveSourceTrait)
+    }
+}

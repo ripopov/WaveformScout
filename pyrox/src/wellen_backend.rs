@@ -2,6 +2,8 @@
 
 use crate::convert::Mappable;
 use crate::traits::*;
+use std::fs::File;
+use std::io::BufReader;
 use std::sync::Arc;
 use wellen;
 
@@ -662,6 +664,127 @@ impl WaveSourceTrait for WellenSignalSource {
                 (sig_ref.index(), signal_trait)
             })
             .collect()
+    }
+}
+
+// === WaveformTrait Implementation ===
+
+/// Wellen waveform backend implementing WaveformTrait
+pub struct WellenWaveform {
+    path: String,
+    opts: wellen::LoadOptions,
+
+    // State management
+    hierarchy: Option<Arc<WellenHierarchy>>,
+    time_table: Option<Arc<WellenTimeTable>>,
+    wave_source: Option<WellenSignalSource>,
+
+    // Internal Wellen state
+    body_continuation: Option<wellen::viewers::ReadBodyContinuation<BufReader<File>>>,
+
+    // Loading status
+    header_loaded: bool,
+    body_loaded: bool,
+}
+
+impl WellenWaveform {
+    /// Create a new Wellen waveform backend.
+    ///
+    /// IMPORTANT: This constructor performs NO I/O and returns immediately.
+    /// All file parsing is deferred to load_header() / load_body() to ensure
+    /// non-blocking construction for GUI applications.
+    pub fn new(path: String, opts: wellen::LoadOptions) -> Self {
+        Self {
+            path,
+            opts,
+            hierarchy: None,
+            time_table: None,
+            wave_source: None,
+            body_continuation: None,
+            header_loaded: false,
+            body_loaded: false,
+        }
+    }
+}
+
+impl WaveformTrait for WellenWaveform {
+    fn hierarchy(&self) -> Option<Arc<dyn HierarchyTrait>> {
+        self.hierarchy
+            .as_ref()
+            .map(|h| h.clone() as Arc<dyn HierarchyTrait>)
+    }
+
+    fn time_table(&self) -> Option<Arc<dyn TimeTableTrait>> {
+        self.time_table
+            .as_ref()
+            .map(|tt| tt.clone() as Arc<dyn TimeTableTrait>)
+    }
+
+    fn load_header(&mut self) -> Result<(), String> {
+        if self.header_loaded {
+            return Ok(()); // Idempotent
+        }
+
+        let header_result = wellen::viewers::read_header_from_file(&self.path, &self.opts)
+            .map_err(|e| e.to_string())?;
+
+        self.hierarchy = Some(Arc::new(WellenHierarchy::new(Arc::new(
+            header_result.hierarchy,
+        ))));
+        self.body_continuation = Some(header_result.body);
+        self.header_loaded = true;
+
+        Ok(())
+    }
+
+    fn header_loaded(&self) -> bool {
+        self.header_loaded
+    }
+
+    fn load_body(&mut self) -> Result<(), String> {
+        if self.body_loaded {
+            return Ok(()); // Idempotent
+        }
+
+        if !self.header_loaded {
+            return Err("Header must be loaded before body".to_string());
+        }
+
+        let body_cont = self
+            .body_continuation
+            .take()
+            .ok_or_else(|| "Body continuation not available".to_string())?;
+
+        let hierarchy = self
+            .hierarchy
+            .as_ref()
+            .ok_or_else(|| "Hierarchy not available".to_string())?;
+
+        let body = wellen::viewers::read_body(body_cont, hierarchy.inner(), None)
+            .map_err(|e| e.to_string())?;
+
+        self.time_table = Some(Arc::new(WellenTimeTable {
+            inner: Arc::new(body.time_table.clone()),
+        }));
+        self.wave_source = Some(WellenSignalSource::new(
+            body.source,
+            Arc::new(WellenTimeTable {
+                inner: Arc::new(body.time_table),
+            }),
+        ));
+        self.body_loaded = true;
+
+        Ok(())
+    }
+
+    fn body_loaded(&self) -> bool {
+        self.body_loaded
+    }
+
+    fn wave_source(&mut self) -> Option<&mut dyn WaveSourceTrait> {
+        self.wave_source
+            .as_mut()
+            .map(|ws| ws as &mut dyn WaveSourceTrait)
     }
 }
 
