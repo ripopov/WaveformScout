@@ -918,7 +918,7 @@ class WaveScoutMainWindow(FramelessWindow):
             self,
             "Open Waveform File",
             "",
-            "Waveform Files (*.vcd *.fst *.ghw);;VCD Files (*.vcd);;FST Files (*.fst);;GHDL Files (*.ghw);;All Files (*)"
+            "Waveform Files (*.vcd *.fst *.ghw *.jets);;VCD Files (*.vcd);;FST Files (*.fst);;GHDL Files (*.ghw);;JETS Files (*.jets);;All Files (*)"
         )
         
         if file_path:
