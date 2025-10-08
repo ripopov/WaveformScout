@@ -51,14 +51,8 @@ def test_copy_paste_signals(qtbot, tmp_path):
     qtbot.addWidget(window)
     
     # Wait for file to load - may need more time for async loading
-    max_wait = 5000  # 5 seconds max
-    elapsed = 0
-    while elapsed < max_wait:
-        QTest.qWait(200)
-        elapsed += 200
-        if window.wave_widget.session is not None:
-            break
-    
+    qtbot.waitUntil(lambda: window.wave_widget.session is not None, timeout=5000)
+
     assert window.wave_widget.session is not None, "Session should be loaded"
     assert window.wave_widget.session.waveform_files, "WaveformDB should be loaded"
     
@@ -79,8 +73,8 @@ def test_copy_paste_signals(qtbot, tmp_path):
     # We need at least 3 signals for the test to work properly
     assert len(signals_added) >= 3, f"Should find at least 3 signals, found {len(signals_added)}"
 
-    # Process events and wait a bit
-    QTest.qWait(100)
+    # Process events to ensure signals are fully added
+    QApplication.processEvents()
 
     # Verify signals were added (session might have more signals than we added)
     num_signals = len(session.root_nodes)  # Use actual count in session
@@ -135,18 +129,12 @@ def test_copy_paste_signals(qtbot, tmp_path):
     # Paste (simulate Ctrl+V)
     names_view._paste_nodes()
 
-    # Wait for model to update - in GUI mode, events need to propagate through the event loop
-    QTest.qWait(200)  # Increased wait time for GUI mode
+    # Wait for paste to complete - model should update with new nodes
+    expected_after_paste = num_signals + 3
     QApplication.processEvents()  # Process events to ensure paste completes
-
-    # Wait for model to emit layoutChanged if needed
-    if hasattr(model, 'layoutChanged'):
-        # Force another round of event processing to handle model updates
-        QApplication.processEvents()
-        QTest.qWait(100)
+    qtbot.waitUntil(lambda: len(session.root_nodes) == expected_after_paste, timeout=1000)
 
     # Verify we now have original + 3 pasted
-    expected_after_paste = num_signals + 3
     assert len(session.root_nodes) == expected_after_paste, f"Should have {expected_after_paste} signals after first paste, got {len(session.root_nodes)}"
     
     # Step 5: Second paste - paste at the beginning
@@ -165,7 +153,7 @@ def test_copy_paste_signals(qtbot, tmp_path):
 
     # Copy again to ensure clipboard has data
     names_view._copy_selected_nodes()
-    QTest.qWait(200)  # Increased wait time for clipboard to stabilize
+    QTest.qWait(50)  # Brief wait for clipboard to stabilize
     QApplication.processEvents()
 
     # Verify clipboard has data (may fail in GUI mode due to Qt clipboard limitations)
@@ -177,7 +165,7 @@ def test_copy_paste_signals(qtbot, tmp_path):
 
     # Force model to update after first paste
     model.layoutChanged.emit()
-    QTest.qWait(200)  # Increased wait time
+    QTest.qWait(50)  # Brief wait for model update
     QApplication.processEvents()
 
     # Select the first signal as insertion point for second paste
@@ -205,17 +193,12 @@ def test_copy_paste_signals(qtbot, tmp_path):
             # Insert nodes using controller directly
             controller.insert_nodes(nodes_to_paste, after_id)
 
-    # Wait for model to update - in GUI mode, events need to propagate through the event loop
-    QTest.qWait(300)  # Give more time for the second operation
-    QApplication.processEvents()
-
-    # Force another round of event processing
-    if hasattr(model, 'layoutChanged'):
-        QApplication.processEvents()
-        QTest.qWait(100)
+    # Wait for second paste to complete
+    expected_final = expected_after_paste + 3
+    QApplication.processEvents()  # Process events to ensure paste completes
+    qtbot.waitUntil(lambda: len(session.root_nodes) == expected_final, timeout=1000)
 
     # Verify we now have original + 6 (3 pasted twice)
-    expected_final = expected_after_paste + 3
     assert len(session.root_nodes) == expected_final, f"Should have {expected_final} signals after second paste, got {len(session.root_nodes)}"
     
     # Step 6: Save session to JSON
@@ -297,14 +280,8 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
     qtbot.addWidget(window)
     
     # Wait for file to load - may need more time for async loading
-    max_wait = 5000  # 5 seconds max
-    elapsed = 0
-    while elapsed < max_wait:
-        QTest.qWait(200)
-        elapsed += 200
-        if window.wave_widget.session is not None:
-            break
-    
+    qtbot.waitUntil(lambda: window.wave_widget.session is not None, timeout=5000)
+
     assert window.wave_widget.session is not None, "Session should be loaded"
     
     # Add signals using split mode - request more to ensure we get enough
@@ -315,9 +292,9 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
         signals_added = add_signals_by_double_click_vars(window, 8)
 
     assert len(signals_added) >= 2, f"Need at least 2 signals, got {len(signals_added)}"
-    
-    QTest.qWait(100)
-    
+
+    QApplication.processEvents()
+
     session = window.wave_widget.session
     controller = window.wave_widget.controller
     names_view = window.wave_widget._names_view
@@ -330,8 +307,8 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
         session.root_nodes[:2],
         "Test Group"
     )
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+
     # Should now have fewer root nodes after grouping (2 signals moved into 1 group)
     assert len(session.root_nodes) < num_signals, f"Should have fewer than {num_signals} root nodes after grouping"
     expected_roots = len(session.root_nodes)  # Use actual count
@@ -351,8 +328,9 @@ def test_copy_paste_with_groups(qtbot, tmp_path):
     # Paste at end
     selection_model.clear()  # No selection means paste at end
     names_view._paste_nodes()
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+    qtbot.waitUntil(lambda: len(session.root_nodes) == expected_roots + 1, timeout=1000)
+
     # Should now have expected_roots + 1 (original nodes + pasted group)
     assert len(session.root_nodes) == expected_roots + 1, f"Should have {expected_roots + 1} root nodes after paste, got {len(session.root_nodes)}"
     
@@ -395,14 +373,8 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     qtbot.addWidget(window)
     
     # Wait for file to load
-    max_wait = 5000
-    elapsed = 0
-    while elapsed < max_wait:
-        QTest.qWait(200)
-        elapsed += 200
-        if window.wave_widget.session is not None:
-            break
-    
+    qtbot.waitUntil(lambda: window.wave_widget.session is not None, timeout=5000)
+
     assert window.wave_widget.session is not None, "Session should be loaded"
     
     # Add signals using split mode - we need at least 4 for nested groups
@@ -417,9 +389,9 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
         pytest.skip(f"Need at least 4 signals for nested groups test, only got {len(signals_added)}")
 
     assert len(signals_added) >= 4, f"Need at least 4 signals, got {len(signals_added)}"
-    
-    QTest.qWait(100)
-    
+
+    QApplication.processEvents()
+
     session = window.wave_widget.session
     controller = window.wave_widget.controller
     names_view = window.wave_widget._names_view
@@ -431,8 +403,8 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
         session.root_nodes[:2],
         "Group 1"
     )
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+
     # After first grouping: num_signals - 2 + 1 = num_signals - 1 root nodes
     
     # Create second group from the next 2 signals (now at positions 1-2 since first 2 were grouped)
@@ -440,8 +412,8 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
         session.root_nodes[1:3],
         "Group 2"
     )
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+
     # After second grouping: num_signals - 1 - 2 + 1 = num_signals - 2 root nodes
     
     # Now create a parent group containing both groups (they should be at positions 0-1)
@@ -449,8 +421,8 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
         session.root_nodes[:2],  # The two groups
         "Parent Group"
     )
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+
     # After all grouping, we should have reduced the number of root nodes
     # Just verify we have fewer root nodes than we started with
     assert len(session.root_nodes) < num_signals, f"Should have fewer than {num_signals} root nodes after grouping, got {len(session.root_nodes)}"
@@ -485,8 +457,9 @@ def test_copy_paste_nested_groups(qtbot, tmp_path):
     # Paste the nested group
     selection_model.clear()
     names_view._paste_nodes()
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+    qtbot.waitUntil(lambda: len(session.root_nodes) == expected_roots + 1, timeout=1000)
+
     # Should now have expected_roots + 1 (we pasted the parent group)
     assert len(session.root_nodes) == expected_roots + 1, f"Should have {expected_roots + 1} root nodes after paste, got {len(session.root_nodes)}"
     
@@ -566,14 +539,8 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
     qtbot.addWidget(window)
     
     # Wait for file to load
-    max_wait = 5000
-    elapsed = 0
-    while elapsed < max_wait:
-        QTest.qWait(200)
-        elapsed += 200
-        if window.wave_widget.session is not None:
-            break
-    
+    qtbot.waitUntil(lambda: window.wave_widget.session is not None, timeout=5000)
+
     assert window.wave_widget.session is not None, "Session should be loaded"
     
     # Add more signals - apb_sim.vcd has 16 unique signals, so we should be able to get at least 5
@@ -585,9 +552,9 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
 
     # We need at least 3 signals for the test logic to work
     assert len(signals_added) >= 3, f"Need at least 3 signals, got {len(signals_added)}"
-    
-    QTest.qWait(100)
-    
+
+    QApplication.processEvents()
+
     session = window.wave_widget.session
     controller = window.wave_widget.controller
     names_view = window.wave_widget._names_view
@@ -597,8 +564,8 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
         session.root_nodes[1:3],
         "Mixed Group"
     )
-    QTest.qWait(100)
-    
+    QApplication.processEvents()
+
     # Now we have: signal0, group(signal1, signal2), and remaining signals
     # Should have fewer nodes after grouping
     expected_nodes = len(session.root_nodes)  # Use actual count
@@ -634,10 +601,11 @@ def test_copy_paste_mixed_selection(qtbot, tmp_path):
     # Paste at end
     selection_model.clear()
     names_view._paste_nodes()
-    QTest.qWait(100)
-    
-    # Should now have expected_nodes + num_selected root nodes
     expected_after_paste = expected_nodes + num_selected
+    QApplication.processEvents()
+    qtbot.waitUntil(lambda: len(session.root_nodes) == expected_after_paste, timeout=1000)
+
+    # Should now have expected_nodes + num_selected root nodes
     assert len(session.root_nodes) == expected_after_paste, f"Should have {expected_after_paste} root nodes after paste, got {len(session.root_nodes)}"
     
     # Verify we have at least one group in the pasted nodes
