@@ -379,7 +379,7 @@ def test_jets_get_signal_from_nested_path():
 
 
 def test_jets_load_signals_multithreaded():
-    """Test loading multiple signals using load_signals_multithreaded()."""
+    """Test loading multiple signals using load_signals()."""
     jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
     wf = pyrox.Waveform(str(jets_file))
     hier = wf.hierarchy
@@ -407,7 +407,7 @@ def test_jets_load_signals_multithreaded():
         pytest.skip("Not enough vars to test multithreaded loading")
 
     # Load signals
-    signals = wf.load_signals_multithreaded(vars_to_load)
+    signals = wf.load_signals(vars_to_load)
     assert len(signals) == len(vars_to_load)
 
     # Verify each signal
@@ -418,7 +418,7 @@ def test_jets_load_signals_multithreaded():
 
 
 def test_jets_load_signals_preserves_order():
-    """Test that load_signals_multithreaded preserves input order."""
+    """Test that load_signals preserves input order."""
     jets_file = Path(__file__).parent.parent / "jets" / "gpu_sim.jets"
     wf = pyrox.Waveform(str(jets_file))
     hier = wf.hierarchy
@@ -442,7 +442,7 @@ def test_jets_load_signals_preserves_order():
         pytest.skip("Not enough vars to test order preservation")
 
     # Load signals
-    signals = wf.load_signals_multithreaded(vars_to_load)
+    signals = wf.load_signals(vars_to_load)
 
     # Verify order is preserved by checking signal content
     for i, signal in enumerate(signals):

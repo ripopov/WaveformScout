@@ -431,7 +431,7 @@ class WaveformDB:
         if not self.hierarchy:
             return None
         # Use the new Rust method to get var by signal ref
-        pyrox_var = self.hierarchy.get_var_by_signal_ref(handle)  # type: ignore[attr-defined]
+        pyrox_var = self.hierarchy.get_var_by_signal_ref(handle)
         if pyrox_var is None:
             return None
         return Var(pyrox_var)

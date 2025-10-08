@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use rjets::{parse_trace, TraceData, TraceRecord, TraceAnnotation, TraceEvent, TraceHeader};
+use rjets::{parse_trace, TraceData, TraceRecord, TraceEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -153,20 +153,21 @@ impl Record {
 }
 
 /// Convert serde_json::Value to Python object
+#[allow(deprecated)]
 fn python_from_json(py: Python, value: &serde_json::Value) -> PyResult<PyObject> {
     match value {
         serde_json::Value::Null => Ok(py.None()),
-        serde_json::Value::Bool(b) => Ok(b.to_object(py)),
+        serde_json::Value::Bool(b) => Ok(b.into_py(py)),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(i.to_object(py))
+                Ok(i.into_py(py))
             } else if let Some(f) = n.as_f64() {
-                Ok(f.to_object(py))
+                Ok(f.into_py(py))
             } else {
                 Ok(py.None())
             }
         }
-        serde_json::Value::String(s) => Ok(s.to_object(py)),
+        serde_json::Value::String(s) => Ok(s.into_py(py)),
         serde_json::Value::Array(arr) => {
             let list = PyList::empty(py);
             for item in arr {
@@ -249,6 +250,7 @@ impl JetsHierarchy {
         self.record_id_to_handle.get(id).copied()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn create_record_wrapper(&self, record: &TraceRecord) -> Record {
         Record {
             inner: Arc::new(record.clone()),
@@ -286,10 +288,12 @@ impl JetsHierarchy {
         changes
     }
 
+    #[allow(dead_code)]
     pub(crate) fn file_format(&self) -> &str {
         "JETS"
     }
 
+    #[allow(dead_code)]
     pub(crate) fn timescale_str(&self) -> String {
         "1ps".to_string()
     }

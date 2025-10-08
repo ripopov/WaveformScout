@@ -45,6 +45,7 @@ enum AsyncRequest {
     LoadHeader(LoadOptions),
     LoadBody,
     LoadSignals(Vec<SignalHandle>),
+    #[allow(dead_code)]
     Shutdown,
 }
 
@@ -352,7 +353,7 @@ impl Hierarchy {
     fn timescale(&self) -> Option<Timescale> {
         match &self.0 {
             HierarchyBackend::Wellen(hier) => hier.timescale().map(Timescale),
-            HierarchyBackend::Jets(jets) => {
+            HierarchyBackend::Jets(_jets) => {
                 // JETS uses picoseconds
                 Some(Timescale(wellen::Timescale::new(1, wellen::TimescaleUnit::PicoSeconds)))
             }
@@ -609,6 +610,7 @@ pub(crate) enum VarBackend {
     Jets {
         record: Arc<rjets::TraceRecord>,
         signal_handle: usize,
+        #[allow(dead_code)]
         clock_freq_mhz: f64,
     },
 }
@@ -1140,6 +1142,7 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
 }
 
 /// Helper to emit events to Python callback
+#[allow(deprecated)]
 fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
     if let Some(callback) = shared_state.callback.lock().unwrap().as_ref() {
         Python::with_gil(|py| {
@@ -1192,7 +1195,7 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                                     },
                                 },
                             ) {
-                                let tuple = pyo3::types::PyTuple::new(py, &[handle.to_object(py), py_signal.to_object(py)]).unwrap();
+                                let tuple = pyo3::types::PyTuple::new(py, &[handle.into_py(py), py_signal.into_py(py)]).unwrap();
                                 py_list.append(tuple).ok();
                             }
                         }
@@ -1216,7 +1219,7 @@ fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
                                 },
                             },
                         ) {
-                            let tuple = pyo3::types::PyTuple::new(py, &[handle.to_object(py), py_signal.to_object(py)]).unwrap();
+                            let tuple = pyo3::types::PyTuple::new(py, &[handle.into_py(py), py_signal.into_py(py)]).unwrap();
                             py_list.append(tuple).ok();
                         }
                     }
@@ -1550,7 +1553,7 @@ impl Waveform {
                 None
             }
 
-            let (record, handle) = find_record_by_path(
+            let (record, _handle) = find_record_by_path(
                 jets_hier.top_records(),
                 &path_segments,
                 jets_hier,
@@ -1585,7 +1588,7 @@ impl Waveform {
     }
 
     /// Load multiple signals at once using multiple threads
-    fn load_signals_multithreaded<'py>(
+    fn load_signals<'py>(
         &mut self,
         vars: Vec<PyRef<'py, Var>>,
         py: Python<'py>,
@@ -1596,7 +1599,7 @@ impl Waveform {
             let mut result = Vec::new();
             for var in vars.iter() {
                 match &var.0 {
-                    VarBackend::Jets { record, signal_handle, .. } => {
+                    VarBackend::Jets { record, .. } => {
                         // Generate signal for this record
                         let changes = jets_hier.generate_signal_changes(record);
                         let signal = create_jets_signal(changes, py)?;
