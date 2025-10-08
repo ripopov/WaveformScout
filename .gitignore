@@ -77,3 +77,8 @@ dmypy.json
 !test_inputs/**/*.json
 snapshot.png
 *.png
+
+# Waveform files (add explicitly when needed)
+*.vcd
+*.fst
+*.7z
