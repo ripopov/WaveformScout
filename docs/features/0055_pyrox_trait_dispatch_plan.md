@@ -332,6 +332,52 @@ pub struct VarIndex {
     pub lsb: i64,
 }
 
+/// Annotation is a simple name/value tuple (kept lightweight for trace overlays)
+pub type Annotation = (String, String);
+
+/// Timed annotation couples a timestamp with its annotation payload
+pub type TimedAnnotation = (Time, Annotation);
+
+/// Domain error emitted by signal accessors before PyO3 conversion
+#[derive(Debug, thiserror::Error)]
+pub enum SignalError {
+    #[error("time {0} outside available range")]
+    OutOfRange(Time),
+    #[error("value format not supported by backend: {0}")]
+    UnsupportedFormat(&'static str),
+    #[error("backend error: {0}")]
+    Backend(String),
+}
+
+/// Backend-agnostic signal value representation
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignalValue {
+    Scalar(SignalScalar),
+    Vector(Vec<SignalScalar>),
+    Real(f64),
+    String(String),
+    EnumVariant { name: String, index: u32 },
+    Opaque(Vec<u8>),
+    Unknown,
+}
+
+/// Individual scalar value used inside vectors/bitfields
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalScalar {
+    Zero,
+    One,
+    X,
+    Z,
+}
+
+/// Result returned by `query_signal` before PyO3 wrapping
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    pub value: SignalValue,
+    pub actual_time: Time,
+    pub next_change: Option<Time>,
+}
+
 // === HierarchyTrait ===
 pub trait HierarchyTrait: Send + Sync {
     /// Return all variables in the hierarchy
@@ -415,25 +461,23 @@ pub trait VarTrait: Send + Sync {
 /// their own time representation (indexed vs absolute timestamps).
 pub trait SignalTrait: Send + Sync {
     /// Get signal value at a specific time
-    fn value_at_time(&self, time: Time) -> Option<Py<PyAny>>;
+    fn value_at_time(&self, time: Time) -> Option<SignalValue>;
 
-    /// Get signal value at time table index
-    /// For backends without indexed time tables, this may convert index to time first
-    fn value_at_idx(&self, idx: TimeTableIdx) -> Option<Py<PyAny>>;
+    /// Get signal value at time table index (converted to time internally if needed)
+    fn value_at_idx(&self, idx: TimeTableIdx) -> Option<SignalValue>;
 
-    /// Iterator over all signal changes (time, value) pairs
-    /// Times are in timescale units
-    fn all_changes(&self) -> Box<dyn Iterator<Item = (Time, Py<PyAny>)> + Send + Sync>;
+    /// Iterator over all signal changes (time, value) pairs in timescale units
+    fn all_changes(&self) -> Box<dyn Iterator<Item = (Time, SignalValue)> + Send + Sync>;
 
     /// Iterator over changes after a specific time
     fn all_changes_after(&self, start_time: Time)
-        -> Box<dyn Iterator<Item = (Time, Py<PyAny>)> + Send + Sync>;
+        -> Box<dyn Iterator<Item = (Time, SignalValue)> + Send + Sync>;
 
     /// Query signal at time (returns value, actual_time, next transition info)
-    fn query_signal(&self, query_time: Time) -> PyResult<QueryResult>;
+    fn query_signal(&self, query_time: Time) -> Result<QueryResult, SignalError>;
 
     /// Compute global min/max range for analog signals
-    fn get_global_range(&self, data_format: u8, bit_width: u32) -> PyResult<(f64, f64)>;
+    fn get_global_range(&self, data_format: u8, bit_width: u32) -> Result<(f64, f64), SignalError>;
 
     /// Signal equality (same underlying signal)
     fn signal_eq(&self, other: &dyn SignalTrait) -> bool;
@@ -467,38 +511,23 @@ pub trait TimeTableTrait: Send + Sync {
 /// All time values are in the timescale units defined by HierarchyTrait::timescale().
 /// Backends convert their native time representation (e.g., clock cycles) internally.
 pub trait RecordTrait: Send + Sync {
-    /// Unique identifier for this record
-    fn id(&self) -> String;
-
-    /// Parent record ID (if nested)
-    fn parent_id(&self) -> Option<String>;
-
     /// Record type classification (e.g., "HostProgram", "KernelExecution", "Transaction")
     fn record_type(&self) -> String;
-
-    /// Start time in timescale units (from HierarchyTrait::timescale())
-    fn start_time(&self) -> Time;
 
     /// Record name (human-readable)
     fn name(&self) -> String;
 
-    /// Associated metadata as JSON-compatible Python object
-    fn data(&self) -> Option<Py<PyDict>>;
+    /// Start time in timescale units (from HierarchyTrait::timescale())
+    fn start_time(&self) -> Time;
 
     /// End time in timescale units (None if ongoing or unbounded)
     fn end_time(&self) -> Option<Time>;
 
-    /// Duration in timescale units (derived from end_time - start_time)
-    fn duration(&self) -> Option<Time>;
+    /// Annotations attached to this record (name/value pairs)
+    fn annotations(&self) -> Vec<Annotation>;
 
-    /// Annotations attached to this record
-    fn annotations(&self) -> Vec<Py<PyDict>>;
-
-    /// Events occurring within this record's time range
-    fn events(&self) -> Vec<Py<PyDict>>;
-
-    /// Child records (nested hierarchy)
-    fn children(&self) -> Vec<Box<dyn RecordTrait>>;
+    /// Events occurring within this record's time range (timed annotations)
+    fn events(&self) -> Vec<TimedAnnotation>;
 }
 ```
 
@@ -520,11 +549,12 @@ pub trait RecordTrait: Send + Sync {
     - `WellenSignal` stores time table reference (needed for indexed timestamps)
     - `JetsSignal` stores absolute timestamps (no time table needed)
   - PyO3 `Signal` wrapper just delegates to backend, no time table field needed
-- `PyAny` returns require `Python<'_>` GIL token → pass via thread-local or refactor to return raw data
+- Trait methods return `SignalValue` / `Annotation` structs; PyO3 conversion happens in wrapper layer (no GIL inside backends)
 - Iterator trait objects require `Box<dyn Iterator<...> + Send + Sync>`
 - `hier: &dyn HierarchyTrait` parameter avoids circular Arc dependencies
 - `RecordTrait` provides backend-agnostic interface for hierarchical events
 - Backends that don't support records (Wellen) return `None` from `ScopeTrait::record()`
+- Record metadata is represented via `Annotation` / `TimedAnnotation`; backends convert structured fields into name/value pairs when necessary
 
 ### 3.3 Backend Implementation Structure
 
@@ -553,14 +583,12 @@ pub struct WellenSignal {
 }
 
 impl SignalTrait for WellenSignal {
-    fn value_at_time(&self, time: Time) -> Option<Py<PyAny>> {
-        // Use time_table internally to resolve indices
-        // Convert Time → wellen::Time, query signal, return value
+    fn value_at_time(&self, time: Time) -> Option<SignalValue> {
+        // Use time_table internally to resolve indices and map to SignalValue
     }
 
-    fn all_changes(&self) -> Box<dyn Iterator<Item = (Time, Py<PyAny>)> + Send + Sync> {
-        // Iterate transitions, resolve time indices via time_table
-        // Return iterator of (Time, value) pairs
+    fn all_changes(&self) -> Box<dyn Iterator<Item = (Time, SignalValue)> + Send + Sync> {
+        // Iterate transitions, resolve time indices via time_table, map into SignalValue
     }
     // ...
 }
@@ -608,21 +636,21 @@ pub struct JetsVar {
 }
 
 pub struct JetsSignal {
-    changes: Arc<Vec<(Time, String)>>,  // Already converted to timescale units
+    changes: Arc<Vec<(Time, SignalValue)>>,
 }
 
 impl SignalTrait for JetsSignal {
-    fn value_at_time(&self, time: Time) -> Option<Py<PyAny>> {
+    fn value_at_time(&self, time: Time) -> Option<SignalValue> {
         // Find change at or before time in changes vector
         // No time table needed - changes have absolute timestamps
     }
 
-    fn value_at_idx(&self, idx: TimeTableIdx) -> Option<Py<PyAny>> {
+    fn value_at_idx(&self, idx: TimeTableIdx) -> Option<SignalValue> {
         // JETS doesn't use indexed time tables
         // Could return change at index, or None/error
     }
 
-    fn all_changes(&self) -> Box<dyn Iterator<Item = (Time, Py<PyAny>)> + Send + Sync> {
+    fn all_changes(&self) -> Box<dyn Iterator<Item = (Time, SignalValue)> + Send + Sync> {
         // Return iterator over changes (already have absolute times)
     }
     // ...
@@ -653,13 +681,6 @@ impl RecordTrait for JetsRecord {
     fn end_time(&self) -> Option<Time> {
         self.inner.end_clk.map(|clk| clock_to_timescale(clk, self.clock_freq_mhz))
     }
-
-    fn duration(&self) -> Option<Time> {
-        self.inner.duration.map(|dur| {
-            // Convert duration in clocks to timescale units
-            (dur as f64 * 1_000_000.0 / self.clock_freq_mhz) as Time
-        })
-    }
     // ... other methods
 }
 
@@ -675,6 +696,7 @@ fn clock_to_timescale(clk: i64, freq_mhz: f64) -> Time {
 - **Convert JETS clock cycles to timescale units internally** (during construction)
 - `generate_signal_changes()` converts clock cycles to `Time` (u64) in timescale units
 - `JetsRecord` implements `RecordTrait` with all times in timescale units (no `_clk` methods exposed)
+- `JetsRecord::events()` maps trace events into `TimedAnnotation` pairs (`(timestamp, (name, value))`)
 - Internal JETS structs can still store raw `TraceRecord` with clock cycles
 
 ### 3.4 PyO3 Wrapper Refactoring
@@ -1036,38 +1058,11 @@ poetry run python -m pytest tests/test_performance.py --benchmark-only
 
 ### 6.1 Python GIL and Trait Methods
 
-**Risk**: Trait methods that convert to Python objects (`Py<PyAny>`) require GIL token
+**Risk (Resolved)**: Earlier drafts allowed trait methods to return Python objects, which would have required holding the GIL inside backend implementations.
 
-**Current Code**:
-```rust
-fn value_at_time(&self, time: Time, py: Python<'_>) -> Option<Bound<'_, PyAny>>
-```
+**Issue**: Trait methods cannot expose `Python<'_>` lifetimes, and embedding GIL acquisition inside backends makes them harder to test.
 
-**Issue**: Trait methods can't have lifetime parameters (`Python<'_>`)
-
-**Mitigation Options**:
-
-1. **Return Raw Data** (Preferred):
-   ```rust
-   fn value_at_time(&self, time: Time) -> Option<SignalValue>;
-   // Convert to Python in PyO3 wrapper layer
-   ```
-
-2. **Thread-Local Python Token**:
-   ```rust
-   fn value_at_time(&self, time: Time) -> Option<Py<PyAny>> {
-       Python::with_gil(|py| { /* convert */ })
-   }
-   ```
-
-3. **Separate Conversion Trait**:
-   ```rust
-   trait ToPython {
-       fn to_python(&self, py: Python) -> Py<PyAny>;
-   }
-   ```
-
-**Chosen Strategy**: Option 1 (return raw data, convert in wrappers)
+**Final Mitigation**: Traits now return backend-neutral Rust values (`SignalValue`, `Annotation`). PyO3 wrappers acquire the GIL and perform conversions at the API boundary, keeping trait implementations purely Rust and testable without Python.
 
 ### 6.2 Wellen Lifetime Issues
 
@@ -1198,14 +1193,11 @@ enum SignalValue {
 - Pro: No GIL required in trait methods
 - Con: Extra conversion step in PyO3 wrapper
 
-**Option B**: Return Python objects (e.g., `Py<PyAny>`)
-```rust
-fn value_at_time(&self, time: Time) -> Option<Py<PyAny>>;
-```
-- Pro: Direct Python objects, no conversion
-- Con: Requires `Python::with_gil()` in trait method
+**Option B**: Return Python objects directly (via PyO3 `PyObject`)
+- Pro: No conversion layer in wrappers
+- Con: Requires hidden GIL handling inside traits and breaks pure-Rust testing
 
-**Recommendation**: Option A (raw data) - cleaner separation of concerns
+**Recommendation**: Option A (raw data) — adopted as the final design. All trait methods return Rust-native types and wrappers handle conversion.
 
 ### Q2: Should TimeTable be a method or a separate object?
 
@@ -1251,14 +1243,10 @@ trait HierarchyTrait {
 
 ## 10. Implementation Checklist
 
-### Phase 1: Trait Definitions and Wellen Backend
-- [ ] Create `pyrox/src/traits.rs` with all trait definitions:
-  - [ ] `HierarchyTrait`
-  - [ ] `ScopeTrait`
-  - [ ] `VarTrait`
-  - [ ] `SignalTrait`
-  - [ ] `TimeTableTrait`
-  - [ ] `RecordTrait`
+### Phase 1: Trait Definitions and Core Types
+- [ ] Define shared data types (`SignalValue`, `SignalScalar`, `SignalError`, `QueryResult`, `Annotation`, `TimedAnnotation`)
+- [ ] Ensure `thiserror` dependency is available in `pyrox/Cargo.toml`
+- [ ] Create `pyrox/src/traits.rs` with all trait definitions (`HierarchyTrait`, `ScopeTrait`, `VarTrait`, `SignalTrait`, `TimeTableTrait`, `RecordTrait`)
 - [ ] Create `pyrox/src/wellen_backend.rs`
 - [ ] Implement `WellenHierarchy: HierarchyTrait`
 - [ ] Implement `WellenScope: ScopeTrait` (returns `None` for `record()`)
