@@ -702,3 +702,36 @@ impl RecordTrait for JetsRecord {
         self
     }
 }
+
+// === WaveSourceTrait Implementation ===
+
+/// JETS signal source wrapper that implements WaveSourceTrait
+pub struct JetsSignalSource {
+    hierarchy: Arc<JetsHierarchy>,
+}
+
+impl JetsSignalSource {
+    pub fn new(hierarchy: Arc<JetsHierarchy>) -> Self {
+        Self { hierarchy }
+    }
+}
+
+impl WaveSourceTrait for JetsSignalSource {
+    fn load_signals(
+        &mut self,
+        handles: &[SignalHandle],
+        _hier: &dyn HierarchyTrait,
+    ) -> Vec<(SignalHandle, Arc<dyn SignalTrait>)> {
+        let mut loaded_signals = Vec::new();
+
+        for handle in handles {
+            if let Some(record) = self.hierarchy.get_record_by_handle(*handle) {
+                let changes = self.hierarchy.generate_signal_changes(&record);
+                let signal_trait: Arc<dyn SignalTrait> = Arc::new(JetsSignal::new(changes));
+                loaded_signals.push((*handle, signal_trait));
+            }
+        }
+
+        loaded_signals
+    }
+}

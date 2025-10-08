@@ -615,3 +615,53 @@ fn convert_wellen_value_to_float(
     }
 }
 
+// === WaveSourceTrait Implementation ===
+
+/// Wellen signal source wrapper that implements WaveSourceTrait
+pub struct WellenSignalSource {
+    source: wellen::SignalSource,
+    time_table: Arc<WellenTimeTable>,
+}
+
+impl WellenSignalSource {
+    pub fn new(source: wellen::SignalSource, time_table: Arc<WellenTimeTable>) -> Self {
+        Self { source, time_table }
+    }
+}
+
+impl WaveSourceTrait for WellenSignalSource {
+    fn load_signals(
+        &mut self,
+        handles: &[SignalHandle],
+        hier: &dyn HierarchyTrait,
+    ) -> Vec<(SignalHandle, Arc<dyn SignalTrait>)> {
+        // Downcast to get Wellen hierarchy
+        let wellen_hier = if let Some(wh) = hier.as_any().downcast_ref::<WellenHierarchy>() {
+            wh
+        } else {
+            return Vec::new();
+        };
+
+        // Convert handles to SignalRefs
+        let signal_refs: Vec<wellen::SignalRef> = handles
+            .iter()
+            .filter_map(|h| wellen::SignalRef::from_index(*h))
+            .collect();
+
+        // Batch load all signals
+        let loaded = self.source.load_signals(&signal_refs, wellen_hier.inner(), true);
+
+        // Convert to trait objects
+        loaded
+            .into_iter()
+            .map(|(sig_ref, wellen_signal)| {
+                let signal_trait: Arc<dyn SignalTrait> = Arc::new(WellenSignal {
+                    signal: Arc::new(wellen_signal),
+                    time_table: Arc::clone(&self.time_table),
+                });
+                (sig_ref.index(), signal_trait)
+            })
+            .collect()
+    }
+}
+

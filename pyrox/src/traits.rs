@@ -3,6 +3,8 @@
 //! This module defines pure virtual interfaces that abstract over different
 //! waveform backends (Wellen, JETS, VPD, etc.) without exposing backend-specific types.
 
+use std::sync::Arc;
+
 // === Type Aliases and Structs (Backend-Agnostic) ===
 
 /// Time in timescale units (as defined by HierarchyTrait::timescale())
@@ -107,7 +109,7 @@ pub trait HierarchyTrait: Send + Sync {
 
     fn file_format(&self) -> String;
 
-    /// Downcast to concrete type (for backend-specific operations)
+    /// Downcast to concrete type (needed for some internal operations)
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -207,7 +209,7 @@ pub trait SignalTrait: Send + Sync {
     /// Signal hash (for use in HashMap)
     fn signal_hash(&self) -> u64;
 
-    /// Downcast to concrete type (for backend-specific operations)
+    /// Downcast to concrete type (needed for signal equality checks)
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -229,7 +231,7 @@ pub trait TimeTableTrait: Send + Sync {
     /// Binary search for time (in timescale units)
     fn binary_search(&self, time: Time) -> Result<usize, usize>;
 
-    /// Downcast to concrete type (for backend-specific operations)
+    /// Downcast to concrete type (needed for some internal operations)
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -260,6 +262,20 @@ pub trait RecordTrait: Send + Sync {
     /// Events occurring within this record's time range (timed annotations)
     fn events(&self) -> Vec<TimedAnnotation>;
 
-    /// Downcast to concrete type (for backend-specific operations)
+    /// Downcast to concrete type (needed for conversions)
     fn as_any(&self) -> &dyn std::any::Any;
+}
+
+// === WaveSourceTrait ===
+
+/// Backend-agnostic signal loading interface.
+/// This trait abstracts the signal loading mechanism for different backends.
+pub trait WaveSourceTrait: Send + Sync {
+    /// Load signals for the given handles.
+    /// Returns a vector of (handle, signal) pairs for successfully loaded signals.
+    fn load_signals(
+        &mut self,
+        handles: &[SignalHandle],
+        hier: &dyn HierarchyTrait,
+    ) -> Vec<(SignalHandle, Arc<dyn SignalTrait>)>;
 }
