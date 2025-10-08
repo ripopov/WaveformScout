@@ -64,7 +64,8 @@ def test_jets_hierarchy():
     # Get Record object
     record = first_scope.record()
     assert record is not None
-    assert record.id == "host_prog"
+    assert record.name() == "flash_attention_fwd"  # Record name from gpu_sim.jets
+    assert record.record_type() == "HostProgram"
 
 
 def test_jets_hierarchy_navigation():
@@ -97,15 +98,12 @@ def test_jets_record_properties():
     record = top_scopes[0].record()
 
     # Test basic properties
-    assert isinstance(record.id, str)
-    assert record.parent_id is None
-    assert isinstance(record.record_type, str)
-    assert isinstance(record.clk, int)
-    assert isinstance(record.name, str)
+    assert isinstance(record.record_type(), str)
+    assert isinstance(record.name(), str)
 
     # Test time conversion
-    assert isinstance(record.start_time_ps(), int)
-    assert record.start_time_ps() >= 0
+    assert isinstance(record.start_time(), int)
+    assert record.start_time() >= 0
 
 
 def test_jets_annotations_and_events():
@@ -114,13 +112,13 @@ def test_jets_annotations_and_events():
     wf = pyrox.Waveform(str(jets_file))
     hier = wf.hierarchy
 
-    record = find_record_by_id(hier, "gte")
+    record = find_record_by_name(hier, "GTE_Engine")
     assert record is not None
 
     annotations = record.annotations()
     assert len(annotations) >= 3
 
-    annotation_names = [a["name"] for a in annotations]
+    annotation_names = [a.name for a in annotations]
     assert "GridDimensions" in annotation_names
 
 
@@ -167,14 +165,14 @@ def test_jets_signal_values_and_timestamps():
     wf = pyrox.Waveform(str(jets_file))
     hier = wf.hierarchy
 
-    record = find_record_by_id(hier, "inst_warp_tb_000_1_0x0000")
+    record = find_record_by_name(hier, "inst_warp_tb_000_1_0x0000")
     if record is None:
         pytest.skip("Test record not found")
 
     events = record.events()
     assert len(events) > 0
 
-    scope = find_scope_by_record_id(hier, "inst_warp_tb_000_1_0x0000")
+    scope = find_scope_by_record_name(hier, "inst_warp_tb_000_1_0x0000")
     assert scope is not None
 
     vars_list = list(scope.vars(hier))
@@ -233,10 +231,10 @@ def test_jets_time_conversion():
     wf = pyrox.Waveform(str(jets_file))
     hier = wf.hierarchy
 
-    record = find_record_by_id(hier, "host_prog")
+    record = find_record_by_name(hier, "flash_attention_fwd")
     assert record is not None
 
-    start_time = record.start_time_ps()
+    start_time = record.start_time()
     assert start_time >= 0
     # At 1830 MHz, clock period = 1_000_000 / 1830 ≈ 546.448 ps
     # Verify conversion is using picoseconds (should be > 1000 for any non-zero clock)
@@ -264,7 +262,7 @@ def test_jets_event_timestamps():
     wf = pyrox.Waveform(str(jets_file))
     hier = wf.hierarchy
 
-    record = find_record_by_id(hier, "inst_warp_tb_000_1_0x0000")
+    record = find_record_by_name(hier, "inst_warp_tb_000_1_0x0000")
     if record is None:
         pytest.skip("Test record not found")
 
@@ -273,9 +271,8 @@ def test_jets_event_timestamps():
         pytest.skip("No events")
 
     for event in events:
-        assert "clk" in event
-        assert isinstance(event["clk"], int)
-        assert event["clk"] > 0
+        assert isinstance(event.time, int)
+        assert event.time > 0
 
 
 # =============================================================================
@@ -462,7 +459,7 @@ def test_jets_signal_changes_complete():
     hier = wf.hierarchy
 
     # Find a record with events
-    record = find_record_by_id(hier, "inst_warp_tb_000_1_0x0000")
+    record = find_record_by_name(hier, "inst_warp_tb_000_1_0x0000")
     if record is None:
         pytest.skip("Test record not found")
 
@@ -471,15 +468,15 @@ def test_jets_signal_changes_complete():
         pytest.skip("No events in record")
 
     # Load signal
-    scope = find_scope_by_record_id(hier, "inst_warp_tb_000_1_0x0000")
+    scope = find_scope_by_record_name(hier, "inst_warp_tb_000_1_0x0000")
     vars_list = list(scope.vars(hier))
     signal = wf.get_signal_by_handle(vars_list[0].signal_handle())
 
     changes = list(signal.all_changes())
 
-    # Should have at least: initial Z + record start + N events + end Z (if record has end_clk)
+    # Should have at least: initial Z + record start + N events + end Z (if record has end_time)
     expected_min_changes = 2 + len(events)  # Z + record start + events
-    if record.end_clk is not None:
+    if record.end_time() is not None:
         expected_min_changes += 1  # + end Z
 
     assert len(changes) >= expected_min_changes
@@ -491,8 +488,8 @@ def test_jets_signal_changes_complete():
     # Second change should be record JSON
     record_time, record_value = changes[1]
     value_obj = json.loads(record_value)
-    assert "id" in value_obj
-    assert value_obj["id"] == record.id
+    assert "name" in value_obj
+    assert value_obj["name"] == record.name()
 
     # Subsequent changes should be events
     for i in range(2, min(len(changes), len(events) + 2)):
@@ -630,12 +627,12 @@ def test_jets_time_table_timestamps():
 
 # Helper functions (used by skipped tests)
 
-def find_record_by_id(hier: pyrox.Hierarchy, record_id: str):
-    """Helper to find record by ID in hierarchy."""
+def find_record_by_name(hier: pyrox.Hierarchy, record_name: str):
+    """Helper to find record by name in hierarchy."""
     def search_scope(scope):
         if scope.is_record():
             record = scope.record()
-            if record and record.id == record_id:
+            if record and record.name() == record_name:
                 return record
 
         for child_scope in scope.scopes(hier):
@@ -651,12 +648,12 @@ def find_record_by_id(hier: pyrox.Hierarchy, record_id: str):
     return None
 
 
-def find_scope_by_record_id(hier: pyrox.Hierarchy, record_id: str):
-    """Helper to find Scope wrapper for a Record by ID."""
+def find_scope_by_record_name(hier: pyrox.Hierarchy, record_name: str):
+    """Helper to find Scope wrapper for a Record by name."""
     def search_scope(scope):
         if scope.is_record():
             record = scope.record()
-            if record and record.id == record_id:
+            if record and record.name() == record_name:
                 return scope
 
         for child_scope in scope.scopes(hier):
@@ -792,9 +789,8 @@ def test_jets_wavescout_main_window_integration(qtbot):
     # Get the record and verify its properties
     record = first_scope.record()
     assert record is not None, "Should be able to retrieve Record object"
-    assert record.id == "host_prog", "First record ID should be 'host_prog' per gpu_sim.jets"
-    assert record.name == "flash_attention_fwd", "Record name should be 'flash_attention_fwd' per gpu_sim.jets"
-    assert record.record_type == "HostProgram", "Record type should be 'HostProgram'"
+    assert record.name() == "flash_attention_fwd", "Record name should be 'flash_attention_fwd' per gpu_sim.jets"
+    assert record.record_type() == "HostProgram", "Record type should be 'HostProgram'"
 
     # Verify child records are accessible
     child_scopes = list(first_scope.scopes(hier))
@@ -806,7 +802,8 @@ def test_jets_wavescout_main_window_integration(qtbot):
 
     child_record = first_child_scope.record()
     assert child_record is not None, "Should be able to retrieve child Record object"
-    assert child_record.parent_id == "host_prog", "Child's parent_id should reference root"
+    # Verify child has a name
+    assert len(child_record.name()) > 0, "Child record should have a name"
 
     # Test expandability in the UI - verify the model supports children
     if has_children:

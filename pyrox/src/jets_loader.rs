@@ -51,6 +51,57 @@ fn event_to_json(event: &TraceEvent) -> String {
     serde_json::to_string_pretty(&obj).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Annotation attached to a record (name/value pair)
+#[pyclass]
+#[derive(Clone)]
+pub struct Annotation {
+    name: String,
+    value: serde_json::Value,
+}
+
+#[pymethods]
+impl Annotation {
+    #[getter]
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[getter]
+    fn value(&self, py: Python) -> PyResult<PyObject> {
+        python_from_json(py, &self.value)
+    }
+}
+
+/// Timed annotation (event occurring within a record's time range)
+#[pyclass]
+#[derive(Clone)]
+pub struct TimedAnnotation {
+    name: String,
+    time: u64,
+    value: Option<serde_json::Value>,
+}
+
+#[pymethods]
+impl TimedAnnotation {
+    #[getter]
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[getter]
+    fn time(&self) -> u64 {
+        self.time
+    }
+
+    #[getter]
+    fn value(&self, py: Python) -> PyResult<PyObject> {
+        match &self.value {
+            Some(val) => python_from_json(py, val),
+            None => Ok(py.None()),
+        }
+    }
+}
+
 /// Python-exposed Record class
 #[pyclass]
 #[derive(Clone)]
@@ -61,94 +112,49 @@ pub struct Record {
 
 #[pymethods]
 impl Record {
-    #[getter]
-    fn id(&self) -> String {
-        self.inner.id.clone()
-    }
-
-    #[getter]
-    fn parent_id(&self) -> Option<String> {
-        self.inner.parent_id.clone()
-    }
-
-    #[getter]
+    /// Record type classification (e.g., "HostProgram", "KernelExecution", "Transaction")
     fn record_type(&self) -> String {
         self.inner.record_type.clone()
     }
 
-    #[getter]
-    fn clk(&self) -> i64 {
-        self.inner.clk
-    }
-
-    #[getter]
+    /// Record name (human-readable)
     fn name(&self) -> String {
         self.inner.name.clone()
     }
 
-    #[getter]
-    fn data(&self, py: Python) -> PyResult<PyObject> {
-        match &self.inner.data {
-            Some(value) => {
-                // Convert JSON value to Python dict/list/etc
-                python_from_json(py, value)
-            }
-            None => Ok(py.None()),
-        }
+    /// Start time in timescale units
+    fn start_time(&self) -> u64 {
+        clock_to_picoseconds(self.inner.clk, self.clock_freq_mhz) as u64
     }
 
-    #[getter]
-    fn end_clk(&self) -> Option<i64> {
-        self.inner.end_clk
+    /// End time in timescale units (None if ongoing or unbounded)
+    fn end_time(&self) -> Option<u64> {
+        self.inner.end_clk.map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz) as u64)
     }
 
-    #[getter]
-    fn duration(&self) -> Option<i64> {
-        self.inner.duration
-    }
-
-    fn annotations(&self, py: Python) -> PyResult<PyObject> {
-        let list = PyList::empty(py);
+    /// Annotations attached to this record (name/value pairs)
+    fn annotations(&self) -> Vec<Annotation> {
+        let mut result = Vec::new();
         for ann in &self.inner.annotations {
-            let dict = PyDict::new(py);
-            dict.set_item("name", &ann.name)?;
-            dict.set_item("data", python_from_json(py, &ann.data)?)?;
-            list.append(dict)?;
+            result.push(Annotation {
+                name: ann.name.clone(),
+                value: ann.data.clone(),
+            });
         }
-        Ok(list.into())
+        result
     }
 
-    fn events(&self, py: Python) -> PyResult<PyObject> {
-        let list = PyList::empty(py);
+    /// Events occurring within this record's time range (timed annotations)
+    fn events(&self) -> Vec<TimedAnnotation> {
+        let mut result = Vec::new();
         for evt in &self.inner.events {
-            let dict = PyDict::new(py);
-            dict.set_item("name", &evt.name)?;
-            dict.set_item("clk", evt.clk)?;
-            if let Some(data) = &evt.data {
-                dict.set_item("data", python_from_json(py, data)?)?;
-            } else {
-                dict.set_item("data", py.None())?;
-            }
-            list.append(dict)?;
+            result.push(TimedAnnotation {
+                name: evt.name.clone(),
+                time: clock_to_picoseconds(evt.clk, self.clock_freq_mhz) as u64,
+                value: evt.data.clone(),
+            });
         }
-        Ok(list.into())
-    }
-
-    fn children(&self) -> Vec<Record> {
-        self.inner.children.iter()
-            .map(|child| Record {
-                inner: Arc::new(child.clone()),
-                clock_freq_mhz: self.clock_freq_mhz,
-            })
-            .collect()
-    }
-
-    fn start_time_ps(&self) -> i64 {
-        clock_to_picoseconds(self.inner.clk, self.clock_freq_mhz)
-    }
-
-    fn end_time_ps(&self) -> Option<i64> {
-        self.inner.end_clk.map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz))
+        result
     }
 }
 

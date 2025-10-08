@@ -87,6 +87,8 @@ fn pyrox(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<QueryResult>()?;
     m.add_class::<TimeTable>()?;
     m.add_class::<jets_loader::Record>()?;
+    m.add_class::<jets_loader::Annotation>()?;
+    m.add_class::<jets_loader::TimedAnnotation>()?;
     // m.add_class::<design_tree_model::PyDesignTreeModel>()?;  // Removed - DesignTreeModel no longer used
 
     // Export SignalHandle as a type alias (using the int type object)
