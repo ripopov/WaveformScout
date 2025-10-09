@@ -7,10 +7,16 @@ description: Commit staged changes to git following project conventions
 Please commit the currently staged changes to git following the existing commit message conventions used in this repository.
 
 Instructions:
-1. First, run `git status` and `git diff --staged` to see what changes are staged
-2. Analyze the changes to understand what they accomplish
-3. Create a descriptive commit message following the project's conventions (see below)
-4. Execute the commit with the appropriate message
+1. First, run `git status` to see the current state of the repository
+2. If there are unstaged changes that appear to be from recent work:
+   - Check if they are related to the current task/conversation
+   - Stage only the relevant files explicitly (use `git add <file>` for specific files)
+   - NEVER use `git add -A` blindly - be selective about what to stage
+   - If unsure whether to stage a file, ask the user first
+3. Run `git diff --staged` to see what changes will be committed
+4. Analyze the changes to understand what they accomplish
+5. Create a descriptive commit message following the project's conventions (see below)
+6. Execute the commit with the appropriate message
 
 ## Commit Message Conventions
 
