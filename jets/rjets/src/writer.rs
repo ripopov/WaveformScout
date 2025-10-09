@@ -41,6 +41,7 @@ impl TraceWriter {
         record_type: &str,
         clk: i64,
         name: &str,
+        description: &str,
         data: Option<serde_json::Value>,
     ) -> Result<()> {
         let mut record = serde_json::json!({
@@ -48,7 +49,8 @@ impl TraceWriter {
             "id": id,
             "record_type": record_type,
             "clk": clk,
-            "name": name
+            "name": name,
+            "description": description
         });
 
         if let Some(pid) = parent_id {
@@ -79,12 +81,14 @@ impl TraceWriter {
         &mut self,
         record_id: u64,
         name: &str,
+        description: &str,
         data: serde_json::Value,
     ) -> Result<()> {
         let annotation = serde_json::json!({
             "type": "annotation",
             "record_id": record_id,
             "name": name,
+            "description": description,
             "data": data
         });
 
@@ -97,6 +101,7 @@ impl TraceWriter {
         &mut self,
         record_id: u64,
         name: &str,
+        description: &str,
         clk: i64,
         data: Option<serde_json::Value>,
     ) -> Result<()> {
@@ -104,6 +109,7 @@ impl TraceWriter {
             "type": "event",
             "record_id": record_id,
             "name": name,
+            "description": description,
             "clk": clk
         });
 

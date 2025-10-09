@@ -24,6 +24,7 @@ pub struct TraceAnnotation {
     pub line_type: String,
     pub record_id: u64,
     pub name: String,
+    pub description: String,
     pub data: serde_json::Value,
 }
 
@@ -33,6 +34,7 @@ pub struct TraceEvent {
     pub line_type: String,
     pub record_id: u64,
     pub name: String,
+    pub description: String,
     pub clk: i64,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
@@ -45,6 +47,7 @@ pub struct TraceRecord {
     pub record_type: String,
     pub clk: i64,
     pub name: String,
+    pub description: String,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
 
@@ -83,6 +86,7 @@ enum TraceLine {
         record_type: String,
         clk: i64,
         name: String,
+        description: String,
         #[serde(default)]
         data: Option<serde_json::Value>,
     },
@@ -95,12 +99,14 @@ enum TraceLine {
     Annotation {
         record_id: u64,
         name: String,
+        description: String,
         data: serde_json::Value,
     },
     #[serde(rename = "event")]
     Event {
         record_id: u64,
         name: String,
+        description: String,
         clk: i64,
         #[serde(default)]
         data: Option<serde_json::Value>,
@@ -142,7 +148,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 header = Some(TraceHeader { version, metadata });
             }
 
-            TraceLine::Record { id, parent_id, record_type, clk, name, data } => {
+            TraceLine::Record { id, parent_id, record_type, clk, name, description, data } => {
                 if records_by_id.contains_key(&id) {
                     return Err(anyhow!("Duplicate record ID '{}' at line {}", id, line_num + 1));
                 }
@@ -153,6 +159,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                     record_type,
                     clk,
                     name,
+                    description,
                     data,
                     end_clk: None,
                     duration: None,
@@ -172,7 +179,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 record.duration = Some(clk - record.clk);
             }
 
-            TraceLine::Annotation { record_id, name, data } => {
+            TraceLine::Annotation { record_id, name, description, data } => {
                 let record = records_by_id.get_mut(&record_id)
                     .ok_or_else(|| anyhow!("annotation references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
@@ -180,11 +187,12 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                     line_type: "annotation".to_string(),
                     record_id,
                     name,
+                    description,
                     data,
                 });
             }
 
-            TraceLine::Event { record_id, name, clk, data } => {
+            TraceLine::Event { record_id, name, description, clk, data } => {
                 let record = records_by_id.get_mut(&record_id)
                     .ok_or_else(|| anyhow!("event references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
@@ -192,6 +200,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                     line_type: "event".to_string(),
                     record_id,
                     name,
+                    description,
                     clk,
                     data,
                 });

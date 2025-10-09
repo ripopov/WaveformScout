@@ -24,52 +24,57 @@ fn test_write_and_read_basic_trace() -> Result<()> {
 
         // Write root record
         writer.write_record(
-            "rec_001",
+            1,
             None,
             "HostProgram",
             1000,
             "TestProgram",
+            "Main test program entry point",
             Some(serde_json::json!({"language": "CUDA"}))
         )?;
 
         // Write annotation
         writer.write_annotation(
-            "rec_001",
+            1,
             "compiler",
+            "Compiler information",
             serde_json::json!({"name": "nvcc", "version": "12.0"})
         )?;
 
         // Write event
         writer.write_event(
-            "rec_001",
+            1,
             "ProgramStart",
+            "Program execution start",
             1001,
             None
         )?;
 
         // Write child record
         writer.write_record(
-            "rec_002",
-            Some("rec_001"),
+            2,
+            Some(1),
             "Dispatch",
             1100,
             "kernel_launch",
+            "Kernel dispatch to hardware",
             None
         )?;
 
         // Write event for child
         writer.write_event(
-            "rec_002",
+            2,
             "DispatchStart",
+            "Dispatch execution start",
             1105,
             Some(serde_json::json!({"grid_size": [1, 1, 1]}))
         )?;
 
         // End child record
-        writer.write_record_end("rec_002", 1200)?;
+        writer.write_record_end(2, 1200)?;
 
         // End root record
-        writer.write_record_end("rec_001", 1500)?;
+        writer.write_record_end(1, 1500)?;
 
         // Write footer
         writer.write_footer(Some(1500))?;
@@ -85,9 +90,10 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     // Verify roots
     assert_eq!(trace.roots.len(), 1);
     let root = &trace.roots[0];
-    assert_eq!(root.id, "rec_001");
+    assert_eq!(root.id, 1);
     assert_eq!(root.record_type, "HostProgram");
     assert_eq!(root.name, "TestProgram");
+    assert_eq!(root.description, "Main test program entry point");
     assert_eq!(root.clk, 1000);
     assert_eq!(root.end_clk, Some(1500));
     assert_eq!(root.duration, Some(500));
@@ -95,18 +101,22 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     // Verify annotations
     assert_eq!(root.annotations.len(), 1);
     assert_eq!(root.annotations[0].name, "compiler");
+    assert_eq!(root.annotations[0].description, "Compiler information");
 
     // Verify events
     assert_eq!(root.events.len(), 1);
     assert_eq!(root.events[0].name, "ProgramStart");
+    assert_eq!(root.events[0].description, "Program execution start");
     assert_eq!(root.events[0].clk, 1001);
 
     // Verify children
     assert_eq!(root.children.len(), 1);
     let child = &root.children[0];
-    assert_eq!(child.id, "rec_002");
-    assert_eq!(child.parent_id, Some("rec_001".to_string()));
+    assert_eq!(child.id, 2);
+    assert_eq!(child.parent_id, Some(1));
     assert_eq!(child.record_type, "Dispatch");
+    assert_eq!(child.name, "kernel_launch");
+    assert_eq!(child.description, "Kernel dispatch to hardware");
     assert_eq!(child.clk, 1100);
     assert_eq!(child.end_clk, Some(1200));
     assert_eq!(child.duration, Some(100));
@@ -114,6 +124,7 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     // Verify child events
     assert_eq!(child.events.len(), 1);
     assert_eq!(child.events[0].name, "DispatchStart");
+    assert_eq!(child.events[0].description, "Dispatch execution start");
 
     // Verify footer
     assert!(trace.footer.is_some());
@@ -143,33 +154,33 @@ fn test_write_and_read_hierarchical_trace() -> Result<()> {
         writer.write_header("2.0", serde_json::json!({"gpu": "H100"}))?;
 
         // Level 0: HostProgram
-        writer.write_record("prog", None, "HostProgram", 0, "main", None)?;
+        writer.write_record(1, None, "HostProgram", 0, "main", "Main program", None)?;
 
         // Level 1: Dispatch
-        writer.write_record("disp", Some("prog"), "Dispatch", 100, "kernel", None)?;
+        writer.write_record(2, Some(1), "Dispatch", 100, "kernel", "Kernel dispatch", None)?;
 
         // Level 2: ThreadBlock
-        writer.write_record("tb0", Some("disp"), "ThreadBlock", 200, "block_0", None)?;
+        writer.write_record(3, Some(2), "ThreadBlock", 200, "block_0", "Thread block 0", None)?;
 
         // Level 3: Warp
-        writer.write_record("warp0", Some("tb0"), "Warp", 300, "warp_0", None)?;
+        writer.write_record(4, Some(3), "Warp", 300, "warp_0", "Warp 0 execution", None)?;
 
         // Level 4: Instruction
-        writer.write_record("inst0", Some("warp0"), "SASS_Instruction", 400, "HMMA", None)?;
-        writer.write_event("inst0", "Execute", 405, None)?;
-        writer.write_record_end("inst0", 410)?;
+        writer.write_record(5, Some(4), "SASS_Instruction", 400, "HMMA", "HMMA instruction", None)?;
+        writer.write_event(5, "Execute", "Instruction execution", 405, None)?;
+        writer.write_record_end(5, 410)?;
 
         // End warp
-        writer.write_record_end("warp0", 420)?;
+        writer.write_record_end(4, 420)?;
 
         // End thread block
-        writer.write_record_end("tb0", 500)?;
+        writer.write_record_end(3, 500)?;
 
         // End dispatch
-        writer.write_record_end("disp", 600)?;
+        writer.write_record_end(2, 600)?;
 
         // End program
-        writer.write_record_end("prog", 700)?;
+        writer.write_record_end(1, 700)?;
 
         writer.write_footer(Some(700))?;
     }
@@ -180,25 +191,36 @@ fn test_write_and_read_hierarchical_trace() -> Result<()> {
     assert_eq!(trace.roots.len(), 1);
 
     let prog = &trace.roots[0];
-    assert_eq!(prog.id, "prog");
+    assert_eq!(prog.id, 1);
+    assert_eq!(prog.name, "main");
+    assert_eq!(prog.description, "Main program");
     assert_eq!(prog.children.len(), 1);
 
     let disp = &prog.children[0];
-    assert_eq!(disp.id, "disp");
+    assert_eq!(disp.id, 2);
+    assert_eq!(disp.name, "kernel");
+    assert_eq!(disp.description, "Kernel dispatch");
     assert_eq!(disp.children.len(), 1);
 
     let tb = &disp.children[0];
-    assert_eq!(tb.id, "tb0");
+    assert_eq!(tb.id, 3);
+    assert_eq!(tb.name, "block_0");
+    assert_eq!(tb.description, "Thread block 0");
     assert_eq!(tb.children.len(), 1);
 
     let warp = &tb.children[0];
-    assert_eq!(warp.id, "warp0");
+    assert_eq!(warp.id, 4);
+    assert_eq!(warp.name, "warp_0");
+    assert_eq!(warp.description, "Warp 0 execution");
     assert_eq!(warp.children.len(), 1);
 
     let inst = &warp.children[0];
-    assert_eq!(inst.id, "inst0");
+    assert_eq!(inst.id, 5);
+    assert_eq!(inst.name, "HMMA");
+    assert_eq!(inst.description, "HMMA instruction");
     assert_eq!(inst.record_type, "SASS_Instruction");
     assert_eq!(inst.events.len(), 1);
+    assert_eq!(inst.events[0].description, "Instruction execution");
     assert_eq!(inst.duration, Some(10));
 
     // Clean up

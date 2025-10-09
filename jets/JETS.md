@@ -108,6 +108,7 @@ The **header** line contains metadata about the trace. Must be the first line.
   "record_type": "HostProgram",
   "clk": 1000,
   "name": "ProcessTask",
+  "description": "Main process task for user application",
   "data": {
     "process_id": 12345,
     "thread_id": 67890
@@ -124,7 +125,8 @@ The **header** line contains metadata about the trace. Must be the first line.
 | `parent_id` | unsigned integer/null | Yes | ID of parent record; `null` for root nodes |
 | `record_type` | string | Yes | Semantic type (e.g., "Pipeline", "Instruction", "ExecutionUnit") |
 | `clk` | integer | Yes | Hardware clock cycle when this record/operation **begins** |
-| `name` | string | Yes | Human-readable name or description |
+| `name` | string | Yes | Short human-readable name (used in tree viewers and UI labels) |
+| `description` | string | Yes | Human-readable description providing additional context |
 | `data` | object | No | Arbitrary JSON object with additional fields |
 
 **Streaming Constraint**: A record's parent must appear in the file **before** the record itself.
@@ -186,6 +188,7 @@ For optimal Gantt chart rendering, records may include these optional fields in 
   "type": "annotation",
   "record_id": 5,
   "name": "GridDimensions",
+  "description": "Execution grid dimensions for this dispatch",
   "data": {
     "x": 1024,
     "y": 1024,
@@ -200,7 +203,8 @@ For optimal Gantt chart rendering, records may include these optional fields in 
 |-------|------|----------|-------------|
 | `type` | string | Yes | Must be `"annotation"` |
 | `record_id` | unsigned integer | Yes | ID of the record this annotation describes |
-| `name` | string | Yes | Annotation name (e.g., "GridDimensions", "RegisterAllocation") |
+| `name` | string | Yes | Short annotation name (used in tree viewers and UI labels) |
+| `description` | string | Yes | Human-readable description of the annotation's purpose |
 | `data` | any | Yes | Arbitrary JSON value (object, array, primitive) |
 
 **Streaming Constraint**: The referenced record must appear in the file **before** this annotation.
@@ -218,6 +222,7 @@ For optimal Gantt chart rendering, records may include these optional fields in 
   "type": "event",
   "record_id": 42,
   "name": "DecodeStage",
+  "description": "Instruction decode pipeline stage",
   "clk": 1151,
   "data": {
     "stage": "frontend"
@@ -231,7 +236,8 @@ For optimal Gantt chart rendering, records may include these optional fields in 
 |-------|------|----------|-------------|
 | `type` | string | Yes | Must be `"event"` |
 | `record_id` | unsigned integer | Yes | ID of the record this event is associated with |
-| `name` | string | Yes | Event name (e.g., "DecodeStage", "CacheLookup") |
+| `name` | string | Yes | Short event name (used in tree viewers and UI labels) |
+| `description` | string | Yes | Human-readable description of the event |
 | `clk` | integer | Yes | Hardware clock cycle when this event occurs |
 | `data` | any | No | Optional additional data about the event |
 
@@ -283,36 +289,36 @@ Below is a complete trace file in JSON Lines format. Each line is a separate JSO
 
 ```jsonl
 {"type":"header","version":"2.0","metadata":{"hardware_model":"Custom Processor v2","architecture":"RISC Pipeline","clock_frequency_mhz":1830,"tool":"hwtracer v0.1","timestamp":"2025-10-03T14:30:00Z"}}
-{"type":"record","id":1,"parent_id":null,"record_type":"HostProgram","clk":1000,"name":"main"}
-{"type":"record","id":2,"parent_id":1,"record_type":"TaskSubmission","clk":1010}
-{"type":"record","id":3,"parent_id":2,"record_type":"DispatchTask","clk":1040,"data":{"task_count":1024,"thread_count":16}}
-{"type":"record","id":4,"parent_id":3,"record_type":"ExecutionEngine","clk":1050}
-{"type":"record","id":5,"parent_id":4,"record_type":"DispatchRecord","clk":1060}
-{"type":"annotation","record_id":5,"name":"TaskDimensions","data":{"x":1024,"y":1024,"z":1}}
-{"type":"annotation","record_id":5,"name":"ThreadDimensions","data":{"x":16,"y":16,"z":1}}
-{"type":"annotation","record_id":5,"name":"SharedMemSize","data":"48KB"}
-{"type":"record","id":10,"parent_id":5,"record_type":"ExecutionBlock","clk":1120,"data":{"block_idx":[0,0,0],"unit_id":0,"core_id":0}}
-{"type":"record","id":11,"parent_id":10,"record_type":"ThreadGroup","clk":1130,"data":{"group_id":0,"thread_range":[0,31]}}
-{"type":"annotation","record_id":11,"name":"RegisterAllocation","data":"R0-R63 per thread"}
-{"type":"annotation","record_id":11,"name":"SchedulerSlot","data":{"scheduler":"Scheduler_0","slot":5}}
-{"type":"record","id":20,"parent_id":11,"record_type":"Instruction","clk":1150,"data":{"pc":"0x0000","opcode":"MOV","disassembly":"MOV R0, #0x20"}}
-{"type":"event","record_id":20,"name":"DecodeStage","clk":1151}
-{"type":"event","record_id":20,"name":"ScoreboardCheck","clk":1152,"data":{"hazard":"RAW","status":"clear"}}
-{"type":"event","record_id":20,"name":"OperandCollect","clk":1153}
-{"type":"event","record_id":20,"name":"Execute_ALU","clk":1155,"data":{"alu_id":0}}
-{"type":"event","record_id":20,"name":"Writeback","clk":1156,"data":{"destination":"R0"}}
+{"type":"record","id":1,"parent_id":null,"record_type":"HostProgram","clk":1000,"name":"main","description":"Main host program entry point"}
+{"type":"record","id":2,"parent_id":1,"record_type":"TaskSubmission","clk":1010,"name":"SubmitTask","description":"Task submission to hardware"}
+{"type":"record","id":3,"parent_id":2,"record_type":"DispatchTask","clk":1040,"name":"Dispatch","description":"Hardware task dispatch","data":{"task_count":1024,"thread_count":16}}
+{"type":"record","id":4,"parent_id":3,"record_type":"ExecutionEngine","clk":1050,"name":"ExecEngine","description":"Main execution engine"}
+{"type":"record","id":5,"parent_id":4,"record_type":"DispatchRecord","clk":1060,"name":"DispatchRec","description":"Dispatch configuration record"}
+{"type":"annotation","record_id":5,"name":"TaskDimensions","description":"Task grid dimensions","data":{"x":1024,"y":1024,"z":1}}
+{"type":"annotation","record_id":5,"name":"ThreadDimensions","description":"Thread block dimensions","data":{"x":16,"y":16,"z":1}}
+{"type":"annotation","record_id":5,"name":"SharedMemSize","description":"Shared memory allocation size","data":"48KB"}
+{"type":"record","id":10,"parent_id":5,"record_type":"ExecutionBlock","clk":1120,"name":"Block_0","description":"Execution block 0","data":{"block_idx":[0,0,0],"unit_id":0,"core_id":0}}
+{"type":"record","id":11,"parent_id":10,"record_type":"ThreadGroup","clk":1130,"name":"TG_0","description":"Thread group 0","data":{"group_id":0,"thread_range":[0,31]}}
+{"type":"annotation","record_id":11,"name":"RegisterAllocation","description":"Register file allocation for thread group","data":"R0-R63 per thread"}
+{"type":"annotation","record_id":11,"name":"SchedulerSlot","description":"Hardware scheduler slot assignment","data":{"scheduler":"Scheduler_0","slot":5}}
+{"type":"record","id":20,"parent_id":11,"record_type":"Instruction","clk":1150,"name":"MOV","description":"MOV R0, #0x20","data":{"pc":"0x0000","opcode":"MOV","disassembly":"MOV R0, #0x20"}}
+{"type":"event","record_id":20,"name":"DecodeStage","description":"Instruction decode stage","clk":1151}
+{"type":"event","record_id":20,"name":"ScoreboardCheck","description":"Scoreboard hazard check","clk":1152,"data":{"hazard":"RAW","status":"clear"}}
+{"type":"event","record_id":20,"name":"OperandCollect","description":"Operand collection stage","clk":1153}
+{"type":"event","record_id":20,"name":"Execute_ALU","description":"ALU execution","clk":1155,"data":{"alu_id":0}}
+{"type":"event","record_id":20,"name":"Writeback","description":"Register writeback","clk":1156,"data":{"destination":"R0"}}
 {"type":"record_end","id":20,"clk":1156}
-{"type":"record","id":21,"parent_id":11,"record_type":"Instruction","clk":1170,"data":{"pc":"0x0020","opcode":"LD","disassembly":"LD R4, [R2+0x1000]"}}
-{"type":"event","record_id":21,"name":"DecodeStage","clk":1171}
-{"type":"event","record_id":21,"name":"ScoreboardCheck","clk":1172,"data":{"hazard":"RAW","status":"R2 ready"}}
-{"type":"event","record_id":21,"name":"LoadUnit_AddressCalc","clk":1173}
-{"type":"record","id":30,"parent_id":21,"record_type":"LoadUnit_Coalescing","clk":1180}
-{"type":"record","id":31,"parent_id":30,"record_type":"MemoryRequest","clk":1181,"data":{"size_bytes":128,"aligned":true,"lanes":"0-31"}}
-{"type":"event","record_id":31,"name":"L1_Cache_Lookup","clk":1182}
-{"type":"event","record_id":31,"name":"L1_Cache_Miss","clk":1183,"data":{"tag":"0x200001000"}}
-{"type":"event","record_id":31,"name":"L2_Lookup","clk":1187,"data":{"result":"MISS"}}
-{"type":"event","record_id":31,"name":"Memory_Activate","clk":1191,"data":{"bank":5,"row":"0x4000"}}
-{"type":"event","record_id":31,"name":"Memory_Read","clk":1192,"data":{"column":"0x40","burst_length":8}}
+{"type":"record","id":21,"parent_id":11,"record_type":"Instruction","clk":1170,"name":"LD","description":"LD R4, [R2+0x1000]","data":{"pc":"0x0020","opcode":"LD","disassembly":"LD R4, [R2+0x1000]"}}
+{"type":"event","record_id":21,"name":"DecodeStage","description":"Instruction decode stage","clk":1171}
+{"type":"event","record_id":21,"name":"ScoreboardCheck","description":"Scoreboard hazard check","clk":1172,"data":{"hazard":"RAW","status":"R2 ready"}}
+{"type":"event","record_id":21,"name":"LoadUnit_AddressCalc","description":"Load unit address calculation","clk":1173}
+{"type":"record","id":30,"parent_id":21,"record_type":"LoadUnit_Coalescing","clk":1180,"name":"Coalesce","description":"Memory coalescing unit"}
+{"type":"record","id":31,"parent_id":30,"record_type":"MemoryRequest","clk":1181,"name":"MemReq","description":"Memory request to L1 cache","data":{"size_bytes":128,"aligned":true,"lanes":"0-31"}}
+{"type":"event","record_id":31,"name":"L1_Cache_Lookup","description":"L1 cache tag lookup","clk":1182}
+{"type":"event","record_id":31,"name":"L1_Cache_Miss","description":"L1 cache miss","clk":1183,"data":{"tag":"0x200001000"}}
+{"type":"event","record_id":31,"name":"L2_Lookup","description":"L2 cache lookup","clk":1187,"data":{"result":"MISS"}}
+{"type":"event","record_id":31,"name":"Memory_Activate","description":"DRAM row activation","clk":1191,"data":{"bank":5,"row":"0x4000"}}
+{"type":"event","record_id":31,"name":"Memory_Read","description":"DRAM read operation","clk":1192,"data":{"column":"0x40","burst_length":8}}
 {"type":"record_end","id":31,"clk":1205}
 {"type":"record_end","id":30,"clk":1205}
 {"type":"record_end","id":21,"clk":1206}
@@ -344,6 +350,8 @@ For readability, here are some lines formatted with record_end examples:
   "parent_id": 11,
   "record_type": "Instruction",
   "clk": 1150,
+  "name": "MOV",
+  "description": "MOV R0, #0x20",
   "data": {
     "pc": "0x0000",
     "opcode": "MOV",
@@ -355,6 +363,7 @@ For readability, here are some lines formatted with record_end examples:
   "type": "event",
   "record_id": 20,
   "name": "DecodeStage",
+  "description": "Instruction decode stage",
   "clk": 1151
 }
 
@@ -362,6 +371,7 @@ For readability, here are some lines formatted with record_end examples:
   "type": "event",
   "record_id": 20,
   "name": "Writeback",
+  "description": "Register writeback",
   "clk": 1156,
   "data": {
     "destination": "R0"
@@ -415,6 +425,7 @@ def parse_streaming_trace(file_path):
                 record['events'] = []
                 record['end_clk'] = None  # Will be set by record_end
                 record['duration'] = None
+                # record['name'] and record['description'] are already present
                 records_by_id[record['id']] = record
 
                 # Link to parent
@@ -472,7 +483,7 @@ class TraceWriter:
         self.file.write(line + '\n')
         self.file.flush()
 
-    def write_record(self, id, parent_id, record_type, clk, name=None, data=None):
+    def write_record(self, id, parent_id, record_type, clk, name, description, data=None):
         line = json.dumps({
             'type': 'record',
             'id': id,
@@ -480,6 +491,7 @@ class TraceWriter:
             'record_type': record_type,
             'clk': clk,
             'name': name,
+            'description': description,
             'data': data
         }, separators=(',', ':'))
         self.file.write(line + '\n')
@@ -496,22 +508,24 @@ class TraceWriter:
         self.file.flush()
         self.record_end_count += 1
 
-    def write_annotation(self, record_id, name, data):
+    def write_annotation(self, record_id, name, description, data):
         line = json.dumps({
             'type': 'annotation',
             'record_id': record_id,
             'name': name,
+            'description': description,
             'data': data
         }, separators=(',', ':'))
         self.file.write(line + '\n')
         self.file.flush()
         self.annotation_count += 1
 
-    def write_event(self, record_id, name, clk, data=None):
+    def write_event(self, record_id, name, description, clk, data=None):
         line = json.dumps({
             'type': 'event',
             'record_id': record_id,
             'name': name,
+            'description': description,
             'clk': clk,
             'data': data
         }, separators=(',', ':'))
@@ -539,15 +553,15 @@ trace = TraceWriter('trace.jsonl')
 trace.write_header({'hardware_model': 'Custom Processor v2', 'tool': 'hwtracer'})
 
 # As simulation runs...
-trace.write_record(1, None, 'HostProgram', clk=1000)
-trace.write_record(2, Some(1), 'Dispatch', clk=1010)
-trace.write_event(2, 'Issue', clk=1015)
+trace.write_record(1, None, 'HostProgram', clk=1000, name='main', description='Main host program')
+trace.write_record(2, Some(1), 'Dispatch', clk=1010, name='Dispatch', description='Task dispatch to hardware')
+trace.write_event(2, 'Issue', 'Issue to execution engine', clk=1015)
 
 # ... instruction executes ...
-trace.write_record(100, Some(2), 'Instruction', clk=1020)
-trace.write_event(100, 'DecodeStage', clk=1021)
-trace.write_event(100, 'Execute', clk=1025)
-trace.write_event(100, 'Writeback', clk=1027)
+trace.write_record(100, Some(2), 'Instruction', clk=1020, name='ADD', description='ADD R1, R2, R3')
+trace.write_event(100, 'DecodeStage', 'Instruction decode', clk=1021)
+trace.write_event(100, 'Execute', 'ALU execution', clk=1025)
+trace.write_event(100, 'Writeback', 'Register writeback', clk=1027)
 trace.write_record_end(100, clk=1027)  # Instruction completes (7 cycle duration)
 
 trace.write_record_end(2, clk=1030)
@@ -868,15 +882,15 @@ def tail_trace(file_path):
 
             if obj['type'] == 'record':
                 records_by_id[obj['id']] = obj
-                print(f"[CLK {obj['clk']}] Record START: {obj['record_type']} ({obj['id']})")
+                print(f"[CLK {obj['clk']}] Record START: {obj['record_type']} - {obj['name']} ({obj['id']})")
 
             elif obj['type'] == 'record_end':
                 record = records_by_id[obj['id']]
                 duration = obj['clk'] - record['clk']
-                print(f"[CLK {obj['clk']}] Record END: {record['record_type']} ({obj['id']}) - Duration: {duration} cycles")
+                print(f"[CLK {obj['clk']}] Record END: {record['record_type']} - {record['name']} ({obj['id']}) - Duration: {duration} cycles")
 
             elif obj['type'] == 'event':
-                print(f"[CLK {obj['clk']}] Event: {obj['name']} on {obj['record_id']}")
+                print(f"[CLK {obj['clk']}] Event: {obj['name']} - {obj['description']} on {obj['record_id']}")
 
             elif obj['type'] == 'footer':
                 print(f"Trace completed: {obj}")

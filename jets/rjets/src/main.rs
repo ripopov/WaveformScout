@@ -142,9 +142,10 @@ impl JetsViewerApp {
                 .unwrap_or_else(|| "N/A".to_string());
 
             let label_text = format!(
-                "{} | {} | {} | {} | {} | {}",
+                "{} | {} | {} | {} | {} | {} | {}",
                 record.id,
                 record.name,
+                record.description,
                 record.record_type,
                 record.clk,
                 end_str,
@@ -181,10 +182,11 @@ impl JetsViewerApp {
                     .show(ui, |ui| {
                     // Show record itself
                     let record_json = format!(
-                        r#"{{"clk":{},"record_type":"{}","name":"{}","id":"{}","parent_id":{}}}"#,
+                        r#"{{"clk":{},"record_type":"{}","name":"{}","description":"{}","id":"{}","parent_id":{}}}"#,
                         record.clk,
                         record.record_type,
                         record.name,
+                        record.description,
                         record.id,
                         record.parent_id.map(|id| id.to_string()).unwrap_or_else(|| "null".to_string())
                     );
@@ -195,6 +197,7 @@ impl JetsViewerApp {
                         let ann_json = serde_json::json!({
                             "type": "annotation",
                             "name": annotation.name,
+                            "description": annotation.description,
                             "record_id": annotation.record_id,
                             "data": annotation.data
                         });
@@ -211,6 +214,7 @@ impl JetsViewerApp {
                                 "clk": event.clk,
                                 "type": "event",
                                 "name": event.name,
+                                "description": event.description,
                                 "record_id": event.record_id,
                                 "data": data
                             })
@@ -219,6 +223,7 @@ impl JetsViewerApp {
                                 "clk": event.clk,
                                 "type": "event",
                                 "name": event.name,
+                                "description": event.description,
                                 "record_id": event.record_id
                             })
                         };
