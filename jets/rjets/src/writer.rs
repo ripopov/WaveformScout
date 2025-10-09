@@ -44,36 +44,33 @@ impl TraceWriter {
         description: &str,
         data: Option<serde_json::Value>,
     ) -> Result<()> {
-        let mut record = serde_json::json!({
-            "type": "record",
-            "id": id,
-            "record_type": record_type,
-            "clk": clk,
-            "name": name,
-            "description": description
-        });
-
-        if let Some(pid) = parent_id {
-            record["parent_id"] = serde_json::Value::Number(pid.into());
-        }
+        let mut map = serde_json::Map::new();
+        map.insert("clk".to_string(), serde_json::Value::Number(clk.into()));
+        map.insert("type".to_string(), serde_json::Value::String("record".to_string()));
+        map.insert("name".to_string(), serde_json::Value::String(name.to_string()));
+        map.insert("record_type".to_string(), serde_json::Value::String(record_type.to_string()));
+        map.insert("id".to_string(), serde_json::Value::Number(id.into()));
+        map.insert("parent_id".to_string(),
+            parent_id.map(|p| serde_json::Value::Number(p.into()))
+                .unwrap_or(serde_json::Value::Null));
+        map.insert("description".to_string(), serde_json::Value::String(description.to_string()));
 
         if let Some(d) = data {
-            record["data"] = d;
+            map.insert("data".to_string(), d);
         }
 
-        self.write_line(&record)?;
+        self.write_line(&serde_json::Value::Object(map))?;
         self.record_count += 1;
         Ok(())
     }
 
     pub fn write_record_end(&mut self, id: u64, clk: i64) -> Result<()> {
-        let record_end = serde_json::json!({
-            "type": "record_end",
-            "id": id,
-            "clk": clk
-        });
+        let mut map = serde_json::Map::new();
+        map.insert("clk".to_string(), serde_json::Value::Number(clk.into()));
+        map.insert("type".to_string(), serde_json::Value::String("record_end".to_string()));
+        map.insert("record_id".to_string(), serde_json::Value::Number(id.into()));
 
-        self.write_line(&record_end)?;
+        self.write_line(&serde_json::Value::Object(map))?;
         Ok(())
     }
 
@@ -84,15 +81,14 @@ impl TraceWriter {
         description: &str,
         data: serde_json::Value,
     ) -> Result<()> {
-        let annotation = serde_json::json!({
-            "type": "annotation",
-            "record_id": record_id,
-            "name": name,
-            "description": description,
-            "data": data
-        });
+        let mut map = serde_json::Map::new();
+        map.insert("type".to_string(), serde_json::Value::String("annotation".to_string()));
+        map.insert("name".to_string(), serde_json::Value::String(name.to_string()));
+        map.insert("record_id".to_string(), serde_json::Value::Number(record_id.into()));
+        map.insert("description".to_string(), serde_json::Value::String(description.to_string()));
+        map.insert("data".to_string(), data);
 
-        self.write_line(&annotation)?;
+        self.write_line(&serde_json::Value::Object(map))?;
         self.annotation_count += 1;
         Ok(())
     }
@@ -105,19 +101,18 @@ impl TraceWriter {
         clk: i64,
         data: Option<serde_json::Value>,
     ) -> Result<()> {
-        let mut event = serde_json::json!({
-            "type": "event",
-            "record_id": record_id,
-            "name": name,
-            "description": description,
-            "clk": clk
-        });
+        let mut map = serde_json::Map::new();
+        map.insert("clk".to_string(), serde_json::Value::Number(clk.into()));
+        map.insert("type".to_string(), serde_json::Value::String("event".to_string()));
+        map.insert("name".to_string(), serde_json::Value::String(name.to_string()));
+        map.insert("record_id".to_string(), serde_json::Value::Number(record_id.into()));
+        map.insert("description".to_string(), serde_json::Value::String(description.to_string()));
 
         if let Some(d) = data {
-            event["data"] = d;
+            map.insert("data".to_string(), d);
         }
 
-        self.write_line(&event)?;
+        self.write_line(&serde_json::Value::Object(map))?;
         self.event_count += 1;
         Ok(())
     }

@@ -22,31 +22,31 @@ pub struct TraceFooter {
 pub struct TraceAnnotation {
     #[serde(rename = "type")]
     pub line_type: String,
-    pub record_id: u64,
     pub name: String,
+    pub record_id: u64,
     pub description: String,
     pub data: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceEvent {
+    pub clk: i64,
     #[serde(rename = "type")]
     pub line_type: String,
-    pub record_id: u64,
     pub name: String,
+    pub record_id: u64,
     pub description: String,
-    pub clk: i64,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceRecord {
-    pub id: u64,
-    pub parent_id: Option<u64>,
-    pub record_type: String,
     pub clk: i64,
     pub name: String,
+    pub record_type: String,
+    pub id: u64,
+    pub parent_id: Option<u64>,
     pub description: String,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
@@ -81,33 +81,33 @@ enum TraceLine {
     },
     #[serde(rename = "record")]
     Record {
-        id: u64,
-        parent_id: Option<u64>,
-        record_type: String,
         clk: i64,
         name: String,
+        record_type: String,
+        id: u64,
+        parent_id: Option<u64>,
         description: String,
         #[serde(default)]
         data: Option<serde_json::Value>,
     },
     #[serde(rename = "record_end")]
     RecordEnd {
-        id: u64,
         clk: i64,
+        record_id: u64,
     },
     #[serde(rename = "annotation")]
     Annotation {
-        record_id: u64,
         name: String,
+        record_id: u64,
         description: String,
         data: serde_json::Value,
     },
     #[serde(rename = "event")]
     Event {
-        record_id: u64,
-        name: String,
-        description: String,
         clk: i64,
+        name: String,
+        record_id: u64,
+        description: String,
         #[serde(default)]
         data: Option<serde_json::Value>,
     },
@@ -148,17 +148,17 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 header = Some(TraceHeader { version, metadata });
             }
 
-            TraceLine::Record { id, parent_id, record_type, clk, name, description, data } => {
+            TraceLine::Record { clk, name, record_type, id, parent_id, description, data } => {
                 if records_by_id.contains_key(&id) {
                     return Err(anyhow!("Duplicate record ID '{}' at line {}", id, line_num + 1));
                 }
 
                 let record = TraceRecord {
-                    id: id.clone(),
-                    parent_id,
-                    record_type,
                     clk,
                     name,
+                    record_type,
+                    id: id.clone(),
+                    parent_id,
                     description,
                     data,
                     end_clk: None,
@@ -171,37 +171,37 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 records_by_id.insert(id, record);
             }
 
-            TraceLine::RecordEnd { id, clk } => {
-                let record = records_by_id.get_mut(&id)
-                    .ok_or_else(|| anyhow!("record_end references unknown record '{}' at line {}", id, line_num + 1))?;
+            TraceLine::RecordEnd { clk, record_id } => {
+                let record = records_by_id.get_mut(&record_id)
+                    .ok_or_else(|| anyhow!("record_end references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
                 record.end_clk = Some(clk);
                 record.duration = Some(clk - record.clk);
             }
 
-            TraceLine::Annotation { record_id, name, description, data } => {
+            TraceLine::Annotation { name, record_id, description, data } => {
                 let record = records_by_id.get_mut(&record_id)
                     .ok_or_else(|| anyhow!("annotation references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
                 record.annotations.push(TraceAnnotation {
                     line_type: "annotation".to_string(),
-                    record_id,
                     name,
+                    record_id,
                     description,
                     data,
                 });
             }
 
-            TraceLine::Event { record_id, name, description, clk, data } => {
+            TraceLine::Event { clk, name, record_id, description, data } => {
                 let record = records_by_id.get_mut(&record_id)
                     .ok_or_else(|| anyhow!("event references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
                 record.events.push(TraceEvent {
-                    line_type: "event".to_string(),
-                    record_id,
-                    name,
-                    description,
                     clk,
+                    line_type: "event".to_string(),
+                    name,
+                    record_id,
+                    description,
                     data,
                 });
             }
