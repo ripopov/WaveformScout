@@ -21,7 +21,9 @@
       "Bash(git add:*)",
       "Bash(git gofmt:*)",
       "Bash(true:)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(cargo:*)",
+      "Bash(poetry:*)"
     ],
     "deny": [],
     "ask": []
