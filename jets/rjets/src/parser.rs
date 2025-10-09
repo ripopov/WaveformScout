@@ -242,6 +242,10 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
             for child in &mut children {
                 attach_children(child, children_map);
             }
+            // Sort children by clk first, then by name
+            children.sort_by(|a, b| {
+                a.clk.cmp(&b.clk).then_with(|| a.name.cmp(&b.name))
+            });
             record.children = children;
         }
     }
@@ -249,6 +253,11 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
     for root in &mut roots {
         attach_children(root, &mut children_map);
     }
+
+    // Sort roots by clk first, then by name
+    roots.sort_by(|a, b| {
+        a.clk.cmp(&b.clk).then_with(|| a.name.cmp(&b.name))
+    });
 
     Ok(TraceData {
         header,
