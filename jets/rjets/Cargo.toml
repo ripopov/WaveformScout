@@ -12,8 +12,12 @@ anyhow = "1.0"
 rfd = "0.15"
 
 [[bin]]
-name = "rjets-viewer"
+name = "jets-gui"
 path = "src/main.rs"
+
+[[bin]]
+name = "jets-tracegen"
+path = "src/tracegen.rs"
 
 [lib]
 name = "rjets"
