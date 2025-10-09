@@ -14,9 +14,9 @@ fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
 /// Serialize TraceRecord to pretty-printed JSON string
 fn record_to_json(record: &TraceRecord) -> String {
     let mut obj = serde_json::Map::new();
-    obj.insert("id".to_string(), serde_json::Value::String(record.id.clone()));
-    obj.insert("parent_id".to_string(), match &record.parent_id {
-        Some(pid) => serde_json::Value::String(pid.clone()),
+    obj.insert("id".to_string(), serde_json::Value::Number(record.id.into()));
+    obj.insert("parent_id".to_string(), match record.parent_id {
+        Some(pid) => serde_json::Value::Number(pid.into()),
         None => serde_json::Value::Null,
     });
     obj.insert("record_type".to_string(), serde_json::Value::String(record.record_type.clone()));
@@ -195,7 +195,7 @@ fn python_from_json(py: Python, value: &serde_json::Value) -> PyResult<PyObject>
 pub(crate) struct JetsHierarchy {
     trace_data: Arc<TraceData>,
     clock_freq_mhz: f64,
-    record_id_to_handle: HashMap<String, usize>,
+    record_id_to_handle: HashMap<u64, usize>,
     handle_to_record: HashMap<usize, Arc<TraceRecord>>,
 }
 
@@ -214,13 +214,13 @@ impl JetsHierarchy {
 
         fn collect_records(
             record: &TraceRecord,
-            id_map: &mut HashMap<String, usize>,
+            id_map: &mut HashMap<u64, usize>,
             handle_map: &mut HashMap<usize, Arc<TraceRecord>>,
             next_handle: &mut usize,
         ) {
             let handle = *next_handle;
             *next_handle += 1;
-            id_map.insert(record.id.clone(), handle);
+            id_map.insert(record.id, handle);
             handle_map.insert(handle, Arc::new(record.clone()));
 
             for child in &record.children {
@@ -252,8 +252,8 @@ impl JetsHierarchy {
         self.handle_to_record.get(&handle).cloned()
     }
 
-    pub(crate) fn get_handle_by_id(&self, id: &str) -> Option<usize> {
-        self.record_id_to_handle.get(id).copied()
+    pub(crate) fn get_handle_by_id(&self, id: u64) -> Option<usize> {
+        self.record_id_to_handle.get(&id).copied()
     }
 
     #[allow(dead_code)]

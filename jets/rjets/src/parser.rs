@@ -22,7 +22,7 @@ pub struct TraceFooter {
 pub struct TraceAnnotation {
     #[serde(rename = "type")]
     pub line_type: String,
-    pub record_id: String,
+    pub record_id: u64,
     pub name: String,
     pub data: serde_json::Value,
 }
@@ -31,7 +31,7 @@ pub struct TraceAnnotation {
 pub struct TraceEvent {
     #[serde(rename = "type")]
     pub line_type: String,
-    pub record_id: String,
+    pub record_id: u64,
     pub name: String,
     pub clk: i64,
     #[serde(default)]
@@ -40,8 +40,8 @@ pub struct TraceEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceRecord {
-    pub id: String,
-    pub parent_id: Option<String>,
+    pub id: u64,
+    pub parent_id: Option<u64>,
     pub record_type: String,
     pub clk: i64,
     pub name: String,
@@ -78,8 +78,8 @@ enum TraceLine {
     },
     #[serde(rename = "record")]
     Record {
-        id: String,
-        parent_id: Option<String>,
+        id: u64,
+        parent_id: Option<u64>,
         record_type: String,
         clk: i64,
         name: String,
@@ -88,18 +88,18 @@ enum TraceLine {
     },
     #[serde(rename = "record_end")]
     RecordEnd {
-        id: String,
+        id: u64,
         clk: i64,
     },
     #[serde(rename = "annotation")]
     Annotation {
-        record_id: String,
+        record_id: u64,
         name: String,
         data: serde_json::Value,
     },
     #[serde(rename = "event")]
     Event {
-        record_id: String,
+        record_id: u64,
         name: String,
         clk: i64,
         #[serde(default)]
@@ -121,7 +121,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
 
     let mut header: Option<TraceHeader> = None;
     let mut footer: Option<TraceFooter> = None;
-    let mut records_by_id: HashMap<String, TraceRecord> = HashMap::new();
+    let mut records_by_id: HashMap<u64, TraceRecord> = HashMap::new();
 
     for (line_num, line_result) in reader.lines().enumerate() {
         let line = line_result
@@ -215,11 +215,11 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
     let mut all_records: Vec<TraceRecord> = records_by_id.into_values().collect();
 
     // Separate roots from children
-    let mut children_map: HashMap<String, Vec<TraceRecord>> = HashMap::new();
+    let mut children_map: HashMap<u64, Vec<TraceRecord>> = HashMap::new();
 
     for record in all_records.drain(..) {
-        if let Some(parent_id) = &record.parent_id {
-            children_map.entry(parent_id.clone())
+        if let Some(parent_id) = record.parent_id {
+            children_map.entry(parent_id)
                 .or_insert_with(Vec::new)
                 .push(record);
         } else {
@@ -228,7 +228,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
     }
 
     // Recursively attach children
-    fn attach_children(record: &mut TraceRecord, children_map: &mut HashMap<String, Vec<TraceRecord>>) {
+    fn attach_children(record: &mut TraceRecord, children_map: &mut HashMap<u64, Vec<TraceRecord>>) {
         if let Some(mut children) = children_map.remove(&record.id) {
             for child in &mut children {
                 attach_children(child, children_map);

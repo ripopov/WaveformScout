@@ -22,8 +22,8 @@ fn main() -> eframe::Result {
 struct JetsViewerApp {
     trace_data: Option<TraceData>,
     file_path: Option<PathBuf>,
-    selected_record_id: Option<String>,
-    expanded_nodes: std::collections::HashSet<String>,
+    selected_record_id: Option<u64>,
+    expanded_nodes: std::collections::HashSet<u64>,
     error_message: Option<String>,
 }
 
@@ -118,7 +118,7 @@ impl JetsViewerApp {
                     if is_expanded {
                         self.expanded_nodes.remove(&record.id);
                     } else {
-                        self.expanded_nodes.insert(record.id.clone());
+                        self.expanded_nodes.insert(record.id);
                     }
                 }
             } else {
@@ -126,7 +126,7 @@ impl JetsViewerApp {
             }
 
             // Record info - clickable
-            let is_selected = self.selected_record_id.as_ref() == Some(&record.id);
+            let is_selected = self.selected_record_id == Some(record.id);
             let bg_color = if is_selected {
                 Some(Color32::from_rgb(50, 80, 120))
             } else {
@@ -158,7 +158,7 @@ impl JetsViewerApp {
             };
 
             if response.clicked() {
-                self.selected_record_id = Some(record.id.clone());
+                self.selected_record_id = Some(record.id);
             }
         });
 
@@ -171,7 +171,7 @@ impl JetsViewerApp {
     }
 
     fn render_details(&mut self, ui: &mut egui::Ui) {
-        if let (Some(trace), Some(selected_id)) = (&self.trace_data, &self.selected_record_id) {
+        if let (Some(trace), Some(selected_id)) = (&self.trace_data, self.selected_record_id) {
             if let Some(record) = self.find_record(&trace.roots, selected_id) {
                 ui.label(RichText::new(format!("Annotations & Events for record: {}", selected_id)).strong());
                 ui.separator();
@@ -186,7 +186,7 @@ impl JetsViewerApp {
                         record.record_type,
                         record.name,
                         record.id,
-                        record.parent_id.as_ref().map(|s| format!(r#""{}""#, s)).unwrap_or_else(|| "null".to_string())
+                        record.parent_id.map(|id| id.to_string()).unwrap_or_else(|| "null".to_string())
                     );
                     ui.colored_label(Color32::from_rgb(100, 150, 255), &record_json);
 
@@ -238,7 +238,7 @@ impl JetsViewerApp {
         }
     }
 
-    fn find_record<'a>(&self, records: &'a [TraceRecord], id: &str) -> Option<&'a TraceRecord> {
+    fn find_record<'a>(&self, records: &'a [TraceRecord], id: u64) -> Option<&'a TraceRecord> {
         for record in records {
             if record.id == id {
                 return Some(record);
