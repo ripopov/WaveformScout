@@ -3,15 +3,16 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use anyhow::{Result, Context, anyhow};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraceHeader {
+pub struct JetsTraceHeader {
     pub version: String,
     pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraceFooter {
+pub struct JetsTraceFooter {
     pub capture_end_clk: Option<i64>,
     pub total_records: Option<usize>,
     pub total_annotations: Option<usize>,
@@ -19,7 +20,7 @@ pub struct TraceFooter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraceAnnotation {
+pub struct JetsTraceAnnotation {
     #[serde(rename = "type")]
     pub line_type: String,
     pub name: String,
@@ -29,7 +30,7 @@ pub struct TraceAnnotation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraceEvent {
+pub struct JetsTraceEvent {
     pub clk: i64,
     #[serde(rename = "type")]
     pub line_type: String,
@@ -41,7 +42,7 @@ pub struct TraceEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraceRecord {
+pub struct JetsTraceRecord {
     pub clk: i64,
     pub name: String,
     pub record_type: String,
@@ -57,18 +58,33 @@ pub struct TraceRecord {
     #[serde(skip)]
     pub duration: Option<i64>,
     #[serde(skip)]
-    pub children: Vec<TraceRecord>,
+    pub children: Vec<JetsTraceRecord>,
     #[serde(skip)]
-    pub annotations: Vec<TraceAnnotation>,
+    pub annotations: Vec<JetsTraceAnnotation>,
     #[serde(skip)]
-    pub events: Vec<TraceEvent>,
+    pub events: Vec<JetsTraceEvent>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TraceData {
-    pub header: TraceHeader,
-    pub roots: Vec<TraceRecord>,
-    pub footer: Option<TraceFooter>,
+pub struct JetsTraceMetadata {
+    pub header: JetsTraceHeader,
+    pub footer: Option<JetsTraceFooter>,
+}
+
+#[derive(Debug, Clone)]
+pub struct JetsTraceData {
+    pub metadata: JetsTraceMetadata,
+    pub roots: Vec<JetsTraceRecord>,
+    pub records_by_id: HashMap<u64, usize>, // Maps ID to index in flattened record list
+    pub all_records: Vec<JetsTraceRecord>,  // Flattened list of all records for lookup
+}
+
+pub struct JetsTraceReader;
+
+impl JetsTraceReader {
+    pub fn new() -> Self {
+        JetsTraceReader
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -120,14 +136,14 @@ enum TraceLine {
     },
 }
 
-pub fn parse_trace(file_path: &str) -> Result<TraceData> {
+pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
     let file = File::open(file_path)
         .with_context(|| format!("Failed to open file: {}", file_path))?;
     let reader = BufReader::new(file);
 
-    let mut header: Option<TraceHeader> = None;
-    let mut footer: Option<TraceFooter> = None;
-    let mut records_by_id: HashMap<u64, TraceRecord> = HashMap::new();
+    let mut header: Option<JetsTraceHeader> = None;
+    let mut footer: Option<JetsTraceFooter> = None;
+    let mut records_by_id: HashMap<u64, JetsTraceRecord> = HashMap::new();
 
     for (line_num, line_result) in reader.lines().enumerate() {
         let line = line_result
@@ -145,7 +161,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 if line_num != 0 {
                     return Err(anyhow!("Header must be first line (found at line {})", line_num + 1));
                 }
-                header = Some(TraceHeader { version, metadata });
+                header = Some(JetsTraceHeader { version, metadata });
             }
 
             TraceLine::Record { clk, name, record_type, id, parent_id, description, data } => {
@@ -153,7 +169,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                     return Err(anyhow!("Duplicate record ID '{}' at line {}", id, line_num + 1));
                 }
 
-                let record = TraceRecord {
+                let record = JetsTraceRecord {
                     clk,
                     name,
                     record_type,
@@ -183,7 +199,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 let record = records_by_id.get_mut(&record_id)
                     .ok_or_else(|| anyhow!("annotation references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
-                record.annotations.push(TraceAnnotation {
+                record.annotations.push(JetsTraceAnnotation {
                     line_type: "annotation".to_string(),
                     name,
                     record_id,
@@ -196,7 +212,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
                 let record = records_by_id.get_mut(&record_id)
                     .ok_or_else(|| anyhow!("event references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
-                record.events.push(TraceEvent {
+                record.events.push(JetsTraceEvent {
                     clk,
                     line_type: "event".to_string(),
                     name,
@@ -207,7 +223,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
             }
 
             TraceLine::Footer { capture_end_clk, total_records, total_annotations, total_events } => {
-                footer = Some(TraceFooter {
+                footer = Some(JetsTraceFooter {
                     capture_end_clk,
                     total_records,
                     total_annotations,
@@ -221,10 +237,10 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
 
     // Build tree structure
     let mut roots = Vec::new();
-    let mut all_records: Vec<TraceRecord> = records_by_id.into_values().collect();
+    let mut all_records: Vec<JetsTraceRecord> = records_by_id.into_values().collect();
 
     // Separate roots from children
-    let mut children_map: HashMap<u64, Vec<TraceRecord>> = HashMap::new();
+    let mut children_map: HashMap<u64, Vec<JetsTraceRecord>> = HashMap::new();
 
     for record in all_records.drain(..) {
         if let Some(parent_id) = record.parent_id {
@@ -237,7 +253,7 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
     }
 
     // Recursively attach children
-    fn attach_children(record: &mut TraceRecord, children_map: &mut HashMap<u64, Vec<TraceRecord>>) {
+    fn attach_children(record: &mut JetsTraceRecord, children_map: &mut HashMap<u64, Vec<JetsTraceRecord>>) {
         if let Some(mut children) = children_map.remove(&record.id) {
             for child in &mut children {
                 attach_children(child, children_map);
@@ -259,9 +275,177 @@ pub fn parse_trace(file_path: &str) -> Result<TraceData> {
         a.clk.cmp(&b.clk).then_with(|| a.name.cmp(&b.name))
     });
 
-    Ok(TraceData {
-        header,
+    // Flatten all records for lookup
+    let mut all_records_flat = Vec::new();
+    let mut id_to_index = HashMap::new();
+
+    fn flatten_records(record: &JetsTraceRecord, all_records: &mut Vec<JetsTraceRecord>, id_map: &mut HashMap<u64, usize>) {
+        let index = all_records.len();
+        id_map.insert(record.id, index);
+        all_records.push(record.clone());
+
+        for child in &record.children {
+            flatten_records(child, all_records, id_map);
+        }
+    }
+
+    for root in &roots {
+        flatten_records(root, &mut all_records_flat, &mut id_to_index);
+    }
+
+    Ok(JetsTraceData {
+        metadata: JetsTraceMetadata { header, footer },
         roots,
-        footer,
+        records_by_id: id_to_index,
+        all_records: all_records_flat,
     })
+}
+
+// Trait implementations
+
+impl TraceReader for JetsTraceReader {
+    fn read(&self, file_path: &str) -> anyhow::Result<Box<dyn TraceData>> {
+        let data = parse_trace(file_path)?;
+        Ok(Box::new(data))
+    }
+}
+
+impl TraceMetadata for JetsTraceMetadata {
+    fn version(&self) -> &str {
+        &self.header.version
+    }
+
+    fn header_data(&self) -> &serde_json::Value {
+        &self.header.metadata
+    }
+
+    fn capture_end_clk(&self) -> Option<i64> {
+        self.footer.as_ref().and_then(|f| f.capture_end_clk)
+    }
+
+    fn total_records(&self) -> Option<usize> {
+        self.footer.as_ref().and_then(|f| f.total_records)
+    }
+
+    fn total_annotations(&self) -> Option<usize> {
+        self.footer.as_ref().and_then(|f| f.total_annotations)
+    }
+
+    fn total_events(&self) -> Option<usize> {
+        self.footer.as_ref().and_then(|f| f.total_events)
+    }
+}
+
+impl TraceData for JetsTraceData {
+    fn metadata(&self) -> &dyn TraceMetadata {
+        &self.metadata
+    }
+
+    fn root_ids(&self) -> Vec<u64> {
+        self.roots.iter().map(|r| r.id).collect()
+    }
+
+    fn get_record(&self, id: u64) -> Option<&dyn TraceRecord> {
+        self.records_by_id.get(&id)
+            .and_then(|&index| self.all_records.get(index))
+            .map(|r| r as &dyn TraceRecord)
+    }
+}
+
+impl TraceRecord for JetsTraceRecord {
+    fn clk(&self) -> i64 {
+        self.clk
+    }
+
+    fn end_clk(&self) -> Option<i64> {
+        self.end_clk
+    }
+
+    fn duration(&self) -> Option<i64> {
+        self.duration
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn id(&self) -> u64 {
+        self.id
+    }
+
+    fn parent_id(&self) -> Option<u64> {
+        self.parent_id
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn data(&self) -> HashMap<String, serde_json::Value> {
+        let mut result = HashMap::new();
+
+        // Add original data fields
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                for (key, value) in map {
+                    result.insert(key.clone(), value.clone());
+                }
+            } else {
+                result.insert("data".to_string(), data.clone());
+            }
+        }
+
+        // Merge annotations into the data dictionary
+        for annotation in &self.annotations {
+            result.insert(annotation.name.clone(), annotation.data.clone());
+        }
+
+        result
+    }
+
+    fn children(&self) -> Vec<&dyn TraceRecord> {
+        self.children.iter()
+            .map(|c| c as &dyn TraceRecord)
+            .collect()
+    }
+
+    fn events(&self) -> Vec<&dyn TraceEvent> {
+        self.events.iter()
+            .map(|e| e as &dyn TraceEvent)
+            .collect()
+    }
+}
+
+impl TraceEvent for JetsTraceEvent {
+    fn clk(&self) -> i64 {
+        self.clk
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn record_id(&self) -> u64 {
+        self.record_id
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn data(&self) -> HashMap<String, serde_json::Value> {
+        let mut result = HashMap::new();
+
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                for (key, value) in map {
+                    result.insert(key.clone(), value.clone());
+                }
+            } else {
+                result.insert("data".to_string(), data.clone());
+            }
+        }
+
+        result
+    }
 }

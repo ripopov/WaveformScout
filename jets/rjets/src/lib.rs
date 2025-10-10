@@ -1,9 +1,25 @@
+pub mod traits;
 pub mod parser;
 pub mod writer;
+pub mod virtual_reader;
 
-pub use parser::{
-    TraceData, TraceRecord, TraceAnnotation, TraceEvent,
-    TraceHeader, TraceFooter, parse_trace
+// Export traits
+pub use traits::{
+    TraceReader, TraceData, TraceMetadata,
+    TraceRecord, TraceEvent
 };
 
+// Export JETS implementation
+pub use parser::{
+    JetsTraceReader, JetsTraceData, JetsTraceMetadata,
+    JetsTraceRecord, JetsTraceEvent, parse_trace
+};
+
+// Export virtual implementation
+pub use virtual_reader::{
+    VirtualTraceReader, VirtualTraceData, VirtualTraceMetadata,
+    VirtualTraceRecord, VirtualTraceEvent
+};
+
+// Export writer (unchanged)
 pub use writer::TraceWriter;

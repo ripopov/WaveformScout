@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui::{Color32, RichText, ScrollArea};
-use rjets::{parse_trace, TraceData, TraceRecord};
+use rjets::{TraceReader, TraceData, JetsTraceReader};
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
@@ -14,22 +14,39 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "JETS Trace Viewer",
         options,
-        Box::new(|_cc| Ok(Box::new(JetsViewerApp::default()))),
+        Box::new(|_cc| Ok(Box::new(JetsViewerApp::new()))),
     )
 }
 
-#[derive(Default)]
 struct JetsViewerApp {
-    trace_data: Option<TraceData>,
+    reader: Box<dyn TraceReader>,
+    trace_data: Option<Box<dyn TraceData>>,
     file_path: Option<PathBuf>,
     selected_record_id: Option<u64>,
     expanded_nodes: std::collections::HashSet<u64>,
     error_message: Option<String>,
 }
 
+impl Default for JetsViewerApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JetsViewerApp {
+    fn new() -> Self {
+        Self {
+            reader: Box::new(JetsTraceReader::new()),
+            trace_data: None,
+            file_path: None,
+            selected_record_id: None,
+            expanded_nodes: std::collections::HashSet::new(),
+            error_message: None,
+        }
+    }
+
     fn open_file(&mut self, path: PathBuf) {
-        match parse_trace(path.to_str().unwrap()) {
+        match self.reader.read(path.to_str().unwrap()) {
             Ok(data) => {
                 self.trace_data = Some(data);
                 self.file_path = Some(path);
@@ -61,14 +78,14 @@ impl JetsViewerApp {
             ui.separator();
 
             if let Some(trace) = &self.trace_data {
-                let metadata = &trace.header.metadata;
-                let gpu_model = metadata
+                let header_data = trace.metadata().header_data();
+                let gpu_model = header_data
                     .get("gpu_model")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown");
-                let clock_freq = metadata
+                let clock_freq = header_data
                     .get("clock_frequency_mhz")
-                    .or_else(|| metadata.get("clock_frequency_ghz"))
+                    .or_else(|| header_data.get("clock_frequency_ghz"))
                     .and_then(|v| v.as_f64())
                     .map(|f| format!("{:.2}", f))
                     .unwrap_or_else(|| "Unknown".to_string());
@@ -91,34 +108,62 @@ impl JetsViewerApp {
             return;
         }
 
-        // Clone the roots to avoid borrow checker issues
-        let roots = self.trace_data.as_ref().unwrap().roots.clone();
+        // Get root IDs
+        let root_ids: Vec<u64> = if let Some(trace) = &self.trace_data {
+            trace.root_ids()
+        } else {
+            Vec::new()
+        };
+
+        // Clone IDs and render them
+        let ids_to_render = root_ids.clone();
 
         ScrollArea::vertical()
             .id_salt("tree_scroll_area")
             .show(ui, |ui| {
-                for root in &roots {
-                    self.render_record_tree(ui, root, 0);
+                for root_id in ids_to_render {
+                    self.render_tree_node(ui, root_id, 0);
                 }
             });
     }
 
-    fn render_record_tree(&mut self, ui: &mut egui::Ui, record: &TraceRecord, depth: usize) {
+    fn render_tree_node(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize) {
+        // Extract all needed data from the record first to avoid borrow checker issues
+        let (has_children, name, description, clk, end_clk, duration, child_ids) = if let Some(trace) = &self.trace_data {
+            if let Some(record) = trace.get_record(record_id) {
+                let children = record.children();
+                let child_ids: Vec<u64> = children.iter().map(|c| c.id()).collect();
+                (
+                    !children.is_empty(),
+                    record.name().to_string(),
+                    record.description().to_string(),
+                    record.clk(),
+                    record.end_clk(),
+                    record.duration(),
+                    child_ids
+                )
+            } else {
+                return;
+            }
+        } else {
+            return;
+        };
+
         let indent = depth as f32 * 20.0;
 
         ui.horizontal(|ui| {
             ui.add_space(indent);
 
             // Expand/collapse button if has children
-            if !record.children.is_empty() {
-                let is_expanded = self.expanded_nodes.contains(&record.id);
+            if has_children {
+                let is_expanded = self.expanded_nodes.contains(&record_id);
                 let symbol = if is_expanded { "▼" } else { "▶" };
 
                 if ui.small_button(symbol).clicked() {
                     if is_expanded {
-                        self.expanded_nodes.remove(&record.id);
+                        self.expanded_nodes.remove(&record_id);
                     } else {
-                        self.expanded_nodes.insert(record.id);
+                        self.expanded_nodes.insert(record_id);
                     }
                 }
             } else {
@@ -126,28 +171,27 @@ impl JetsViewerApp {
             }
 
             // Record info - clickable
-            let is_selected = self.selected_record_id == Some(record.id);
+            let is_selected = self.selected_record_id == Some(record_id);
             let bg_color = if is_selected {
                 Some(Color32::from_rgb(50, 80, 120))
             } else {
                 None
             };
 
-            let duration_str = record.duration
+            let duration_str = duration
                 .map(|d| d.to_string())
                 .unwrap_or_else(|| "N/A".to_string());
 
-            let end_str = record.end_clk
+            let end_str = end_clk
                 .map(|e| e.to_string())
                 .unwrap_or_else(|| "N/A".to_string());
 
             let label_text = format!(
-                "{} | {} | {} | {} | {} | {} | {}",
-                record.id,
-                record.name,
-                record.description,
-                record.record_type,
-                record.clk,
+                "{} | {} | {} | {} | {} | {}",
+                record_id,
+                name,
+                description,
+                clk,
                 end_str,
                 duration_str
             );
@@ -159,100 +203,82 @@ impl JetsViewerApp {
             };
 
             if response.clicked() {
-                self.selected_record_id = Some(record.id);
+                self.selected_record_id = Some(record_id);
             }
         });
 
         // Render children if expanded
-        if self.expanded_nodes.contains(&record.id) {
-            for child in &record.children {
-                self.render_record_tree(ui, child, depth + 1);
+        if self.expanded_nodes.contains(&record_id) {
+            for child_id in child_ids {
+                self.render_tree_node(ui, child_id, depth + 1);
             }
         }
     }
 
     fn render_details(&mut self, ui: &mut egui::Ui) {
         if let (Some(trace), Some(selected_id)) = (&self.trace_data, self.selected_record_id) {
-            if let Some(record) = self.find_record(&trace.roots, selected_id) {
-                ui.label(RichText::new(format!("Annotations & Events for record: {}", selected_id)).strong());
+            if let Some(record) = trace.get_record(selected_id) {
+                ui.label(RichText::new(format!("Data & Events for record: {}", selected_id)).strong());
                 ui.separator();
 
                 ScrollArea::vertical()
                     .id_salt("details_scroll_area")
                     .show(ui, |ui| {
                     // Show record itself
-                    let record_json = format!(
-                        r#"{{"clk":{},"record_type":"{}","name":"{}","description":"{}","id":"{}","parent_id":{}}}"#,
-                        record.clk,
-                        record.record_type,
-                        record.name,
-                        record.description,
-                        record.id,
-                        record.parent_id.map(|id| id.to_string()).unwrap_or_else(|| "null".to_string())
-                    );
-                    ui.colored_label(Color32::from_rgb(100, 150, 255), &record_json);
+                    let record_json = serde_json::json!({
+                        "clk": record.clk(),
+                        "name": record.name(),
+                        "description": record.description(),
+                        "id": record.id(),
+                        "parent_id": record.parent_id()
+                    });
+                    ui.colored_label(Color32::from_rgb(100, 150, 255),
+                        serde_json::to_string(&record_json).unwrap());
 
-                    // Show annotations
-                    for annotation in &record.annotations {
-                        let ann_json = serde_json::json!({
-                            "type": "annotation",
-                            "name": annotation.name,
-                            "description": annotation.description,
-                            "record_id": annotation.record_id,
-                            "data": annotation.data
-                        });
-                        ui.colored_label(
-                            Color32::from_rgb(100, 200, 100),
-                            serde_json::to_string(&ann_json).unwrap()
-                        );
+                    // Show merged data (includes annotations)
+                    ui.label(RichText::new("Data (with merged annotations):").strong());
+                    let data = record.data();
+                    if !data.is_empty() {
+                        for (key, value) in data {
+                            let data_json = serde_json::json!({
+                                key: value
+                            });
+                            ui.colored_label(
+                                Color32::from_rgb(100, 200, 100),
+                                serde_json::to_string(&data_json).unwrap()
+                            );
+                        }
+                    } else {
+                        ui.colored_label(Color32::GRAY, "(no data)");
                     }
+
+                    ui.add_space(10.0);
 
                     // Show events
-                    for event in &record.events {
-                        let evt_json = if let Some(data) = &event.data {
-                            serde_json::json!({
-                                "clk": event.clk,
-                                "type": "event",
-                                "name": event.name,
-                                "description": event.description,
-                                "record_id": event.record_id,
-                                "data": data
-                            })
-                        } else {
-                            serde_json::json!({
-                                "clk": event.clk,
-                                "type": "event",
-                                "name": event.name,
-                                "description": event.description,
-                                "record_id": event.record_id
-                            })
-                        };
-                        ui.colored_label(
-                            Color32::from_rgb(255, 165, 0),
-                            serde_json::to_string(&evt_json).unwrap()
-                        );
-                    }
-
-                    if record.annotations.is_empty() && record.events.is_empty() {
-                        ui.colored_label(Color32::GRAY, "(no annotations or events for this record)");
+                    ui.label(RichText::new("Events:").strong());
+                    let events = record.events();
+                    if !events.is_empty() {
+                        for event in events {
+                            let evt_json = serde_json::json!({
+                                "clk": event.clk(),
+                                "name": event.name(),
+                                "description": event.description(),
+                                "record_id": event.record_id(),
+                                "data": event.data()
+                            });
+                            ui.colored_label(
+                                Color32::from_rgb(255, 165, 0),
+                                serde_json::to_string(&evt_json).unwrap()
+                            );
+                        }
+                    } else {
+                        ui.colored_label(Color32::GRAY, "(no events)");
                     }
                 });
             }
         } else {
-            ui.label("Annotations & Events (select a record to view)");
+            ui.label("Data & Events (select a record to view)");
         }
-    }
-
-    fn find_record<'a>(&self, records: &'a [TraceRecord], id: u64) -> Option<&'a TraceRecord> {
-        for record in records {
-            if record.id == id {
-                return Some(record);
-            }
-            if let Some(found) = self.find_record(&record.children, id) {
-                return Some(found);
-            }
-        }
-        None
     }
 }
 

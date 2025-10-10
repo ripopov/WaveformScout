@@ -1,4 +1,4 @@
-use rjets::{TraceWriter, parse_trace};
+use rjets::{TraceWriter, TraceReader, JetsTraceReader, VirtualTraceReader};
 use anyhow::Result;
 use std::fs;
 
@@ -80,59 +80,62 @@ fn test_write_and_read_basic_trace() -> Result<()> {
         writer.write_footer(Some(1500))?;
     }
 
-    // Read the trace back
-    let trace = parse_trace(test_file)?;
+    // Read the trace back using trait API
+    let reader: Box<dyn TraceReader> = Box::new(JetsTraceReader::new());
+    let trace = reader.read(test_file)?;
 
-    // Verify header
-    assert_eq!(trace.header.version, "2.0");
-    assert_eq!(trace.header.metadata["gpu_model"], "Test GPU");
+    // Verify metadata
+    assert_eq!(trace.metadata().version(), "2.0");
+    assert_eq!(trace.metadata().header_data()["gpu_model"], "Test GPU");
 
     // Verify roots
-    assert_eq!(trace.roots.len(), 1);
-    let root = &trace.roots[0];
-    assert_eq!(root.id, 1);
-    assert_eq!(root.record_type, "HostProgram");
-    assert_eq!(root.name, "TestProgram");
-    assert_eq!(root.description, "Main test program entry point");
-    assert_eq!(root.clk, 1000);
-    assert_eq!(root.end_clk, Some(1500));
-    assert_eq!(root.duration, Some(500));
+    let root_ids = trace.root_ids();
+    assert_eq!(root_ids.len(), 1);
 
-    // Verify annotations
-    assert_eq!(root.annotations.len(), 1);
-    assert_eq!(root.annotations[0].name, "compiler");
-    assert_eq!(root.annotations[0].description, "Compiler information");
+    let root = trace.get_record(root_ids[0]).unwrap();
+    assert_eq!(root.id(), 1);
+    assert_eq!(root.name(), "TestProgram");
+    assert_eq!(root.description(), "Main test program entry point");
+    assert_eq!(root.clk(), 1000);
+    assert_eq!(root.end_clk(), Some(1500));
+    assert_eq!(root.duration(), Some(500));
+
+    // Verify merged data (includes annotations)
+    let data = root.data();
+    assert!(data.contains_key("language"));
+    assert!(data.contains_key("compiler"));  // Annotation merged into data
+    assert_eq!(data["compiler"]["name"], "nvcc");
 
     // Verify events
-    assert_eq!(root.events.len(), 1);
-    assert_eq!(root.events[0].name, "ProgramStart");
-    assert_eq!(root.events[0].description, "Program execution start");
-    assert_eq!(root.events[0].clk, 1001);
+    let events = root.events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].name(), "ProgramStart");
+    assert_eq!(events[0].description(), "Program execution start");
+    assert_eq!(events[0].clk(), 1001);
 
     // Verify children
-    assert_eq!(root.children.len(), 1);
-    let child = &root.children[0];
-    assert_eq!(child.id, 2);
-    assert_eq!(child.parent_id, Some(1));
-    assert_eq!(child.record_type, "Dispatch");
-    assert_eq!(child.name, "kernel_launch");
-    assert_eq!(child.description, "Kernel dispatch to hardware");
-    assert_eq!(child.clk, 1100);
-    assert_eq!(child.end_clk, Some(1200));
-    assert_eq!(child.duration, Some(100));
+    let children = root.children();
+    assert_eq!(children.len(), 1);
+    let child = children[0];
+    assert_eq!(child.id(), 2);
+    assert_eq!(child.parent_id(), Some(1));
+    assert_eq!(child.name(), "kernel_launch");
+    assert_eq!(child.description(), "Kernel dispatch to hardware");
+    assert_eq!(child.clk(), 1100);
+    assert_eq!(child.end_clk(), Some(1200));
+    assert_eq!(child.duration(), Some(100));
 
     // Verify child events
-    assert_eq!(child.events.len(), 1);
-    assert_eq!(child.events[0].name, "DispatchStart");
-    assert_eq!(child.events[0].description, "Dispatch execution start");
+    let child_events = child.events();
+    assert_eq!(child_events.len(), 1);
+    assert_eq!(child_events[0].name(), "DispatchStart");
+    assert_eq!(child_events[0].description(), "Dispatch execution start");
 
-    // Verify footer
-    assert!(trace.footer.is_some());
-    let footer = trace.footer.unwrap();
-    assert_eq!(footer.capture_end_clk, Some(1500));
-    assert_eq!(footer.total_records, Some(2));
-    assert_eq!(footer.total_annotations, Some(1));
-    assert_eq!(footer.total_events, Some(2));
+    // Verify footer metadata
+    assert_eq!(trace.metadata().capture_end_clk(), Some(1500));
+    assert_eq!(trace.metadata().total_records(), Some(2));
+    assert_eq!(trace.metadata().total_annotations(), Some(1));
+    assert_eq!(trace.metadata().total_events(), Some(2));
 
     // Clean up
     fs::remove_file(test_file)?;
@@ -185,46 +188,156 @@ fn test_write_and_read_hierarchical_trace() -> Result<()> {
         writer.write_footer(Some(700))?;
     }
 
-    // Parse and verify
-    let trace = parse_trace(test_file)?;
+    // Parse and verify using trait API
+    let reader: Box<dyn TraceReader> = Box::new(JetsTraceReader::new());
+    let trace = reader.read(test_file)?;
 
-    assert_eq!(trace.roots.len(), 1);
+    let root_ids = trace.root_ids();
+    assert_eq!(root_ids.len(), 1);
 
-    let prog = &trace.roots[0];
-    assert_eq!(prog.id, 1);
-    assert_eq!(prog.name, "main");
-    assert_eq!(prog.description, "Main program");
-    assert_eq!(prog.children.len(), 1);
+    let prog = trace.get_record(root_ids[0]).unwrap();
+    assert_eq!(prog.id(), 1);
+    assert_eq!(prog.name(), "main");
+    assert_eq!(prog.description(), "Main program");
+    let prog_children = prog.children();
+    assert_eq!(prog_children.len(), 1);
 
-    let disp = &prog.children[0];
-    assert_eq!(disp.id, 2);
-    assert_eq!(disp.name, "kernel");
-    assert_eq!(disp.description, "Kernel dispatch");
-    assert_eq!(disp.children.len(), 1);
+    let disp = prog_children[0];
+    assert_eq!(disp.id(), 2);
+    assert_eq!(disp.name(), "kernel");
+    assert_eq!(disp.description(), "Kernel dispatch");
+    let disp_children = disp.children();
+    assert_eq!(disp_children.len(), 1);
 
-    let tb = &disp.children[0];
-    assert_eq!(tb.id, 3);
-    assert_eq!(tb.name, "block_0");
-    assert_eq!(tb.description, "Thread block 0");
-    assert_eq!(tb.children.len(), 1);
+    let tb = disp_children[0];
+    assert_eq!(tb.id(), 3);
+    assert_eq!(tb.name(), "block_0");
+    assert_eq!(tb.description(), "Thread block 0");
+    let tb_children = tb.children();
+    assert_eq!(tb_children.len(), 1);
 
-    let warp = &tb.children[0];
-    assert_eq!(warp.id, 4);
-    assert_eq!(warp.name, "warp_0");
-    assert_eq!(warp.description, "Warp 0 execution");
-    assert_eq!(warp.children.len(), 1);
+    let warp = tb_children[0];
+    assert_eq!(warp.id(), 4);
+    assert_eq!(warp.name(), "warp_0");
+    assert_eq!(warp.description(), "Warp 0 execution");
+    let warp_children = warp.children();
+    assert_eq!(warp_children.len(), 1);
 
-    let inst = &warp.children[0];
-    assert_eq!(inst.id, 5);
-    assert_eq!(inst.name, "HMMA");
-    assert_eq!(inst.description, "HMMA instruction");
-    assert_eq!(inst.record_type, "SASS_Instruction");
-    assert_eq!(inst.events.len(), 1);
-    assert_eq!(inst.events[0].description, "Instruction execution");
-    assert_eq!(inst.duration, Some(10));
+    let inst = warp_children[0];
+    assert_eq!(inst.id(), 5);
+    assert_eq!(inst.name(), "HMMA");
+    assert_eq!(inst.description(), "HMMA instruction");
+    let inst_events = inst.events();
+    assert_eq!(inst_events.len(), 1);
+    assert_eq!(inst_events[0].description(), "Instruction execution");
+    assert_eq!(inst.duration(), Some(10));
 
     // Clean up
     fs::remove_file(test_file)?;
 
+    Ok(())
+}
+
+#[test]
+fn test_virtual_reader() -> Result<()> {
+    let reader: Box<dyn TraceReader> = Box::new(VirtualTraceReader::new());
+    let trace = reader.read("")?; // Path is ignored for virtual reader
+
+    // Verify metadata
+    assert_eq!(trace.metadata().version(), "virtual-1.0");
+    assert_eq!(trace.metadata().header_data()["generator"], "VirtualTraceReader");
+
+    // Verify we have roots
+    let root_ids = trace.root_ids();
+    assert!(root_ids.len() > 0);
+
+    // Verify records
+    for root_id in root_ids {
+        let record = trace.get_record(root_id).unwrap();
+        assert_eq!(record.id(), root_id);
+        assert!(record.name().starts_with("Record_"));
+        assert!(record.clk() >= 0);
+
+        // Verify children generation works
+        let _children = record.children();
+        // Children may or may not exist depending on depth and random generation
+
+        // Verify data exists
+        let data = record.data();
+        assert!(data.len() >= 3); // Should have 3-7 fields
+
+        // Verify events
+        let events = record.events();
+        assert!(events.len() <= 5); // Should have 0-5 events
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_trait_polymorphism() -> Result<()> {
+    // Create test file for JETS reader
+    let test_file = "/tmp/test_polymorphism.jets";
+    let _ = fs::remove_file(test_file);
+
+    {
+        let mut writer = TraceWriter::new(test_file)?;
+        writer.write_header("2.0", serde_json::json!({"test": "polymorphism"}))?;
+        writer.write_record(1, None, "Test", 0, "test", "test record", None)?;
+        writer.write_record_end(1, 100)?;
+        writer.write_footer(Some(100))?;
+    }
+
+    // Test polymorphism: both readers should work through the same interface
+    let readers: Vec<Box<dyn TraceReader>> = vec![
+        Box::new(JetsTraceReader::new()),
+        Box::new(VirtualTraceReader::new()),
+    ];
+
+    for (i, reader) in readers.iter().enumerate() {
+        let path = if i == 0 { test_file } else { "" }; // Virtual reader ignores path
+        let trace = reader.read(path)?;
+
+        // Both should provide valid traces through the same interface
+        assert!(trace.metadata().version().len() > 0);
+        assert!(trace.root_ids().len() > 0);
+
+        // Test record access
+        for root_id in trace.root_ids() {
+            let record = trace.get_record(root_id).unwrap();
+            assert!(record.id() > 0);
+            assert!(record.name().len() > 0);
+        }
+    }
+
+    // Clean up
+    fs::remove_file(test_file)?;
+
+    Ok(())
+}
+
+#[test]
+fn test_read_real_trace_file() -> Result<()> {
+    // Try to read the trace.jets file if it exists
+    let trace_file = "../trace.jets";
+    if !std::path::Path::new(trace_file).exists() {
+        // Skip test if file doesn't exist
+        return Ok(());
+    }
+
+    let reader: Box<dyn TraceReader> = Box::new(JetsTraceReader::new());
+    let trace = reader.read(trace_file)?;
+    
+    // Just verify we can read it
+    assert!(trace.metadata().version().len() > 0);
+    assert!(trace.root_ids().len() > 0);
+    
+    for root_id in trace.root_ids() {
+        if let Some(record) = trace.get_record(root_id) {
+            assert!(record.id() > 0);
+            assert!(record.name().len() > 0);
+        }
+    }
+    
     Ok(())
 }
