@@ -28,7 +28,6 @@ struct JetsViewerApp {
     split_ratio: f32,
     dark_mode: bool,
     column_widths: [f32; 5], // Name, ID, Start Clock, End Clock, Description
-    dragging_column: Option<usize>,
 }
 
 impl Default for JetsViewerApp {
@@ -49,7 +48,6 @@ impl JetsViewerApp {
             split_ratio: 0.7,
             dark_mode: true,
             column_widths: [250.0, 80.0, 120.0, 120.0, 300.0], // Default column widths
-            dragging_column: None,
         }
     }
 
@@ -157,7 +155,7 @@ impl JetsViewerApp {
         let start_pos = ui.cursor().min;
 
         // Reserve space for the entire header row
-        let (header_rect, _) = ui.allocate_exact_size(
+        let (_header_rect, _) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), header_height),
             egui::Sense::hover()
         );
