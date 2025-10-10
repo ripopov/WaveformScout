@@ -26,6 +26,7 @@ struct JetsViewerApp {
     expanded_nodes: std::collections::HashSet<u64>,
     error_message: Option<String>,
     split_ratio: f32,
+    dark_mode: bool,
 }
 
 impl Default for JetsViewerApp {
@@ -44,6 +45,7 @@ impl JetsViewerApp {
             expanded_nodes: std::collections::HashSet::new(),
             error_message: None,
             split_ratio: 0.7,
+            dark_mode: true,
         }
     }
 
@@ -96,6 +98,15 @@ impl JetsViewerApp {
             } else {
                 ui.label("No trace loaded");
             }
+
+            // Push theme toggle button to the right
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
+                let theme_text = if self.dark_mode { "Light" } else { "Dark" };
+                if ui.button(format!("{} {}", theme_icon, theme_text)).clicked() {
+                    self.dark_mode = !self.dark_mode;
+                }
+            });
         });
 
         if let Some(err) = &self.error_message {
@@ -295,6 +306,13 @@ impl JetsViewerApp {
 
 impl eframe::App for JetsViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply theme based on dark_mode state
+        if self.dark_mode {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             self.render_header(ui);
         });
@@ -315,7 +333,6 @@ impl eframe::App for JetsViewerApp {
                 });
 
             // Draggable separator
-            let separator_id = egui::Id::new("tree_details_separator");
             let separator_rect = egui::Rect::from_min_size(
                 egui::pos2(ui.min_rect().left(), ui.min_rect().top() + tree_height),
                 egui::vec2(ui.available_width(), 8.0),
