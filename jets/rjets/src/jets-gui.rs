@@ -25,6 +25,7 @@ struct JetsViewerApp {
     selected_record_id: Option<u64>,
     expanded_nodes: std::collections::HashSet<u64>,
     error_message: Option<String>,
+    split_ratio: f32,
 }
 
 impl Default for JetsViewerApp {
@@ -42,6 +43,7 @@ impl JetsViewerApp {
             selected_record_id: None,
             expanded_nodes: std::collections::HashSet::new(),
             error_message: None,
+            split_ratio: 0.7,
         }
     }
 
@@ -218,11 +220,15 @@ impl JetsViewerApp {
     fn render_details(&mut self, ui: &mut egui::Ui) {
         if let (Some(trace), Some(selected_id)) = (&self.trace_data, self.selected_record_id) {
             if let Some(record) = trace.get_record(selected_id) {
-                ui.label(RichText::new(format!("Data & Events for record: {}", selected_id)).strong());
+                ui.label(RichText::new(format!("Details for record: {}", selected_id)).strong());
                 ui.separator();
+
+                let available_height = ui.available_height();
 
                 ScrollArea::vertical()
                     .id_salt("details_scroll_area")
+                    .max_height(available_height)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                     // Show record itself
                     let record_json = serde_json::json!({
@@ -235,11 +241,16 @@ impl JetsViewerApp {
                     ui.colored_label(Color32::from_rgb(100, 150, 255),
                         serde_json::to_string(&record_json).unwrap());
 
-                    // Show merged data (includes annotations)
-                    ui.label(RichText::new("Data (with merged annotations):").strong());
+                    ui.add_space(10.0);
+
+                    // Show merged data (includes annotations) - ALL of them, sorted by key
+                    ui.label(RichText::new("Annotations & Data:").strong());
                     let data = record.data();
                     if !data.is_empty() {
-                        for (key, value) in data {
+                        let mut sorted_data: Vec<_> = data.iter().collect();
+                        sorted_data.sort_by_key(|(key, _)| *key);
+
+                        for (key, value) in sorted_data {
                             let data_json = serde_json::json!({
                                 key: value
                             });
@@ -254,7 +265,7 @@ impl JetsViewerApp {
 
                     ui.add_space(10.0);
 
-                    // Show events
+                    // Show events - ALL of them
                     ui.label(RichText::new("Events:").strong());
                     let events = record.events();
                     if !events.is_empty() {
@@ -290,10 +301,10 @@ impl eframe::App for JetsViewerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let available_height = ui.available_height();
-            let tree_height = available_height * 0.7;
-            let details_height = available_height * 0.3;
+            let tree_height = available_height * self.split_ratio;
+            let details_height = available_height * (1.0 - self.split_ratio);
 
-            // Tree view (top 70%)
+            // Tree view (top panel)
             egui::Frame::default()
                 .inner_margin(4.0)
                 .show(ui, |ui| {
@@ -303,9 +314,44 @@ impl eframe::App for JetsViewerApp {
                     self.render_tree(ui);
                 });
 
-            ui.separator();
+            // Draggable separator
+            let separator_id = egui::Id::new("tree_details_separator");
+            let separator_rect = egui::Rect::from_min_size(
+                egui::pos2(ui.min_rect().left(), ui.min_rect().top() + tree_height),
+                egui::vec2(ui.available_width(), 8.0),
+            );
 
-            // Details panel (bottom 30%)
+            let separator_response = ui.allocate_rect(separator_rect, egui::Sense::click_and_drag());
+
+            if separator_response.dragged() {
+                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
+                    let new_ratio = (pointer_pos.y - ui.min_rect().top()) / available_height;
+                    self.split_ratio = new_ratio.clamp(0.1, 0.9);
+                }
+            }
+
+            let is_active = separator_response.hovered() || separator_response.dragged();
+
+            if is_active {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            }
+
+            // Draw the separator line with different style when active
+            let (stroke_width, stroke_color) = if is_active {
+                (3.0, Color32::from_rgb(100, 150, 255))  // Brighter blue and thicker when active
+            } else {
+                (1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)  // Normal style
+            };
+
+            ui.painter().line_segment(
+                [
+                    egui::pos2(separator_rect.left(), separator_rect.center().y),
+                    egui::pos2(separator_rect.right(), separator_rect.center().y),
+                ],
+                egui::Stroke::new(stroke_width, stroke_color),
+            );
+
+            // Details panel (bottom panel)
             egui::Frame::default()
                 .inner_margin(4.0)
                 .show(ui, |ui| {
