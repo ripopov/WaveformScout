@@ -27,6 +27,8 @@ struct JetsViewerApp {
     error_message: Option<String>,
     split_ratio: f32,
     dark_mode: bool,
+    column_widths: [f32; 5], // Name, ID, Start Clock, End Clock, Description
+    dragging_column: Option<usize>,
 }
 
 impl Default for JetsViewerApp {
@@ -46,6 +48,8 @@ impl JetsViewerApp {
             error_message: None,
             split_ratio: 0.7,
             dark_mode: true,
+            column_widths: [250.0, 80.0, 120.0, 120.0, 300.0], // Default column widths
+            dragging_column: None,
         }
     }
 
@@ -121,6 +125,11 @@ impl JetsViewerApp {
             return;
         }
 
+        // Render table header
+        self.render_table_header(ui);
+
+        ui.separator();
+
         // Get root IDs
         let root_ids: Vec<u64> = if let Some(trace) = &self.trace_data {
             trace.root_ids()
@@ -140,9 +149,74 @@ impl JetsViewerApp {
             });
     }
 
+    fn render_table_header(&mut self, ui: &mut egui::Ui) {
+        let column_names = ["Name", "ID", "Start Clock", "End Clock", "Description"];
+
+        let mut x_offset = 0.0;
+        let header_height = 24.0;
+        let start_pos = ui.cursor().min;
+
+        // Reserve space for the entire header row
+        let (header_rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), header_height),
+            egui::Sense::hover()
+        );
+
+        // Space for expand/collapse buttons
+        x_offset += 40.0;
+
+        for (i, name) in column_names.iter().enumerate() {
+            let width = self.column_widths[i];
+
+            // Draw column header label
+            let label_rect = egui::Rect::from_min_size(
+                egui::pos2(start_pos.x + x_offset, start_pos.y),
+                egui::vec2(width, header_height),
+            );
+
+            ui.painter().text(
+                label_rect.left_center() + egui::vec2(4.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                name,
+                egui::FontId::proportional(14.0),
+                ui.visuals().strong_text_color(),
+            );
+
+            x_offset += width;
+
+            // Column resize handle
+            if i < column_names.len() - 1 {
+                let handle_width = 8.0;
+                let handle_rect = egui::Rect::from_center_size(
+                    egui::pos2(start_pos.x + x_offset, start_pos.y + header_height / 2.0),
+                    egui::vec2(handle_width, header_height),
+                );
+
+                let handle_id = ui.id().with(format!("header_resize_{}", i));
+                let handle_response = ui.interact(handle_rect, handle_id, egui::Sense::drag());
+
+                // Handle dragging
+                if handle_response.dragged() {
+                    let delta = handle_response.drag_delta().x;
+                    self.column_widths[i] = (self.column_widths[i] + delta).max(50.0);
+                }
+
+                // Visual feedback
+                let color = if handle_response.hovered() || handle_response.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                    Color32::from_rgb(100, 150, 255)
+                } else {
+                    ui.visuals().widgets.noninteractive.bg_stroke.color.gamma_multiply(0.5)
+                };
+
+                ui.painter().rect_filled(handle_rect.shrink(2.0), 0.0, color);
+            }
+        }
+    }
+
     fn render_tree_node(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize) {
         // Extract all needed data from the record first to avoid borrow checker issues
-        let (has_children, name, description, clk, end_clk, duration, child_ids) = if let Some(trace) = &self.trace_data {
+        let (has_children, name, description, clk, end_clk, child_ids) = if let Some(trace) = &self.trace_data {
             if let Some(record) = trace.get_record(record_id) {
                 let children = record.children();
                 let child_ids: Vec<u64> = children.iter().map(|c| c.id()).collect();
@@ -152,7 +226,6 @@ impl JetsViewerApp {
                     record.description().to_string(),
                     record.clk(),
                     record.end_clk(),
-                    record.duration(),
                     child_ids
                 )
             } else {
@@ -163,62 +236,140 @@ impl JetsViewerApp {
         };
 
         let indent = depth as f32 * 20.0;
+        let is_selected = self.selected_record_id == Some(record_id);
+        let row_height = 22.0;
 
-        ui.horizontal(|ui| {
-            ui.add_space(indent);
+        let mut x_offset = 0.0;
+        let start_pos = ui.cursor().min;
 
-            // Expand/collapse button if has children
-            if has_children {
-                let is_expanded = self.expanded_nodes.contains(&record_id);
-                let symbol = if is_expanded { "▼" } else { "▶" };
+        // Reserve space for the entire row
+        let (row_rect, row_response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), row_height),
+            egui::Sense::click()
+        );
 
-                if ui.small_button(symbol).clicked() {
-                    if is_expanded {
-                        self.expanded_nodes.remove(&record_id);
-                    } else {
-                        self.expanded_nodes.insert(record_id);
-                    }
-                }
-            } else {
-                ui.add_space(20.0);
-            }
+        if row_response.clicked() {
+            self.selected_record_id = Some(record_id);
+        }
 
-            // Record info - clickable
-            let is_selected = self.selected_record_id == Some(record_id);
-            let bg_color = if is_selected {
-                Some(Color32::from_rgb(50, 80, 120))
-            } else {
-                None
-            };
-
-            let duration_str = duration
-                .map(|d| d.to_string())
-                .unwrap_or_else(|| "N/A".to_string());
-
-            let end_str = end_clk
-                .map(|e| e.to_string())
-                .unwrap_or_else(|| "N/A".to_string());
-
-            let label_text = format!(
-                "{} | {} | {} | {} | {} | {}",
-                record_id,
-                name,
-                description,
-                clk,
-                end_str,
-                duration_str
+        // Draw background for selected row
+        if is_selected {
+            ui.painter().rect_filled(
+                row_rect,
+                0.0,
+                Color32::from_rgb(50, 80, 120),
             );
+        }
 
-            let response = if let Some(bg) = bg_color {
-                ui.colored_label(bg, &label_text)
-            } else {
-                ui.label(&label_text)
-            };
+        // Tree expansion control (40px area)
+        let expand_width = 40.0;
+        let expand_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + indent, start_pos.y),
+            egui::vec2(expand_width - indent, row_height),
+        );
 
-            if response.clicked() {
-                self.selected_record_id = Some(record_id);
+        if has_children {
+            let is_expanded = self.expanded_nodes.contains(&record_id);
+            let symbol = if is_expanded { "▼" } else { "▶" };
+
+            let button_id = ui.id().with(format!("expand_{}", record_id));
+            let button_rect = egui::Rect::from_center_size(
+                expand_rect.center(),
+                egui::vec2(16.0, 16.0),
+            );
+            let button_response = ui.interact(button_rect, button_id, egui::Sense::click());
+
+            if button_response.clicked() {
+                if is_expanded {
+                    self.expanded_nodes.remove(&record_id);
+                } else {
+                    self.expanded_nodes.insert(record_id);
+                }
             }
-        });
+
+            ui.painter().text(
+                button_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                symbol,
+                egui::FontId::proportional(12.0),
+                ui.visuals().text_color(),
+            );
+        }
+
+        x_offset += expand_width;
+
+        // Column 0: Name
+        let name_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[0], row_height),
+        );
+        ui.painter().text(
+            name_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &name,
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[0];
+
+        // Column 1: ID
+        let id_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[1], row_height),
+        );
+        ui.painter().text(
+            id_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &record_id.to_string(),
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[1];
+
+        // Column 2: Start Clock
+        let start_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[2], row_height),
+        );
+        ui.painter().text(
+            start_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &clk.to_string(),
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[2];
+
+        // Column 3: End Clock
+        let end_str = end_clk
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+
+        let end_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[3], row_height),
+        );
+        ui.painter().text(
+            end_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &end_str,
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[3];
+
+        // Column 4: Description
+        let desc_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[4], row_height),
+        );
+        ui.painter().text(
+            desc_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &description,
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
 
         // Render children if expanded
         if self.expanded_nodes.contains(&record_id) {
