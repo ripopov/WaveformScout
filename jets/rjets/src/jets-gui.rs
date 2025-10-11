@@ -40,6 +40,9 @@ struct JetsViewerApp {
     // Drag panning state
     is_dragging: bool,
     drag_start_clk: i64,
+    // Cursor hover state
+    cursor_hover_pos: Option<egui::Pos2>,
+    cursor_hover_clk: Option<i64>,
 }
 
 impl Default for JetsViewerApp {
@@ -70,6 +73,8 @@ impl JetsViewerApp {
             trace_max_clk: 0,
             is_dragging: false,
             drag_start_clk: 0,
+            cursor_hover_pos: None,
+            cursor_hover_clk: None,
         }
     }
 
@@ -640,8 +645,8 @@ impl JetsViewerApp {
         // Handle zoom and horizontal pan input
         let canvas_rect = ui.available_rect_before_wrap();
 
-        // Handle drag panning with left mouse button
-        let canvas_response = ui.interact(canvas_rect, ui.id().with("timeline_canvas"), egui::Sense::drag());
+        // Handle drag panning with left mouse button AND hover for cursor tracking
+        let canvas_response = ui.interact(canvas_rect, ui.id().with("timeline_canvas"), egui::Sense::drag().union(egui::Sense::hover()));
 
         if canvas_response.dragged() {
             let drag_delta = canvas_response.drag_delta();
@@ -683,6 +688,22 @@ impl JetsViewerApp {
             // Drag ended
             self.is_dragging = false;
             println!("DEBUG: Drag ended");
+        }
+
+        // Track cursor hover position for vertical cursor line
+        // Don't rely on canvas_response.hovered() as it's blocked by child widgets
+        // Instead, directly check if pointer is in the canvas rect
+        if let Some(hover_pos) = ctx.input(|i| i.pointer.hover_pos()) {
+            if canvas_rect.contains(hover_pos) {
+                self.cursor_hover_pos = Some(hover_pos);
+                self.cursor_hover_clk = Some(self.x_to_clk(hover_pos.x, canvas_rect));
+            } else {
+                self.cursor_hover_pos = None;
+                self.cursor_hover_clk = None;
+            }
+        } else {
+            self.cursor_hover_pos = None;
+            self.cursor_hover_clk = None;
         }
 
         if ui.rect_contains_pointer(canvas_rect) {
@@ -772,7 +793,7 @@ impl JetsViewerApp {
 
         scroll_area = scroll_area.vertical_scroll_offset(self.shared_scroll_y);
 
-        scroll_area.show(ui, |ui| {
+        let scroll_output = scroll_area.show(ui, |ui| {
             // Render timeline rows matching tree structure
             if let Some(trace) = &self.trace_data {
                 let root_ids = trace.root_ids();
@@ -781,6 +802,64 @@ impl JetsViewerApp {
                 }
             }
         });
+
+        // Draw cursor line on top of everything if hovering
+        // Use a dedicated layer ID to ensure it draws on top of all content
+        if let (Some(hover_pos), Some(hover_clk)) = (self.cursor_hover_pos, self.cursor_hover_clk) {
+            let line_x = hover_pos.x;
+
+            // Use the scroll area's outer rect for proper clipping
+            let scroll_rect = scroll_output.inner_rect;
+            let content_top = scroll_rect.top();
+            let content_bottom = scroll_rect.bottom();
+
+            // Create a dedicated foreground layer that's guaranteed to be on top
+            // Use debug_painter which draws on top of everything
+            let painter = ui.ctx().debug_painter();
+
+            // Draw the vertical cursor line
+            painter.line_segment(
+                [
+                    egui::pos2(line_x, content_top),
+                    egui::pos2(line_x, content_bottom),
+                ],
+                egui::Stroke::new(1.5, Color32::from_rgb(255, 255, 100)),
+            );
+
+            // Draw timestamp label at the bottom of the line
+            let label_text = Self::format_clock(hover_clk);
+            let font_id = egui::FontId::proportional(12.0);
+            let label_color = Color32::from_rgb(255, 255, 100);
+            let bg_color = Color32::from_rgba_premultiplied(0, 0, 0, 200);
+
+            // Measure text size to create background box
+            let galley = painter.layout_no_wrap(
+                label_text.clone(),
+                font_id.clone(),
+                label_color,
+            );
+
+            let text_size = galley.size();
+            let padding = egui::vec2(4.0, 2.0);
+            let label_pos = egui::pos2(line_x, content_bottom - text_size.y - padding.y * 2.0 - 4.0);
+
+            // Draw background box
+            let bg_rect = egui::Rect::from_min_size(
+                egui::pos2(label_pos.x - padding.x, label_pos.y - padding.y),
+                egui::vec2(text_size.x + padding.x * 2.0, text_size.y + padding.y * 2.0),
+            );
+            painter.rect_filled(bg_rect, 2.0, bg_color);
+            painter.rect_stroke(bg_rect, 2.0, egui::Stroke::new(1.0, label_color));
+
+            // Draw text
+            painter.text(
+                egui::pos2(label_pos.x + padding.x, label_pos.y + padding.y),
+                egui::Align2::LEFT_TOP,
+                label_text,
+                font_id,
+                label_color,
+            );
+        }
     }
 
     fn render_timeline_row(&mut self, ui: &mut egui::Ui, record_id: u64, _depth: usize, ctx: &egui::Context) {
