@@ -37,6 +37,9 @@ pub trait TraceMetadata {
 
     /// Returns the total number of events (from footer)
     fn total_events(&self) -> Option<usize>;
+
+    /// Returns the trace extent as (min_clk, max_clk) computed during parsing
+    fn trace_extent(&self) -> (i64, i64);
 }
 
 /// Trait for accessing trace record

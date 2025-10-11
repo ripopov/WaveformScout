@@ -52,6 +52,7 @@ impl TraceReader for VirtualTraceReader {
 pub struct VirtualTraceData {
     roots: Vec<VirtualTraceRecord>,
     records_by_id: HashMap<u64, VirtualTraceRecord>,
+    trace_extent: (i64, i64),
 }
 
 impl VirtualTraceData {
@@ -69,16 +70,45 @@ impl VirtualTraceData {
             collect_records(root, &mut records_by_id);
         }
 
+        // Calculate trace extent
+        let trace_extent = calculate_virtual_trace_extent(&records_by_id);
+
         Self {
             roots,
             records_by_id,
+            trace_extent,
         }
+    }
+}
+
+/// Computes the minimum and maximum clock values across all virtual records.
+fn calculate_virtual_trace_extent(records: &HashMap<u64, VirtualTraceRecord>) -> (i64, i64) {
+    if records.is_empty() {
+        return (0, 1000);
+    }
+
+    let mut min_clk = i64::MAX;
+    let mut max_clk = i64::MIN;
+
+    for record in records.values() {
+        min_clk = min_clk.min(record.clk);
+        if let Some(end_clk) = record.end_clk {
+            max_clk = max_clk.max(end_clk);
+        } else {
+            max_clk = max_clk.max(record.clk);
+        }
+    }
+
+    if min_clk == i64::MAX {
+        (0, 1000)
+    } else {
+        (min_clk, max_clk)
     }
 }
 
 impl TraceData for VirtualTraceData {
     fn metadata(&self) -> &dyn TraceMetadata {
-        &VirtualTraceMetadata
+        self
     }
 
     fn root_ids(&self) -> Vec<u64> {
@@ -90,9 +120,7 @@ impl TraceData for VirtualTraceData {
     }
 }
 
-pub struct VirtualTraceMetadata;
-
-impl TraceMetadata for VirtualTraceMetadata {
+impl TraceMetadata for VirtualTraceData {
     fn version(&self) -> &str {
         "virtual-1.0"
     }
@@ -121,6 +149,10 @@ impl TraceMetadata for VirtualTraceMetadata {
 
     fn total_events(&self) -> Option<usize> {
         None
+    }
+
+    fn trace_extent(&self) -> (i64, i64) {
+        self.trace_extent
     }
 }
 

@@ -17,7 +17,7 @@ pub use parser::{
 
 // Export virtual implementation
 pub use virtual_reader::{
-    VirtualTraceReader, VirtualTraceData, VirtualTraceMetadata,
+    VirtualTraceReader, VirtualTraceData,
     VirtualTraceRecord, VirtualTraceEvent
 };
 

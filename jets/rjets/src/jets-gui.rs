@@ -90,14 +90,15 @@ impl JetsViewerApp {
     fn open_file(&mut self, path: PathBuf) {
         match self.reader.read(path.to_str().unwrap()) {
             Ok(data) => {
+                // Get trace extent from metadata
+                let (min_clk, max_clk) = data.metadata().trace_extent();
+
                 self.trace_data = Some(data);
                 self.file_path = Some(path);
                 self.error_message = None;
                 self.expanded_nodes.clear();
                 self.selected_record_id = None;
 
-                // Calculate trace extent
-                let (min_clk, max_clk) = self.calculate_trace_extent();
                 self.trace_min_clk = min_clk;
                 self.trace_max_clk = max_clk;
                 self.viewport_start_clk = min_clk;
@@ -107,43 +108,6 @@ impl JetsViewerApp {
             }
             Err(e) => {
                 self.error_message = Some(format!("Error loading trace: {}", e));
-            }
-        }
-    }
-
-    // Computes the minimum and maximum clock values across all records in the trace.
-    fn calculate_trace_extent(&self) -> (i64, i64) {
-        if let Some(trace) = &self.trace_data {
-            let mut min_clk = i64::MAX;
-            let mut max_clk = i64::MIN;
-
-            let root_ids = trace.root_ids();
-            for root_id in root_ids {
-                self.calculate_extent_recursive(trace.as_ref(), root_id, &mut min_clk, &mut max_clk);
-            }
-
-            if min_clk == i64::MAX {
-                (0, 1000)
-            } else {
-                (min_clk, max_clk)
-            }
-        } else {
-            (0, 1000)
-        }
-    }
-
-    // Recursively traverses record hierarchy to update min/max clock bounds.
-    fn calculate_extent_recursive(&self, trace: &dyn TraceData, record_id: u64, min_clk: &mut i64, max_clk: &mut i64) {
-        if let Some(record) = trace.get_record(record_id) {
-            *min_clk = (*min_clk).min(record.clk());
-            if let Some(end_clk) = record.end_clk() {
-                *max_clk = (*max_clk).max(end_clk);
-            } else {
-                *max_clk = (*max_clk).max(record.clk());
-            }
-
-            for child in record.children() {
-                self.calculate_extent_recursive(trace, child.id(), min_clk, max_clk);
             }
         }
     }

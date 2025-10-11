@@ -69,6 +69,7 @@ pub struct JetsTraceRecord {
 pub struct JetsTraceMetadata {
     pub header: JetsTraceHeader,
     pub footer: Option<JetsTraceFooter>,
+    pub trace_extent: (i64, i64), // (min_clk, max_clk)
 }
 
 #[derive(Debug, Clone)]
@@ -293,12 +294,40 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
         flatten_records(root, &mut all_records_flat, &mut id_to_index);
     }
 
+    // Calculate trace extent (min_clk, max_clk)
+    let trace_extent = calculate_trace_extent(&all_records_flat);
+
     Ok(JetsTraceData {
-        metadata: JetsTraceMetadata { header, footer },
+        metadata: JetsTraceMetadata { header, footer, trace_extent },
         roots,
         records_by_id: id_to_index,
         all_records: all_records_flat,
     })
+}
+
+/// Computes the minimum and maximum clock values across all records in the trace.
+fn calculate_trace_extent(all_records: &[JetsTraceRecord]) -> (i64, i64) {
+    if all_records.is_empty() {
+        return (0, 1000);
+    }
+
+    let mut min_clk = i64::MAX;
+    let mut max_clk = i64::MIN;
+
+    for record in all_records {
+        min_clk = min_clk.min(record.clk);
+        if let Some(end_clk) = record.end_clk {
+            max_clk = max_clk.max(end_clk);
+        } else {
+            max_clk = max_clk.max(record.clk);
+        }
+    }
+
+    if min_clk == i64::MAX {
+        (0, 1000)
+    } else {
+        (min_clk, max_clk)
+    }
 }
 
 // Trait implementations
@@ -333,6 +362,10 @@ impl TraceMetadata for JetsTraceMetadata {
 
     fn total_events(&self) -> Option<usize> {
         self.footer.as_ref().and_then(|f| f.total_events)
+    }
+
+    fn trace_extent(&self) -> (i64, i64) {
+        self.trace_extent
     }
 }
 
