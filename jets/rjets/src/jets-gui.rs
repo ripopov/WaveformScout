@@ -7,33 +7,10 @@ const THEME_KEY: &str = "theme_preference";
 
 // Application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
-    // Get the config directory based on the platform
-    // Linux: ~/.config/jets-viewer/
-    // macOS: ~/Library/Application Support/jets-viewer/
-    // Windows: C:\Users\<user>\AppData\Roaming\jets-viewer\
-    let persistence_path = dirs::config_dir()
-        .map(|config_dir| {
-            let app_config = config_dir.join("jets-viewer");
-            // Create the directory if it doesn't exist
-            if let Err(e) = std::fs::create_dir_all(&app_config) {
-                eprintln!("DEBUG [main]: Failed to create config directory {:?}: {}", app_config, e);
-            } else {
-                eprintln!("DEBUG [main]: Config directory ready: {:?}", app_config);
-            }
-            let pref_path = app_config.join("preferences.ron");
-            eprintln!("DEBUG [main]: Persistence path set to: {:?}", pref_path);
-            pref_path
-        });
-
-    if persistence_path.is_none() {
-        eprintln!("DEBUG [main]: WARNING - No persistence path available (config_dir() returned None)");
-    }
-
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
             .with_title("JETS Trace Viewer"),
-        persistence_path,
         ..Default::default()
     };
 
@@ -284,7 +261,17 @@ impl JetsViewerApp {
             return 1;
         }
         let exponent = value.log10().ceil() as i32;
-        10_i64.pow(exponent as u32)
+
+        // Clamp exponent to prevent overflow
+        // i64 can hold up to ~10^18 safely
+        let clamped_exponent = exponent.clamp(-18, 18);
+
+        if clamped_exponent < 0 {
+            // For negative exponents, return 1 (minimum tick interval)
+            return 1;
+        }
+
+        10_i64.pow(clamped_exponent as u32)
     }
 
     // Renders the application header with file controls and zoom controls.
