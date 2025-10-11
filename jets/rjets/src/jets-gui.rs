@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui::{Color32, RichText, ScrollArea};
-use rjets::{TraceReader, TraceData, JetsTraceReader};
+use rjets::{TraceReader, TraceData, JetsTraceReader, VirtualTraceReader};
 use std::path::PathBuf;
 
 // Application entry point that initializes and launches the JETS trace viewer GUI.
@@ -112,6 +112,33 @@ impl JetsViewerApp {
         }
     }
 
+    // Generates and loads a virtual trace in-memory using VirtualTraceReader.
+    fn open_virtual_trace(&mut self) {
+        let virtual_reader = VirtualTraceReader::new();
+        match virtual_reader.read("") {
+            Ok(data) => {
+                // Get trace extent from metadata
+                let (min_clk, max_clk) = data.metadata().trace_extent();
+
+                self.trace_data = Some(data);
+                self.file_path = None;
+                self.error_message = None;
+                self.expanded_nodes.clear();
+                self.selected_record_id = None;
+
+                self.trace_min_clk = min_clk;
+                self.trace_max_clk = max_clk;
+                self.viewport_start_clk = min_clk;
+                self.viewport_end_clk = max_clk;
+                self.zoom_level = 1.0;
+                self.shared_scroll_y = 0.0;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Error generating virtual trace: {}", e));
+            }
+        }
+    }
+
     // Converts a clock value to its corresponding X-coordinate in the timeline canvas.
     fn clk_to_x(&self, clk: i64, canvas_rect: egui::Rect) -> f32 {
         if self.viewport_end_clk == self.viewport_start_clk {
@@ -144,6 +171,38 @@ impl JetsViewerApp {
         result
     }
 
+    // Calculates the maximum visible depth in the tree, accounting for expanded nodes.
+    fn calculate_max_visible_depth(&self) -> usize {
+        if let Some(trace) = &self.trace_data {
+            let mut max_depth = 0;
+            for root_id in trace.root_ids() {
+                let depth = self.calculate_node_depth(root_id, 0);
+                max_depth = max_depth.max(depth);
+            }
+            max_depth
+        } else {
+            0
+        }
+    }
+
+    // Recursively calculates the depth of a node and its visible children.
+    fn calculate_node_depth(&self, record_id: u64, current_depth: usize) -> usize {
+        let mut max_depth = current_depth;
+
+        if self.expanded_nodes.contains(&record_id) {
+            if let Some(trace) = &self.trace_data {
+                if let Some(record) = trace.get_record(record_id) {
+                    for child in record.children() {
+                        let child_depth = self.calculate_node_depth(child.id(), current_depth + 1);
+                        max_depth = max_depth.max(child_depth);
+                    }
+                }
+            }
+        }
+
+        max_depth
+    }
+
     // Calculates the smallest power of 10 greater than or equal to the given value.
     fn next_power_of_10(value: f32) -> i64 {
         if value <= 0.0 {
@@ -169,22 +228,33 @@ impl JetsViewerApp {
                 }
             }
 
+            if ui.button("🔮 Virtual Trace").clicked() {
+                self.open_virtual_trace();
+            }
+
             ui.separator();
 
             if let Some(trace) = &self.trace_data {
-                let header_data = trace.metadata().header_data();
-                let gpu_model = header_data
-                    .get("gpu_model")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown");
-                let clock_freq = header_data
-                    .get("clock_frequency_mhz")
-                    .or_else(|| header_data.get("clock_frequency_ghz"))
-                    .and_then(|v| v.as_f64())
-                    .map(|f| format!("{:.2}", f))
-                    .unwrap_or_else(|| "Unknown".to_string());
+                if self.file_path.is_none() {
+                    // Virtual trace metadata
+                    let num_roots = trace.root_ids().len();
+                    ui.label(RichText::new(format!("Virtual Trace | Seed: 42 | Roots: {}", num_roots)).strong());
+                } else {
+                    // File-based trace metadata
+                    let header_data = trace.metadata().header_data();
+                    let gpu_model = header_data
+                        .get("gpu_model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+                    let clock_freq = header_data
+                        .get("clock_frequency_mhz")
+                        .or_else(|| header_data.get("clock_frequency_ghz"))
+                        .and_then(|v| v.as_f64())
+                        .map(|f| format!("{:.2}", f))
+                        .unwrap_or_else(|| "Unknown".to_string());
 
-                ui.label(RichText::new(format!("GPU: {} | Clock: {} MHz", gpu_model, clock_freq)).strong());
+                    ui.label(RichText::new(format!("GPU: {} | Clock: {} MHz", gpu_model, clock_freq)).strong());
+                }
 
                 ui.separator();
 
@@ -243,8 +313,14 @@ impl JetsViewerApp {
             return;
         }
 
+        // Calculate dynamic expand column width based on max visible depth
+        // Reserve space for at least 5 levels by default to avoid resizing in common cases
+        // 20px base for the expand icon + 20px per indent level
+        let max_depth = self.calculate_max_visible_depth();
+        let expand_width = 20.0 + (max_depth.max(5) as f32 * 20.0);
+
         // Render table header
-        self.render_table_header(ui);
+        self.render_table_header(ui, expand_width);
 
         ui.separator();
 
@@ -262,7 +338,7 @@ impl JetsViewerApp {
             .id_salt("tree_scroll_area")
             .show(ui, |ui| {
                 for root_id in ids_to_render {
-                    self.render_tree_node(ui, root_id, 0);
+                    self.render_tree_node(ui, root_id, 0, expand_width);
                 }
             });
 
@@ -271,7 +347,7 @@ impl JetsViewerApp {
     }
 
     // Renders the resizable column headers for the tree view table.
-    fn render_table_header(&mut self, ui: &mut egui::Ui) {
+    fn render_table_header(&mut self, ui: &mut egui::Ui, expand_width: f32) {
         let column_names = ["Name", "ID", "Start Clock", "End Clock", "Description"];
 
         let mut x_offset = 0.0;
@@ -284,8 +360,8 @@ impl JetsViewerApp {
             egui::Sense::hover()
         );
 
-        // Space for expand/collapse buttons
-        x_offset += 40.0;
+        // Space for expand/collapse buttons (dynamic based on max visible depth)
+        x_offset += expand_width;
 
         for (i, name) in column_names.iter().enumerate() {
             let width = self.column_widths[i];
@@ -337,7 +413,7 @@ impl JetsViewerApp {
     }
 
     // Renders a single tree node row with expand/collapse control and recursively renders children.
-    fn render_tree_node(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize) {
+    fn render_tree_node(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize, expand_width: f32) {
         // Extract all needed data from the record first to avoid borrow checker issues
         let (has_children, name, description, clk, end_clk, child_ids, first_event_clk) = if let Some(trace) = &self.trace_data {
             if let Some(record) = trace.get_record(record_id) {
@@ -404,11 +480,11 @@ impl JetsViewerApp {
             );
         }
 
-        // Tree expansion control (40px area)
-        let expand_width = 40.0;
+        // Tree expansion control (fixed 20px width for button area, positioned after indent)
+        let button_area_width = 20.0;
         let expand_rect = egui::Rect::from_min_size(
             egui::pos2(start_pos.x + indent, start_pos.y),
-            egui::vec2(expand_width - indent, row_height),
+            egui::vec2(button_area_width, row_height),
         );
 
         if has_children {
@@ -517,7 +593,7 @@ impl JetsViewerApp {
         // Render children if expanded
         if self.expanded_nodes.contains(&record_id) {
             for child_id in child_ids {
-                self.render_tree_node(ui, child_id, depth + 1);
+                self.render_tree_node(ui, child_id, depth + 1, expand_width);
             }
         }
     }

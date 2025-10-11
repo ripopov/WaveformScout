@@ -42,6 +42,7 @@ impl TraceReader for VirtualTraceReader {
         for _ in 0..num_roots {
             let record = VirtualTraceRecord::generate(&mut rng, next_id, None, 0, 0, self.max_depth, self.max_children, &mut next_id);
             roots.push(record);
+            next_id += 1; // Increment for next root
         }
 
         Ok(Box::new(VirtualTraceData::new(roots)))
