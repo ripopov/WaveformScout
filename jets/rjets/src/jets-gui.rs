@@ -1298,24 +1298,31 @@ impl eframe::App for JetsViewerApp {
             });
 
         // Left panel: Tree
+        let tree_frame = egui::Frame::default()
+            .inner_margin(egui::Margin::same(4.0))
+            .fill(ctx.style().visuals.panel_fill);
+
         egui::SidePanel::left("tree_panel")
             .default_width(ctx.screen_rect().width() * self.timeline_split_ratio)
             .resizable(true)
+            .frame(tree_frame)
             .show(ctx, |ui| {
-                egui::Frame::default()
-                    .inner_margin(4.0)
-                    .show(ui, |ui| {
-                        ui.heading("Trace Records");
-                        ui.separator();
-                        self.render_tree(ui);
-                    });
+                ui.heading("Trace Records");
+                ui.separator();
+                self.render_tree(ui);
             });
 
         // Right panel: Timeline
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Timeline View");
-            ui.separator();
-            self.render_timeline(ui, ctx);
-        });
+        let timeline_frame = egui::Frame::default()
+            .inner_margin(egui::Margin::same(4.0))
+            .fill(ctx.style().visuals.panel_fill);
+
+        egui::CentralPanel::default()
+            .frame(timeline_frame)
+            .show(ctx, |ui| {
+                ui.heading("Timeline View");
+                ui.separator();
+                self.render_timeline(ui, ctx);
+            });
     }
 }
