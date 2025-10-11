@@ -3,6 +3,7 @@ use egui::{Color32, RichText, ScrollArea};
 use rjets::{TraceReader, TraceData, JetsTraceReader};
 use std::path::PathBuf;
 
+// Application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -56,6 +57,7 @@ impl Default for JetsViewerApp {
 }
 
 impl JetsViewerApp {
+    // Creates a new viewer instance with default settings and empty state.
     fn new() -> Self {
         Self {
             reader: Box::new(JetsTraceReader::new()),
@@ -84,6 +86,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Loads a trace file from the specified path and initializes viewport to full trace extent.
     fn open_file(&mut self, path: PathBuf) {
         match self.reader.read(path.to_str().unwrap()) {
             Ok(data) => {
@@ -108,6 +111,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Computes the minimum and maximum clock values across all records in the trace.
     fn calculate_trace_extent(&self) -> (i64, i64) {
         if let Some(trace) = &self.trace_data {
             let mut min_clk = i64::MAX;
@@ -128,6 +132,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Recursively traverses record hierarchy to update min/max clock bounds.
     fn calculate_extent_recursive(&self, trace: &dyn TraceData, record_id: u64, min_clk: &mut i64, max_clk: &mut i64) {
         if let Some(record) = trace.get_record(record_id) {
             *min_clk = (*min_clk).min(record.clk());
@@ -143,7 +148,7 @@ impl JetsViewerApp {
         }
     }
 
-    // Helper: Convert clock value to X-coordinate in timeline canvas
+    // Converts a clock value to its corresponding X-coordinate in the timeline canvas.
     fn clk_to_x(&self, clk: i64, canvas_rect: egui::Rect) -> f32 {
         if self.viewport_end_clk == self.viewport_start_clk {
             return canvas_rect.left();
@@ -152,7 +157,7 @@ impl JetsViewerApp {
         canvas_rect.left() + normalized * canvas_rect.width()
     }
 
-    // Helper: Convert X-coordinate to clock value
+    // Converts an X-coordinate in the timeline canvas back to its clock value.
     fn x_to_clk(&self, x: f32, canvas_rect: egui::Rect) -> i64 {
         if canvas_rect.width() == 0.0 {
             return self.viewport_start_clk;
@@ -161,7 +166,7 @@ impl JetsViewerApp {
         self.viewport_start_clk + (normalized * (self.viewport_end_clk - self.viewport_start_clk) as f32) as i64
     }
 
-    // Helper: Format clock value with thousands separators
+    // Formats a clock value as a string with thousands separators for readability.
     fn format_clock(clk: i64) -> String {
         let s = clk.to_string();
         let mut result = String::new();
@@ -175,7 +180,7 @@ impl JetsViewerApp {
         result
     }
 
-    // Helper: Calculate next power of 10
+    // Calculates the smallest power of 10 greater than or equal to the given value.
     fn next_power_of_10(value: f32) -> i64 {
         if value <= 0.0 {
             return 1;
@@ -184,6 +189,7 @@ impl JetsViewerApp {
         10_i64.pow(exponent as u32)
     }
 
+    // Renders the application header with file controls, metadata display, and zoom controls.
     fn render_header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui.button("📁 Open Trace").clicked() {
@@ -265,6 +271,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Renders the hierarchical tree view of trace records with columns for name, ID, clocks, and description.
     fn render_tree(&mut self, ui: &mut egui::Ui) {
         let has_trace = self.trace_data.is_some();
         if !has_trace {
@@ -299,6 +306,7 @@ impl JetsViewerApp {
         self.shared_scroll_y = scroll_area.state.offset.y;
     }
 
+    // Renders the resizable column headers for the tree view table.
     fn render_table_header(&mut self, ui: &mut egui::Ui) {
         let column_names = ["Name", "ID", "Start Clock", "End Clock", "Description"];
 
@@ -364,6 +372,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Renders a single tree node row with expand/collapse control and recursively renders children.
     fn render_tree_node(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize) {
         // Extract all needed data from the record first to avoid borrow checker issues
         let (has_children, name, description, clk, end_clk, child_ids, first_event_clk) = if let Some(trace) = &self.trace_data {
@@ -549,6 +558,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Renders the details panel showing annotations, data, and events for the selected record.
     fn render_details(&mut self, ui: &mut egui::Ui) {
         if let (Some(trace), Some(selected_id)) = (&self.trace_data, self.selected_record_id) {
             if let Some(record) = trace.get_record(selected_id) {
@@ -644,6 +654,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Renders the interactive timeline view with zoom, pan, and event selection capabilities.
     fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.trace_data.is_none() {
             ui.label("No trace loaded - open a JETS trace file to view timeline");
@@ -977,6 +988,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Renders a single timeline row showing the record's duration bar and event markers.
     fn render_timeline_row(&mut self, ui: &mut egui::Ui, record_id: u64, _depth: usize, ctx: &egui::Context) {
         let trace = match &self.trace_data {
             Some(t) => t.as_ref(),
@@ -1129,6 +1141,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Renders the timeline header area with time axis aligned to tree view header height.
     fn render_timeline_header(&mut self, ui: &mut egui::Ui) {
         // Match tree header height EXACTLY (24px from render_table_header)
         let header_height = 24.0;
@@ -1143,6 +1156,7 @@ impl JetsViewerApp {
         self.render_time_axis(ui, header_rect);
     }
 
+    // Renders the time axis with major and minor tick marks and clock value labels.
     fn render_time_axis(&self, ui: &mut egui::Ui, canvas_rect: egui::Rect) {
         // Use the exact rect provided (24px from header allocation)
         let axis_rect = canvas_rect;
@@ -1203,6 +1217,7 @@ impl JetsViewerApp {
         }
     }
 
+    // Returns a color for timeline bars based on the record's name pattern.
     fn get_record_color(&self, name: &str) -> Color32 {
         match name {
             n if n.contains("HostProgram") => Color32::from_rgb(52, 152, 219),
@@ -1217,6 +1232,7 @@ impl JetsViewerApp {
 }
 
 impl eframe::App for JetsViewerApp {
+    // Main update loop that renders all UI panels and handles application state.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Apply theme based on dark_mode state
         if self.dark_mode {
