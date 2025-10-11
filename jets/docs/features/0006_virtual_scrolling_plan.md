@@ -52,7 +52,7 @@ Jets-gui experiences severe performance degradation with large traces (100K+ rec
 1. SHOULD include small buffer (±10 rows) above/below viewport for smooth scrolling
 2. SHOULD apply event marker culling to only render events within time viewport
 3. SHOULD use binary search for finding first visible event in sorted event lists
-4. SHOULD minimize memory overhead (< 100KB for 10K expanded nodes)
+4. SHOULD minimize memory overhead (< 400KB for 10K expanded nodes)
 5. SHOULD validate that events are sorted before using binary search
 
 **NICE TO HAVE:**
@@ -68,7 +68,7 @@ Jets-gui experiences severe performance degradation with large traces (100K+ rec
 | **Frame time** | 100-200ms | < 16ms |
 | **Nodes rendered/frame** | 100,000 | ~50-60 |
 | **Scroll to bottom time** | 30+ seconds | < 1 second |
-| **Memory overhead** | N/A | < 100KB cache |
+| **Memory overhead** | N/A | < 4 MB cache |
 
 ### 1.4 Scope and Constraints
 
@@ -104,29 +104,18 @@ Jets-gui experiences severe performance degradation with large traces (100K+ rec
 **File:** `jets/rjets/src/jets-gui.rs`
 
 **Tree rendering flow (lines 492-530):**
-```rust
-render_tree(ui) {
-    for root_id in trace.root_ids() {
-        render_tree_node(ui, root_id, 0, expand_width);
-    }
-}
+```text
+render_tree(ui):
+1. Obtain the list of root IDs from the trace.
+2. For each root ID, request rendering through `render_tree_node` with depth 0 and the computed expand column width.
 ```
 
 **Recursive node rendering (lines 598-782):**
-```rust
-render_tree_node(ui, record_id, depth, expand_width) {
-    // 1. Allocate space (ROW_HEIGHT constant: 22px)
-    // 2. Draw background if selected
-    // 3. Render expand/collapse button
-    // 4. Render columns (name, id, clocks, description)
-    // 5. If expanded, recursively render children (lines 777-781)
-
-    if self.expanded_nodes.contains(&record_id) {
-        for child_id in child_ids {
-            self.render_tree_node(ui, child_id, depth + 1, expand_width);
-        }
-    }
-}
+```text
+render_tree_node(ui, record_id, depth, expand_width):
+1. Allocate the row slot, draw selection background, and lay out the expand/collapse affordance.
+2. Paint the visible columns (name, id, clocks, description) for the current record.
+3. When the record is marked as expanded, iterate over its children and call `render_tree_node` for each child at `depth + 1`.
 ```
 
 **Key observation:** No concept of viewport boundaries - renders all nodes unconditionally.
@@ -134,30 +123,18 @@ render_tree_node(ui, record_id, depth, expand_width) {
 ### 2.2 Current Timeline Rendering Architecture
 
 **Timeline rendering flow (lines 1138-1152):**
-```rust
-render_timeline(ui, ctx) {
-    ScrollArea::vertical().show(ui, |ui| {
-        for root_id in root_ids {
-            self.render_timeline_row(ui, root_id, 0, ctx);
-        }
-    });
-}
+```text
+render_timeline(ui, ctx):
+1. Create a vertical scroll area and render its contents via a closure.
+2. Traverse each root ID and delegate to `render_timeline_row` with depth 0 so the tree and timeline stay aligned.
 ```
 
 **Recursive timeline row rendering (lines 1250-1400):**
-```rust
-render_timeline_row(ui, record_id, depth, ctx) {
-    // 1. Allocate space (ROW_HEIGHT: 22px)
-    // 2. Draw timeline bar for record duration
-    // 3. Draw event markers for all events (lines 1343-1390)
-    // 4. If expanded, recursively render children (lines 1393-1399)
-
-    if self.expanded_nodes.contains(&record_id) {
-        for child_id in child_ids {
-            self.render_timeline_row(ui, child_id, depth + 1, ctx);
-        }
-    }
-}
+```text
+render_timeline_row(ui, record_id, depth, ctx):
+1. Allocate the standard row height, then draw the record’s timeline bar.
+2. Render every event marker that belongs to the record.
+3. If the record is expanded, recursively render each child row at `depth + 1`.
 ```
 
 **Event rendering (lines 1343-1390):**
@@ -221,36 +198,17 @@ if button_response.clicked() {
 ### 2.5 Depth Calculation (Current Implementation)
 
 **Max depth calculation (lines 314-344):**
-```rust
-fn calculate_max_visible_depth(&self) -> usize {
-    if let Some(trace) = &self.trace_data {
-        let mut max_depth = 0;
-        for root_id in trace.root_ids() {
-            let depth = self.calculate_node_depth(root_id, 0);
-            max_depth = max_depth.max(depth);
-        }
-        max_depth
-    } else {
-        0
-    }
-}
+```text
+calculate_max_visible_depth(&self) -> usize:
+1. When a trace is present, iterate through every root record.
+2. For each root, compute its deepest expanded descendant depth via `calculate_node_depth` starting at depth 0.
+3. Track the maximum depth encountered; return that value, or return 0 if no trace is loaded.
 
-fn calculate_node_depth(&self, record_id: u64, current_depth: usize) -> usize {
-    let mut max_depth = current_depth;
-
-    if self.expanded_nodes.contains(&record_id) {
-        if let Some(trace) = &self.trace_data {
-            if let Some(record) = trace.get_record(record_id) {
-                for child in record.children() {
-                    let child_depth = self.calculate_node_depth(child.id(), current_depth + 1);
-                    max_depth = max_depth.max(child_depth);
-                }
-            }
-        }
-    }
-
-    max_depth
-}
+calculate_node_depth(&self, record_id, current_depth) -> usize:
+1. Start with `current_depth` as the candidate maximum.
+2. If the record is expanded, inspect its children retrieved from the trace.
+3. Recursively evaluate each child at `current_depth + 1`, keeping the largest depth discovered.
+4. Return the maximum depth once all expanded descendants are processed.
 ```
 
 **Performance:** Called every frame in `render_tree()` (line 502). Recursively traverses all visible nodes.
@@ -325,25 +283,17 @@ struct TreeCache {
     expansion_seq: u64,
 }
 
-impl TreeCache {
-    fn new() -> Self {
-        Self {
-            subtree_sizes: HashMap::new(),
-            all_children_collapsed: HashMap::new(),
-            total_visible_nodes: None,
-            max_visible_depth: None,
-            expansion_seq: 0,
-        }
-    }
+```text
+TreeCache::new() -> TreeCache:
+1. Create empty hash maps for subtree sizes and collapsed-child state.
+2. Reset the cached totals and depth to `None`.
+3. Initialize the expansion sequence counter to zero.
 
-    fn invalidate(&mut self) {
-        self.subtree_sizes.clear();
-        self.all_children_collapsed.clear();
-        self.total_visible_nodes = None;
-        self.max_visible_depth = None;
-        self.expansion_seq += 1;
-    }
-}
+TreeCache::invalidate(&mut self):
+1. Clear both hash maps so future queries recompute their values.
+2. Reset the cached totals and depth to `None`.
+3. Increment the expansion sequence counter to signal downstream caches.
+```
 ```
 
 #### Modify `JetsViewerApp` struct (around line 33)
@@ -378,122 +328,19 @@ struct VisibleNode {
 
 **Purpose:** Collect only the nodes that are visible in the viewport plus buffer
 
-```rust
-fn collect_visible_nodes(
-    &mut self,
-    viewport_scroll_offset: f32,
-    viewport_height: f32,
-) -> Vec<VisibleNode> {
-    // 1. Calculate visible row range with buffer
-    let start_row = (viewport_scroll_offset / ROW_HEIGHT).floor() as usize;
-    let visible_rows = (viewport_height / ROW_HEIGHT).ceil() as usize;
+```text
+collect_visible_nodes(&mut self, viewport_scroll_offset, viewport_height) -> Vec<VisibleNode>:
+1. Transform the scroll offset and viewport height into row indices using the constant `ROW_HEIGHT`.
+2. Expand the visible range by `VIEWPORT_BUFFER_ROWS` both above and below the viewport to provide pre-rendering slack.
+3. Iterate each root record in order, invoking `collect_nodes_in_range` while tracking the running row index.
+4. Stop traversal once the running row index exceeds the buffered range and return the collected `VisibleNode` entries.
 
-    let first_visible_row = start_row.saturating_sub(VIEWPORT_BUFFER_ROWS);
-    let last_visible_row = start_row + visible_rows + VIEWPORT_BUFFER_ROWS;
-
-    // 2. Collect nodes in visible range using subtree skipping
-    let mut result = Vec::new();
-    let mut current_row = 0;
-
-    if let Some(trace) = &self.trace_data {
-        for root_id in trace.root_ids() {
-            self.collect_nodes_in_range(
-                root_id,
-                0,  // depth
-                &mut current_row,
-                first_visible_row,
-                last_visible_row,
-                &mut result
-            );
-
-            // Early exit if we've passed visible range
-            if current_row > last_visible_row {
-                break;
-            }
-        }
-    }
-
-    result
-}
-
-fn collect_nodes_in_range(
-    &mut self,
-    record_id: u64,
-    depth: usize,
-    current_row: &mut usize,
-    first_visible: usize,
-    last_visible: usize,
-    result: &mut Vec<VisibleNode>
-) {
-    // Check if this node is in visible range
-    if *current_row >= first_visible && *current_row <= last_visible {
-        result.push(VisibleNode {
-            record_id,
-            depth,
-            row_index: *current_row,
-        });
-    }
-
-    let node_row = *current_row;
-    *current_row += 1;
-
-    // Check if children should be processed
-    if self.expanded_nodes.contains(&record_id) {
-        // Check if subtree might overlap with visible range
-        if node_row <= last_visible {
-            if let Some(trace) = &self.trace_data {
-                if let Some(record) = trace.get_record(record_id) {
-                    let children = record.children();
-
-                    // FAST PATH: All children collapsed (common case for wide nodes)
-                    if self.are_all_children_collapsed_cached(record_id) {
-                        // Each child takes exactly 1 row - jump directly to visible range
-                        let num_children = children.len();
-                        let first_child_idx = first_visible.saturating_sub(*current_row).min(num_children);
-                        let last_child_idx = (last_visible - *current_row + 1).min(num_children);
-
-                        // Add only visible children in O(V) time
-                        for i in first_child_idx..last_child_idx {
-                            result.push(VisibleNode {
-                                record_id: children[i].id(),
-                                depth: depth + 1,
-                                row_index: *current_row + i,
-                            });
-                        }
-
-                        // Skip all children in O(1)
-                        *current_row += num_children;
-                    } else {
-                        // SLOW PATH: Some children expanded, check each with subtree skipping
-                        for child in children {
-                            // Try to skip subtree if entirely before visible range
-                            let subtree_size = self.get_subtree_size(child.id());
-                            if *current_row + subtree_size < first_visible {
-                                *current_row += subtree_size;
-                                continue;  // Skip entire subtree
-                            }
-
-                            // Subtree might be visible, recurse
-                            self.collect_nodes_in_range(
-                                child.id(),
-                                depth + 1,
-                                current_row,
-                                first_visible,
-                                last_visible,
-                                result
-                            );
-
-                            // Early exit if we've passed visible range
-                            if *current_row > last_visible {
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+collect_nodes_in_range(&mut self, record_id, depth, current_row, first_visible, last_visible, result):
+1. When `current_row` lies inside the buffered range, append a `VisibleNode` entry describing the current record and depth.
+2. Increment `current_row` because the current record occupies one row.
+3. If the record is expanded and the subtree may overlap the buffered range, fetch the record’s children from the trace.
+4. If every child is collapsed, compute the intersecting range of child indices and append the relevant `VisibleNode` entries in O(V) time, advancing `current_row` by the number of skipped children.
+5. Otherwise, walk each child in order, attempting to skip entire subtrees when the cached subtree size is fully before `first_visible`, and recurse as needed until `current_row` exceeds `last_visible`.
 ```
 
 **Performance:**
@@ -508,294 +355,138 @@ fn collect_nodes_in_range(
 
 **New method:** `get_subtree_size()` and `calculate_subtree_size()`
 
-```rust
-fn get_subtree_size(&mut self, record_id: u64) -> usize {
-    // Check cache first
-    if let Some(&size) = self.tree_cache.subtree_sizes.get(&record_id) {
-        return size;
-    }
+```text
+get_subtree_size(&mut self, record_id) -> usize:
+1. Consult `tree_cache.subtree_sizes`; if a value exists, return it immediately.
+2. Otherwise compute the value via `calculate_subtree_size`, store it in the cache, and return the result.
 
-    // Calculate and cache
-    let size = self.calculate_subtree_size(record_id);
-    self.tree_cache.subtree_sizes.insert(record_id, size);
-    size
-}
-
-fn calculate_subtree_size(&self, record_id: u64) -> usize {
-    let mut total = 1;  // Count self
-
-    if self.expanded_nodes.contains(&record_id) {
-        if let Some(trace) = &self.trace_data {
-            if let Some(record) = trace.get_record(record_id) {
-                for child in record.children() {
-                    total += self.calculate_subtree_size(child.id());
-                }
-            }
-        }
-    }
-
-    total
-}
+calculate_subtree_size(&self, record_id) -> usize:
+1. Start a running total at 1 to count the current node.
+2. When the node is expanded, retrieve its children from the trace and recursively add each child’s subtree size.
+3. Return the aggregated total to the caller.
 ```
 
-**Cache invalidation:**
-```rust
-// Modify the expand/collapse handler (lines 684-689)
-if button_response.clicked() {
-    if is_expanded {
-        self.expanded_nodes.remove(&record_id);
-    } else {
-        self.expanded_nodes.insert(record_id);
-    }
-    // NEW: Invalidate cache whenever expansion state changes
-    self.tree_cache.invalidate();
-}
+**Incremental Cache Updates (OPTIMIZED):**
+```text
+Expand handler (node being expanded):
+1. Insert record_id into `expanded_nodes`.
+2. Calculate the subtree size of the expanded node's children.
+3. Update the node's cached subtree size by adding children_subtree_size.
+4. Call `update_parent_subtree_sizes(record_id, children_subtree_size)` to propagate the change up.
+5. Increment `total_visible_nodes` by children_subtree_size if cached.
+6. Clear `all_children_collapsed` cache for this node (children now visible).
+7. Update `max_visible_depth` if the newly visible depth exceeds the cached value.
 
-// Also invalidate when loading new trace
-fn load_trace(&mut self, new_trace: Box<dyn TraceData>) {
-    self.trace_data = Some(new_trace);
-    self.expanded_nodes.clear();
-    self.tree_cache.invalidate();  // Clear cache for new trace
-}
+Collapse handler (node being collapsed):
+1. Get the current subtree size before collapsing (cache lookup).
+2. Remove record_id from `expanded_nodes`.
+3. Calculate size_delta = -(subtree_size - 1) (negative change).
+4. Update the node's cached subtree size to 1 (just itself).
+5. Call `update_parent_subtree_sizes(record_id, size_delta)` to propagate the change up.
+6. Decrement `total_visible_nodes` by -size_delta if cached.
+7. Recalculate `max_visible_depth` only if the collapsed node's depth == current max.
+
+update_parent_subtree_sizes(&mut self, child_id, size_delta):
+1. Get the parent_id of the child from the trace.
+2. If parent exists and is in `expanded_nodes`:
+   a. Update parent's cached subtree size by adding size_delta.
+   b. Recursively call for parent's parent until reaching root.
+3. Stop when reaching a collapsed parent (changes don't propagate past collapsed nodes).
+
+load_trace(&mut self, new_trace):
+1. Replace the current trace with `new_trace` and reset `expanded_nodes`.
+2. Invoke `tree_cache.invalidate()` to clear every cached entry before rendering the newly loaded trace.
 ```
+
+**Performance Impact of Incremental Updates:**
+- Expand/collapse: O(depth) instead of O(N) for cache updates
+- Typical depth: 10-20 levels = microseconds instead of milliseconds
+- No frame drops during interaction even with 1M+ node traces
 
 #### Algorithm 2b: All Children Collapsed Check (Critical for Wide Nodes)
 
 **New method:** `are_all_children_collapsed_cached()`
 
-```rust
-fn are_all_children_collapsed_cached(&mut self, parent_id: u64) -> bool {
-    // Check cache first
-    if let Some(&collapsed) = self.tree_cache.all_children_collapsed.get(&parent_id) {
-        return collapsed;
-    }
-
-    // Calculate: check if any child is in expanded_nodes
-    let result = if let Some(trace) = &self.trace_data {
-        if let Some(record) = trace.get_record(parent_id) {
-            let children = record.children();
-            // Empty nodes are considered "all collapsed" for simplicity
-            children.is_empty() ||
-            children.iter().all(|child| !self.expanded_nodes.contains(&child.id()))
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    // Cache and return
-    self.tree_cache.all_children_collapsed.insert(parent_id, result);
-    result
-}
+```text
+are_all_children_collapsed_cached(&mut self, parent_id) -> bool:
+1. Look for a cached boolean in `tree_cache.all_children_collapsed`; return it if present.
+2. Otherwise, read the parent record from the trace and inspect its children.
+3. Treat nodes with no children as “collapsed,” and for non-empty nodes verify that none of the children are present in `expanded_nodes`.
+4. Store the computed boolean in the cache before returning it.
 ```
 
 #### Algorithm 3: Visible Node Count Caching
 
 **New method:** `get_total_visible_nodes()`
 
-```rust
-fn get_total_visible_nodes(&mut self) -> usize {
-    // Check cache
-    if let Some(total) = self.tree_cache.total_visible_nodes {
-        return total;
-    }
-
-    // Calculate
-    let mut total = 0;
-    if let Some(trace) = &self.trace_data {
-        for root_id in trace.root_ids() {
-            total += self.get_subtree_size(root_id);
-        }
-    }
-
-    // Cache and return
-    self.tree_cache.total_visible_nodes = Some(total);
-    total
-}
+```text
+get_total_visible_nodes(&mut self) -> usize:
+1. If `tree_cache.total_visible_nodes` already holds a value, reuse it.
+2. Otherwise sum the subtree sizes for every root by invoking `get_subtree_size`.
+3. Persist the computed total in the cache and return it.
 ```
 
 #### Algorithm 4: Max Depth Caching
 
 **Modify method:** `calculate_max_visible_depth()` (lines 314-326)
 
-```rust
-fn get_max_visible_depth(&mut self) -> usize {
-    // Check cache
-    if let Some(depth) = self.tree_cache.max_visible_depth {
-        return depth;
-    }
-
-    // Calculate (existing logic)
-    let max_depth = if let Some(trace) = &self.trace_data {
-        let mut max_depth = 0;
-        for root_id in trace.root_ids() {
-            max_depth = max_depth.max(self.calculate_node_depth(root_id, 0));
-        }
-        max_depth
-    } else {
-        0
-    };
-
-    // Cache and return
-    self.tree_cache.max_visible_depth = Some(max_depth);
-    max_depth
-}
+```text
+get_max_visible_depth(&mut self) -> usize:
+1. Return the cached depth if `tree_cache.max_visible_depth` already holds a value.
+2. Otherwise iterate over every root, reusing `calculate_node_depth` to find the deepest expanded descendant.
+3. Cache the resulting maximum depth and return it, or return 0 when no trace is loaded.
 ```
 
 #### Algorithm 5: Event Marker Culling with Binary Search
 
 **Modify method:** `render_timeline_row()` (lines 1343-1390)
 
-```rust
-// Replace linear event iteration with binary search
-let events = record.events();
-
-// Sort events if not already sorted (defensive programming)
-let mut sorted_events = events;
-sorted_events.sort_by_key(|e| e.clk());
-
-// Find first event in viewport using binary search
-let first_visible_idx = sorted_events.binary_search_by(|e| {
-    if e.clk() < self.viewport_start_clk {
-        std::cmp::Ordering::Less
-    } else {
-        std::cmp::Ordering::Greater
-    }
-}).unwrap_or_else(|idx| idx);
-
-// Iterate from first visible until past viewport
-for event in &sorted_events[first_visible_idx..] {
-    let event_clk = event.clk();
-
-    if event_clk > self.viewport_end_clk {
-        break;  // Early exit
-    }
-
-    // Render event marker (existing code)
-}
+```text
+render_timeline_row — event marker pass:
+1. Obtain the record’s events and ensure they are in ascending clock order (assert or lazily sort once per record during preprocessing).
+2. Use binary search to locate the first event whose clock is greater than or equal to `viewport_start_clk`.
+3. Iterate forward from that index, emitting markers until an event exceeds `viewport_end_clk`, then stop early.
 ```
 
 ### 3.3 Rendering Integration
 
 #### Modify `render_tree()` method (lines 492-530)
 
-```rust
-fn render_tree(&mut self, ui: &mut egui::Ui) {
-    // ... (header rendering unchanged) ...
-
-    let scroll_area = ScrollArea::vertical()
-        .id_salt("tree_scroll_area")
-        .show(ui, |ui| {
-            // Get current scroll position from last frame
-            let viewport_scroll_offset = self.shared_scroll_y;
-            let viewport_height = ui.available_height();
-
-            // Collect only visible nodes
-            let visible_nodes = self.collect_visible_nodes(
-                viewport_scroll_offset,
-                viewport_height
-            );
-
-            if visible_nodes.is_empty() {
-                return;
-            }
-
-            // Add spacing above for scrollbar correctness
-            let first_row = visible_nodes[0].row_index;
-            if first_row > 0 {
-                let spacing_above = first_row as f32 * ROW_HEIGHT;
-                ui.add_space(spacing_above);
-            }
-
-            // Render only visible nodes
-            for visible_node in &visible_nodes {
-                self.render_tree_node_direct(
-                    ui,
-                    visible_node.record_id,
-                    visible_node.depth,
-                    expand_width
-                );
-            }
-
-            // Add spacing below for scrollbar correctness
-            let last_row = visible_nodes.last().unwrap().row_index;
-            let total_rows = self.get_total_visible_nodes();
-            if last_row + 1 < total_rows {
-                let spacing_below = (total_rows - last_row - 1) as f32 * ROW_HEIGHT;
-                ui.add_space(spacing_below);
-            }
-        });
-
-    // Update shared scroll position for timeline sync
-    self.shared_scroll_y = scroll_area.state.offset.y;
-}
+```text
+render_tree(&mut self, ui):
+1. Create the vertical `ScrollArea` (header logic unchanged) and render its contents via a closure.
+2. Inside the closure, reuse `shared_scroll_y` and `ui.available_height()` to determine the viewport metrics, then call `collect_visible_nodes`.
+3. If the visible list is empty, exit early; otherwise insert top padding equal to the number of skipped rows times `ROW_HEIGHT`.
+4. Render each `VisibleNode` using `render_tree_node_direct`, which paints a single row without recursion.
+5. After the last row, add bottom padding representing the remaining rows so the scrollbar stays accurate.
+6. Outside the closure, copy the scroll area’s `state.offset.y` into `shared_scroll_y` so the timeline view stays synchronized.
 ```
 
 **New method:** `render_tree_node_direct()` (non-recursive version)
 
-```rust
-fn render_tree_node_direct(
-    &mut self,
-    ui: &mut egui::Ui,
-    record_id: u64,
-    depth: usize,
-    expand_width: f32
-) {
-    // Same as render_tree_node but WITHOUT recursive child rendering
-    // Lines 598-776 stay the same
-    // Remove lines 777-781 (recursive child rendering)
-}
+```text
+render_tree_node_direct(&mut self, ui, record_id, depth, expand_width):
+1. Reuse the existing row layout logic from `render_tree_node` to draw backgrounds, expansion affordances, and column content.
+2. Omit any recursive calls so the function is responsible only for a single row; children are handled by the virtual scrolling traversal.
 ```
 
 #### Modify `render_timeline()` method (lines 1138-1152)
 
 Apply same virtual scrolling pattern as tree view:
 
-```rust
-fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-    // ... (header and viewport input handling unchanged) ...
+```text
+render_timeline(&mut self, ui, ctx):
+1. Build a vertical `ScrollArea` whose vertical offset mirrors `shared_scroll_y`, and hide its scrollbar.
+2. Inside the closure, obtain the viewport height, then call `collect_visible_nodes` with the shared scroll offset to reuse the tree’s flattened ordering.
+3. Add top padding for rows preceding the first visible node, render each visible row via `render_timeline_row_direct`, and add bottom padding for rows after the viewport.
+4. Leave `shared_scroll_y` untouched so the tree view remains the authoritative scroll controller.
+```
 
-    let scroll_area = ScrollArea::vertical()
-        .id_salt("timeline_scroll_area")
-        .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
-        .vertical_scroll_offset(self.shared_scroll_y)
-        .show(ui, |ui| {
-            let viewport_height = ui.available_height();
-
-            // Reuse visible nodes calculation (single source of truth)
-            let visible_nodes = self.collect_visible_nodes(
-                self.shared_scroll_y,
-                viewport_height
-            );
-
-            // Add spacing above
-            if let Some(first_node) = visible_nodes.first() {
-                if first_node.row_index > 0 {
-                    let spacing_above = first_node.row_index as f32 * ROW_HEIGHT;
-                    ui.add_space(spacing_above);
-                }
-            }
-
-            // Render only visible timeline rows
-            for visible_node in &visible_nodes {
-                self.render_timeline_row_direct(
-                    ui,
-                    visible_node.record_id,
-                    ctx
-                );
-            }
-
-            // Add spacing below
-            if let Some(last_node) = visible_nodes.last() {
-                let total_rows = self.get_total_visible_nodes();
-                if last_node.row_index + 1 < total_rows {
-                    let spacing_below = (total_rows - last_node.row_index - 1) as f32 * ROW_HEIGHT;
-                    ui.add_space(spacing_below);
-                }
-            }
-        });
-}
+```text
+render_timeline_row_direct(&mut self, ui, record_id, ctx):
+1. Reuse the existing layout to draw the row background and timeline bar for the record.
+2. Call the optimized event marker routine that uses binary search to iterate only the viewport events.
+3. Skip recursion; child rows are produced by the shared visible-node traversal.
 ```
 
 ### 3.4 File-by-File Change Summary
@@ -821,6 +512,7 @@ fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
 - `collect_nodes_in_range()` with fast/slow path (~65 lines)
 - `get_subtree_size()` (~10 lines)
 - `calculate_subtree_size()` (~15 lines)
+- `update_parent_subtree_sizes()` (~20 lines, incremental cache updates)
 - `are_all_children_collapsed_cached()` (~20 lines)
 - `get_total_visible_nodes()` (~15 lines)
 - `get_max_visible_depth()` (~20 lines, replaces existing)
@@ -830,15 +522,15 @@ fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
 **Methods to modify:**
 - `render_tree()`: Replace with virtual scrolling logic (~40 lines changed)
 - `render_timeline()`: Replace with virtual scrolling logic (~40 lines changed)
-- Expand/collapse button handler: Add cache invalidation (~2 lines added)
+- Expand/collapse button handler: Add incremental cache updates (~15 lines added)
 - Event rendering in timeline: Add binary search (~20 lines changed)
 
-**Total:** ~400 lines modified/added across 1 file
+**Total:** ~420 lines modified/added across 1 file
 
 #### Other Files
 
 **No changes needed:**
-- `jets/rjets/src/traits.rs` - API remains the same
+ - `jets/rjets/src/traits.rs` - API remains the same
 - `jets/rjets/src/parser.rs` - data structures unchanged
 - `jets/rjets/src/lib.rs` - exports unchanged
 - `jets/rjets/Cargo.toml` - no new dependencies
@@ -885,13 +577,26 @@ fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
 
 **Invalidation triggers:**
 - Expand/collapse button click (user interaction)
-- Trace file reload/replacement
+- Trace file reload/replacement (full invalidation)
 - Frequency: ~1-10 times per second during active navigation
 
-**Invalidation cost:**
+**Incremental Update Cost (expand/collapse):**
+- Update subtree sizes up the tree: O(depth) ≈ 10-20 operations
+- Update total visible count: O(1)
+- Update max depth (if needed): O(1) or O(N) worst case
+- **Total time:** < 0.1ms for typical cases
+
+**Full Invalidation Cost (trace reload):**
 - Clear HashMaps: O(1) amortized
 - Next frame rebuilds cache: O(V) for visible nodes
-- Acceptable because it only happens on user interaction
+- Acceptable because trace reload is infrequent
+
+**Comparison:**
+| Operation | Full Invalidation | Incremental Update | Improvement |
+|-----------|------------------|-------------------|-------------|
+| Expand node with 1K children | ~10ms rebuild | ~0.01ms update | 1000x faster |
+| Collapse node with 10K subtree | ~50ms rebuild | ~0.01ms update | 5000x faster |
+| Trace reload | ~50ms rebuild | N/A (must rebuild) | - |
 
 ### 4.4 Frame Budget
 
@@ -992,24 +697,12 @@ fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
 4. **Memory usage:** Track cache structure sizes
 
 **Benchmarking code to add:**
-```rust
-#[cfg(feature = "benchmark")]
-impl JetsViewerApp {
-    fn benchmark_scrolling(&mut self) {
-        let start = std::time::Instant::now();
-
-        let total_nodes = self.get_total_visible_nodes();
-        let step = ROW_HEIGHT * 100.0; // Scroll 100 rows at a time
-
-        for offset in (0..total_nodes * ROW_HEIGHT as usize).step_by(step as usize) {
-            let _ = self.collect_visible_nodes(offset as f32, 1000.0);
-        }
-
-        let duration = start.elapsed();
-        println!("Benchmark: Scrolled {} nodes in {:?}", total_nodes, duration);
-        println!("Average time per frame: {:?}", duration / (total_nodes as u32 / 100));
-    }
-}
+```text
+benchmark_scrolling(&mut self) [cfg(feature = "benchmark")]:
+1. Record the start time.
+2. Compute the total number of visible nodes and choose a constant scroll step (e.g., 100 rows).
+3. Iterate offsets from 0 to the final row, invoking `collect_visible_nodes` for each simulated viewport to exercise the traversal.
+4. Measure the elapsed time and print aggregate as well as average-per-iteration metrics to stdout.
 ```
 
 ### 5.3 Visual Regression Testing
