@@ -5,13 +5,68 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
+use std::collections::HashMap;
 
 const THEME_KEY: &str = "theme_preference";
+
+/// Row height in pixels (consistent across tree and timeline views)
+const ROW_HEIGHT: f32 = 22.0;
+
+/// Number of rows to render above/below viewport for smooth scrolling
+const VIEWPORT_BUFFER_ROWS: usize = 10;
 
 // Holds the state of an async file loading operation.
 // Only the in_progress flag is shared; results come through a channel.
 struct LoadingState {
     in_progress: bool,
+}
+
+/// Cache for expensive tree calculations
+struct TreeCache {
+    /// Maps record_id -> total visible descendants (including self)
+    /// Only stores entries for expanded nodes
+    subtree_sizes: HashMap<u64, usize>,
+
+    /// Maps record_id -> true if all direct children are collapsed (leaf optimization)
+    /// Enables O(1) skipping for wide nodes with many leaf children
+    all_children_collapsed: HashMap<u64, bool>,
+
+    /// Cached total visible node count
+    total_visible_nodes: Option<usize>,
+
+    /// Cached maximum visible depth
+    max_visible_depth: Option<usize>,
+
+    /// Sequence number for cache invalidation
+    /// Incremented whenever expanded_nodes changes or trace reloads
+    expansion_seq: u64,
+}
+
+impl TreeCache {
+    fn new() -> Self {
+        Self {
+            subtree_sizes: HashMap::new(),
+            all_children_collapsed: HashMap::new(),
+            total_visible_nodes: None,
+            max_visible_depth: None,
+            expansion_seq: 0,
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.subtree_sizes.clear();
+        self.all_children_collapsed.clear();
+        self.total_visible_nodes = None;
+        self.max_visible_depth = None;
+        self.expansion_seq += 1;
+    }
+}
+
+/// Represents a visible node in the flattened tree view
+struct VisibleNode {
+    record_id: u64,
+    depth: usize,
+    row_index: usize,
 }
 
 // Application entry point that initializes and launches the JETS trace viewer GUI.
@@ -63,6 +118,8 @@ struct JetsViewerApp {
     loading_state: Arc<Mutex<LoadingState>>,
     pending_load_path: Option<PathBuf>,
     loading_receiver: Option<Receiver<Result<Box<dyn TraceData>, String>>>,
+    // Virtual scrolling cache
+    tree_cache: TreeCache,
 }
 
 impl Default for JetsViewerApp {
@@ -96,6 +153,7 @@ impl Default for JetsViewerApp {
             })),
             pending_load_path: None,
             loading_receiver: None,
+            tree_cache: TreeCache::new(),
         }
     }
 }
@@ -155,6 +213,7 @@ impl JetsViewerApp {
             })),
             pending_load_path: None,
             loading_receiver: None,
+            tree_cache: TreeCache::new(),
         }
     }
 
@@ -168,6 +227,7 @@ impl JetsViewerApp {
         self.selected_record_id = None;
         self.selected_event = None;
         self.error_message = None;
+        self.tree_cache.invalidate();
 
         // Create a channel for receiving the result
         let (sender, receiver) = channel();
@@ -230,6 +290,7 @@ impl JetsViewerApp {
                         self.error_message = None;
                         self.expanded_nodes.clear();
                         self.selected_record_id = None;
+                        self.tree_cache.invalidate();
 
                         self.trace_min_clk = min_clk;
                         self.trace_max_clk = max_clk;
@@ -265,6 +326,7 @@ impl JetsViewerApp {
                 self.error_message = None;
                 self.expanded_nodes.clear();
                 self.selected_record_id = None;
+                self.tree_cache.invalidate();
 
                 self.trace_min_clk = min_clk;
                 self.trace_max_clk = max_clk;
@@ -311,6 +373,34 @@ impl JetsViewerApp {
         result
     }
 
+    // Gets the total number of visible nodes (cached)
+    fn get_total_visible_nodes(&mut self) -> usize {
+        if let Some(total) = self.tree_cache.total_visible_nodes {
+            return total;
+        }
+
+        let mut total = 0;
+        if let Some(trace) = &self.trace_data {
+            for root_id in trace.root_ids() {
+                total += self.get_subtree_size(root_id);
+            }
+        }
+
+        self.tree_cache.total_visible_nodes = Some(total);
+        total
+    }
+
+    // Gets the maximum visible depth (cached)
+    fn get_max_visible_depth(&mut self) -> usize {
+        if let Some(depth) = self.tree_cache.max_visible_depth {
+            return depth;
+        }
+
+        let depth = self.calculate_max_visible_depth();
+        self.tree_cache.max_visible_depth = Some(depth);
+        depth
+    }
+
     // Calculates the maximum visible depth in the tree, accounting for expanded nodes.
     fn calculate_max_visible_depth(&self) -> usize {
         if let Some(trace) = &self.trace_data {
@@ -341,6 +431,204 @@ impl JetsViewerApp {
         }
 
         max_depth
+    }
+
+    // Gets the subtree size from cache or calculates it
+    fn get_subtree_size(&mut self, record_id: u64) -> usize {
+        if let Some(&size) = self.tree_cache.subtree_sizes.get(&record_id) {
+            return size;
+        }
+
+        let size = self.calculate_subtree_size(record_id);
+        self.tree_cache.subtree_sizes.insert(record_id, size);
+        size
+    }
+
+    // Calculates the total number of visible descendants including self
+    fn calculate_subtree_size(&self, record_id: u64) -> usize {
+        let mut total = 1; // Count self
+
+        if self.expanded_nodes.contains(&record_id) {
+            if let Some(trace) = &self.trace_data {
+                if let Some(record) = trace.get_record(record_id) {
+                    for child in record.children() {
+                        // Note: We can't use get_subtree_size here because it requires &mut self
+                        // This is called during calculation, so we calculate recursively
+                        total += if let Some(&cached_size) = self.tree_cache.subtree_sizes.get(&child.id()) {
+                            cached_size
+                        } else {
+                            self.calculate_subtree_size(child.id())
+                        };
+                    }
+                }
+            }
+        }
+
+        total
+    }
+
+    // Checks if all children of a node are collapsed (cached)
+    fn are_all_children_collapsed_cached(&mut self, parent_id: u64) -> bool {
+        if let Some(&collapsed) = self.tree_cache.all_children_collapsed.get(&parent_id) {
+            return collapsed;
+        }
+
+        let result = if let Some(trace) = &self.trace_data {
+            if let Some(record) = trace.get_record(parent_id) {
+                let children = record.children();
+                if children.is_empty() {
+                    true // No children = treat as collapsed
+                } else {
+                    children.iter().all(|child| !self.expanded_nodes.contains(&child.id()))
+                }
+            } else {
+                true
+            }
+        } else {
+            true
+        };
+
+        self.tree_cache.all_children_collapsed.insert(parent_id, result);
+        result
+    }
+
+    // Collects only the nodes visible in the viewport plus buffer
+    fn collect_visible_nodes(&mut self, viewport_scroll_offset: f32, viewport_height: f32) -> Vec<VisibleNode> {
+        let first_visible_row = (viewport_scroll_offset / ROW_HEIGHT) as usize;
+        let last_visible_row = ((viewport_scroll_offset + viewport_height) / ROW_HEIGHT) as usize;
+
+        // Add buffer
+        let first_visible_row = first_visible_row.saturating_sub(VIEWPORT_BUFFER_ROWS);
+        let last_visible_row = last_visible_row + VIEWPORT_BUFFER_ROWS;
+
+        let mut result = Vec::new();
+        let mut current_row = 0;
+
+        if let Some(trace) = &self.trace_data {
+            for root_id in trace.root_ids() {
+                self.collect_nodes_in_range(
+                    root_id,
+                    0,
+                    &mut current_row,
+                    first_visible_row,
+                    last_visible_row,
+                    &mut result
+                );
+
+                // Early exit if we've passed the visible range
+                if current_row > last_visible_row {
+                    break;
+                }
+            }
+        }
+
+        result
+    }
+
+    // Recursively collects nodes in the visible range with optimized skipping
+    fn collect_nodes_in_range(
+        &mut self,
+        record_id: u64,
+        depth: usize,
+        current_row: &mut usize,
+        first_visible: usize,
+        last_visible: usize,
+        result: &mut Vec<VisibleNode>
+    ) {
+        // Add current node if it's in the visible range
+        if *current_row >= first_visible && *current_row <= last_visible {
+            result.push(VisibleNode {
+                record_id,
+                depth,
+                row_index: *current_row,
+            });
+        }
+
+        *current_row += 1;
+
+        // If we've passed the visible range, we can stop
+        if *current_row > last_visible {
+            return;
+        }
+
+        // Process children if expanded
+        if self.expanded_nodes.contains(&record_id) {
+            // First, extract child IDs without holding the borrow
+            let child_ids: Vec<u64> = if let Some(trace) = &self.trace_data {
+                if let Some(record) = trace.get_record(record_id) {
+                    record.children().iter().map(|c| c.id()).collect()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            };
+
+            if child_ids.is_empty() {
+                return;
+            }
+
+            // OPTIMIZATION: Fast path for wide nodes with all children collapsed
+            if child_ids.len() > 100 && self.are_all_children_collapsed_cached(record_id) {
+                // All children are collapsed, so we can add them in O(V) time
+                let num_children = child_ids.len();
+
+                // Calculate which children are in the visible range
+                let first_child_in_range = if *current_row <= first_visible {
+                    first_visible.saturating_sub(*current_row)
+                } else {
+                    0
+                };
+
+                let last_child_in_range = if *current_row + num_children > last_visible {
+                    last_visible.saturating_sub(*current_row)
+                } else {
+                    num_children.saturating_sub(1)
+                };
+
+                // Add visible children
+                for i in first_child_in_range..=last_child_in_range.min(num_children.saturating_sub(1)) {
+                    if let Some(&child_id) = child_ids.get(i) {
+                        result.push(VisibleNode {
+                            record_id: child_id,
+                            depth: depth + 1,
+                            row_index: *current_row + i,
+                        });
+                    }
+                }
+
+                // Skip all children
+                *current_row += num_children;
+            } else {
+                // Normal recursive traversal with subtree skipping
+                for &child_id in &child_ids {
+                    // Try to skip entire subtree if it's before the visible range
+                    if *current_row < first_visible {
+                        let subtree_size = self.get_subtree_size(child_id);
+                        if *current_row + subtree_size <= first_visible {
+                            // Entire subtree is before visible range, skip it
+                            *current_row += subtree_size;
+                            continue;
+                        }
+                    }
+
+                    // Recursively process this child
+                    self.collect_nodes_in_range(
+                        child_id,
+                        depth + 1,
+                        current_row,
+                        first_visible,
+                        last_visible,
+                        result
+                    );
+
+                    // Early exit if we've passed the visible range
+                    if *current_row > last_visible {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     // Calculates the smallest power of 10 greater than or equal to the given value.
@@ -499,7 +787,7 @@ impl JetsViewerApp {
         // Calculate dynamic expand column width based on max visible depth
         // Reserve space for at least 5 levels by default to avoid resizing in common cases
         // 20px base for the expand icon + 20px per indent level
-        let max_depth = self.calculate_max_visible_depth();
+        let max_depth = self.get_max_visible_depth();
         let expand_width = 20.0 + (max_depth.max(5) as f32 * 20.0);
 
         // Render table header
@@ -507,21 +795,39 @@ impl JetsViewerApp {
 
         ui.separator();
 
-        // Get root IDs
-        let root_ids: Vec<u64> = if let Some(trace) = &self.trace_data {
-            trace.root_ids()
-        } else {
-            Vec::new()
-        };
-
-        // Clone IDs and render them
-        let ids_to_render = root_ids.clone();
-
         let scroll_area = ScrollArea::vertical()
             .id_salt("tree_scroll_area")
             .show(ui, |ui| {
-                for root_id in ids_to_render {
-                    self.render_tree_node(ui, root_id, 0, expand_width);
+                // Get viewport metrics
+                let viewport_height = ui.available_height();
+                let scroll_offset = self.shared_scroll_y;
+
+                // Collect only visible nodes
+                let visible_nodes = self.collect_visible_nodes(scroll_offset, viewport_height);
+
+                if visible_nodes.is_empty() {
+                    return;
+                }
+
+                // Calculate padding
+                let first_row = visible_nodes.first().map(|n| n.row_index).unwrap_or(0);
+                let last_row = visible_nodes.last().map(|n| n.row_index).unwrap_or(0);
+                let total_visible_nodes = self.get_total_visible_nodes();
+
+                // Add top padding for skipped rows
+                if first_row > 0 {
+                    ui.add_space(first_row as f32 * ROW_HEIGHT);
+                }
+
+                // Render visible nodes
+                for node in &visible_nodes {
+                    self.render_tree_node_direct(ui, node.record_id, node.depth, expand_width);
+                }
+
+                // Add bottom padding for remaining rows
+                let rows_after = total_visible_nodes.saturating_sub(last_row + 1);
+                if rows_after > 0 {
+                    ui.add_space(rows_after as f32 * ROW_HEIGHT);
                 }
             });
 
@@ -779,6 +1085,186 @@ impl JetsViewerApp {
                 self.render_tree_node(ui, child_id, depth + 1, expand_width);
             }
         }
+    }
+
+    // Renders a single tree node row (non-recursive version for virtual scrolling)
+    fn render_tree_node_direct(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize, expand_width: f32) {
+        // Extract all needed data from the record first to avoid borrow checker issues
+        let (has_children, name, description, clk, end_clk, first_event_clk) = if let Some(trace) = &self.trace_data {
+            if let Some(record) = trace.get_record(record_id) {
+                let children = record.children();
+                let events = record.events();
+                let first_event_clk = if !events.is_empty() {
+                    Some(events[0].clk())
+                } else {
+                    None
+                };
+                (
+                    !children.is_empty(),
+                    record.name().to_string(),
+                    record.description().to_string(),
+                    record.clk(),
+                    record.end_clk(),
+                    first_event_clk
+                )
+            } else {
+                return;
+            }
+        } else {
+            return;
+        };
+
+        let indent = depth as f32 * 20.0;
+        let is_selected = self.selected_record_id == Some(record_id);
+
+        let mut x_offset = 0.0;
+        let start_pos = ui.cursor().min;
+
+        // Reserve space for the entire row
+        let (row_rect, row_response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), ROW_HEIGHT),
+            egui::Sense::click()
+        );
+
+        if row_response.clicked() {
+            // Check if this is a new selection
+            let was_already_selected = self.selected_record_id == Some(record_id);
+            self.selected_record_id = Some(record_id);
+
+            // Auto-select first event if this is a new record selection
+            if !was_already_selected {
+                if let Some(event_clk) = first_event_clk {
+                    self.selected_event = Some((record_id, event_clk));
+                    println!("DEBUG: Auto-selected first event at clk {}", event_clk);
+                } else {
+                    // Clear event selection if no events
+                    self.selected_event = None;
+                }
+            }
+        }
+
+        // Draw background for selected row
+        if is_selected {
+            ui.painter().rect_filled(
+                row_rect,
+                0.0,
+                self.theme_colors().selection,
+            );
+        }
+
+        // Tree expansion control (fixed 20px width for button area, positioned after indent)
+        let button_area_width = 20.0;
+        let expand_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + indent, start_pos.y),
+            egui::vec2(button_area_width, ROW_HEIGHT),
+        );
+
+        if has_children {
+            let is_expanded = self.expanded_nodes.contains(&record_id);
+            let symbol = if is_expanded { "▼" } else { "▶" };
+
+            let button_id = ui.id().with(format!("expand_{}", record_id));
+            let button_rect = egui::Rect::from_center_size(
+                expand_rect.center(),
+                egui::vec2(16.0, 16.0),
+            );
+            let button_response = ui.interact(button_rect, button_id, egui::Sense::click());
+
+            if button_response.clicked() {
+                if is_expanded {
+                    self.expanded_nodes.remove(&record_id);
+                } else {
+                    self.expanded_nodes.insert(record_id);
+                }
+                // Invalidate cache when expand/collapse changes
+                self.tree_cache.invalidate();
+            }
+
+            ui.painter().text(
+                button_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                symbol,
+                egui::FontId::proportional(12.0),
+                ui.visuals().text_color(),
+            );
+        }
+
+        x_offset += expand_width;
+
+        // Column 0: Name
+        let name_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[0], ROW_HEIGHT),
+        );
+        ui.painter().text(
+            name_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &name,
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[0];
+
+        // Column 1: ID
+        let id_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[1], ROW_HEIGHT),
+        );
+        ui.painter().text(
+            id_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &record_id.to_string(),
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[1];
+
+        // Column 2: Start Clock
+        let start_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[2], ROW_HEIGHT),
+        );
+        ui.painter().text(
+            start_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &clk.to_string(),
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[2];
+
+        // Column 3: End Clock
+        let end_str = end_clk
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+
+        let end_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[3], ROW_HEIGHT),
+        );
+        ui.painter().text(
+            end_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &end_str,
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        x_offset += self.column_widths[3];
+
+        // Column 4: Description
+        let desc_rect = egui::Rect::from_min_size(
+            egui::pos2(start_pos.x + x_offset, start_pos.y),
+            egui::vec2(self.column_widths[4], ROW_HEIGHT),
+        );
+        ui.painter().text(
+            desc_rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &description,
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+
+        // No recursive rendering of children - that's handled by virtual scrolling
     }
 
     // Renders the details panel showing annotations, data, and events for the selected record.
@@ -1142,12 +1628,36 @@ impl JetsViewerApp {
         scroll_area = scroll_area.vertical_scroll_offset(self.shared_scroll_y);
 
         let scroll_output = scroll_area.show(ui, |ui| {
-            // Render timeline rows matching tree structure
-            if let Some(trace) = &self.trace_data {
-                let root_ids = trace.root_ids();
-                for root_id in root_ids {
-                    self.render_timeline_row(ui, root_id, 0, ctx);
-                }
+            // Get viewport metrics
+            let viewport_height = ui.available_height();
+            let scroll_offset = self.shared_scroll_y;
+
+            // Collect only visible nodes (same as tree view)
+            let visible_nodes = self.collect_visible_nodes(scroll_offset, viewport_height);
+
+            if visible_nodes.is_empty() {
+                return;
+            }
+
+            // Calculate padding
+            let first_row = visible_nodes.first().map(|n| n.row_index).unwrap_or(0);
+            let last_row = visible_nodes.last().map(|n| n.row_index).unwrap_or(0);
+            let total_visible_nodes = self.get_total_visible_nodes();
+
+            // Add top padding for skipped rows
+            if first_row > 0 {
+                ui.add_space(first_row as f32 * ROW_HEIGHT);
+            }
+
+            // Render visible timeline rows
+            for node in &visible_nodes {
+                self.render_timeline_row_direct(ui, node.record_id, ctx);
+            }
+
+            // Add bottom padding for remaining rows
+            let rows_after = total_visible_nodes.saturating_sub(last_row + 1);
+            if rows_after > 0 {
+                ui.add_space(rows_after as f32 * ROW_HEIGHT);
             }
         });
 
@@ -1397,6 +1907,168 @@ impl JetsViewerApp {
                 self.render_timeline_row(ui, child_id, _depth + 1, ctx);
             }
         }
+    }
+
+    // Renders a single timeline row (non-recursive version for virtual scrolling)
+    fn render_timeline_row_direct(&mut self, ui: &mut egui::Ui, record_id: u64, _ctx: &egui::Context) {
+        let trace = match &self.trace_data {
+            Some(t) => t.as_ref(),
+            None => return,
+        };
+
+        let record = match trace.get_record(record_id) {
+            Some(r) => r,
+            None => return,
+        };
+
+        let start_y = ui.cursor().min.y;
+
+        // Allocate space for this row (matching tree's allocation)
+        // Use hover sense instead of click to avoid interfering with canvas drag
+        let (_row_rect, _row_response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), ROW_HEIGHT),
+            egui::Sense::hover()
+        );
+
+        // Get canvas rect for horizontal positioning
+        let canvas_rect = ui.available_rect_before_wrap();
+
+        // Draw the timeline bar for this record
+        let start_clk = record.clk();
+        let end_clk = record.end_clk().unwrap_or(self.viewport_end_clk);
+
+        let x_start = self.clk_to_x(start_clk, egui::Rect::from_min_max(
+            egui::pos2(canvas_rect.min.x, start_y),
+            egui::pos2(canvas_rect.max.x, start_y + ROW_HEIGHT)
+        ));
+        let x_end = self.clk_to_x(end_clk, egui::Rect::from_min_max(
+            egui::pos2(canvas_rect.min.x, start_y),
+            egui::pos2(canvas_rect.max.x, start_y + ROW_HEIGHT)
+        ));
+        let width = (x_end - x_start).max(2.0);
+
+        if width >= 0.5 {
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(x_start, start_y),
+                egui::vec2(width, ROW_HEIGHT),
+            );
+
+            let is_selected = self.selected_record_id == Some(record_id);
+            let bar_color = if is_selected {
+                self.theme_colors().blue
+            } else {
+                self.get_record_color(record.name())
+            };
+
+            ui.painter().rect_filled(bar_rect, 2.0, bar_color);
+
+            if is_selected {
+                ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, rjets::adjust_brightness(self.theme_colors().blue, 1.2)), egui::StrokeKind::Outside);
+            }
+
+            // Handle click on bar for selection (only when not dragging)
+            let bar_id = ui.id().with(format!("bar_select_{}", record_id));
+            let bar_response = ui.interact(bar_rect, bar_id, egui::Sense::click());
+
+            if bar_response.clicked() && !self.is_dragging {
+                // Check if this is a new selection
+                let was_already_selected = self.selected_record_id == Some(record_id);
+                self.selected_record_id = Some(record_id);
+                println!("DEBUG: Selected record {}", record_id);
+
+                // Auto-select first event if this is a new record selection
+                if !was_already_selected {
+                    let events = record.events();
+                    if !events.is_empty() {
+                        let first_event = &events[0];
+                        self.selected_event = Some((record_id, first_event.clk()));
+                        println!("DEBUG: Auto-selected first event at clk {}", first_event.clk());
+                    } else {
+                        // Clear event selection if no events
+                        self.selected_event = None;
+                    }
+                }
+            }
+
+            // Handle hover tooltip (only when not dragging)
+            if bar_response.hovered() && !self.is_dragging {
+                bar_response.on_hover_ui(|ui| {
+                    ui.label(format!("{}", record.name()));
+                    ui.label(format!("Start: {}", Self::format_clock(start_clk)));
+                    if let Some(end) = record.end_clk() {
+                        ui.label(format!("End: {}", Self::format_clock(end)));
+                        ui.label(format!("Duration: {}", Self::format_clock(end - start_clk)));
+                    }
+                });
+            }
+
+            // Draw event markers with binary search optimization
+            let events = record.events();
+
+            // Use binary search to find first visible event
+            let first_visible_idx = events.binary_search_by(|event| {
+                if event.clk() < self.viewport_start_clk {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                }
+            }).unwrap_or_else(|idx| idx);
+
+            // Render only visible events
+            for event in events.iter().skip(first_visible_idx) {
+                let event_clk = event.clk();
+
+                // Early exit if beyond viewport
+                if event_clk > self.viewport_end_clk {
+                    break;
+                }
+
+                let x = self.clk_to_x(event_clk, egui::Rect::from_min_max(
+                    egui::pos2(canvas_rect.min.x, start_y),
+                    egui::pos2(canvas_rect.max.x, start_y + ROW_HEIGHT)
+                ));
+                let marker_pos = egui::pos2(x, start_y + 11.0);
+
+                // Check if this event is selected
+                let is_event_selected = self.selected_event == Some((record_id, event_clk));
+                let marker_radius = if is_event_selected { 6.76 } else { 5.2 };
+
+                // Create interaction rect for the event marker
+                let marker_rect = egui::Rect::from_center_size(
+                    marker_pos,
+                    egui::vec2(marker_radius * 2.0, marker_radius * 2.0)
+                );
+
+                let marker_id = ui.id().with(format!("event_marker_{}_{}", record_id, event_clk));
+                let marker_response = ui.interact(marker_rect, marker_id, egui::Sense::click());
+
+                // Handle click to select event (only when not dragging)
+                if marker_response.clicked() && !self.is_dragging {
+                    self.selected_event = Some((record_id, event_clk));
+                    self.selected_record_id = Some(record_id);
+                    println!("DEBUG: Selected event at clk {} for record {}", event_clk, record_id);
+                }
+
+                // Draw the event circle
+                let event_color = if is_event_selected {
+                    self.theme_colors().red // Red fill when selected
+                } else {
+                    self.theme_colors().yellow
+                };
+                ui.painter().circle_filled(marker_pos, marker_radius, event_color);
+
+                // Draw selection ring for selected events
+                if is_event_selected {
+                    ui.painter().circle_stroke(
+                        marker_pos,
+                        marker_radius + 1.0,
+                        egui::Stroke::new(1.5, self.theme_colors().blue)
+                    );
+                }
+            }
+        }
+
+        // No recursive rendering of children - that's handled by virtual scrolling
     }
 
     // Renders the timeline header area with time axis aligned to tree view header height.
