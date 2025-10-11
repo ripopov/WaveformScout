@@ -1240,7 +1240,7 @@ impl JetsViewerApp {
 
                     // Check if this event is selected
                     let is_event_selected = self.selected_event == Some((record_id, event_clk));
-                    let marker_radius = if is_event_selected { 6.0 } else { 5.2 };
+                    let marker_radius = if is_event_selected { 6.76 } else { 5.2 };
 
                     // Create interaction rect for the event marker
                     let marker_rect = egui::Rect::from_center_size(
@@ -1260,7 +1260,7 @@ impl JetsViewerApp {
 
                     // Draw the event circle
                     let event_color = if is_event_selected {
-                        rjets::adjust_brightness(self.theme_colors().yellow, 1.2) // Brighter color when selected
+                        self.theme_colors().red // Red fill when selected
                     } else {
                         self.theme_colors().yellow
                     };
