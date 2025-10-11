@@ -253,7 +253,7 @@ fn generate_trace(writer: &mut TraceWriter, config: &Config) -> Result<()> {
             cluster_id,
             None,
             "Cluster",
-            clk,
+            0,
             &format!("cluster_{}", cluster_idx),
             &format!("Cluster {}", cluster_idx),
             None,
@@ -268,7 +268,7 @@ fn generate_trace(writer: &mut TraceWriter, config: &Config) -> Result<()> {
                 core_id,
                 Some(cluster_id),
                 "Core",
-                clk,
+                0,
                 &format!("core_{}", core_idx),
                 &format!("Core {}", core_idx),
                 None,
@@ -284,7 +284,7 @@ fn generate_trace(writer: &mut TraceWriter, config: &Config) -> Result<()> {
                     rng.gen_range(config.num_instr_min, config.num_instr_max + 1)
                 };
 
-                let thread_start_clk = clk;
+                let thread_start_clk = 0;
 
                 // Buffer all items for this thread to emit in sorted order
                 let mut items = Vec::new();
