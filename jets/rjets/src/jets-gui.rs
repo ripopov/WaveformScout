@@ -212,7 +212,7 @@ impl JetsViewerApp {
         10_i64.pow(exponent as u32)
     }
 
-    // Renders the application header with file controls, metadata display, and zoom controls.
+    // Renders the application header with file controls and zoom controls.
     fn render_header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui.button("📁 Open Trace").clicked() {
@@ -234,30 +234,7 @@ impl JetsViewerApp {
 
             ui.separator();
 
-            if let Some(trace) = &self.trace_data {
-                if self.file_path.is_none() {
-                    // Virtual trace metadata
-                    let num_roots = trace.root_ids().len();
-                    ui.label(RichText::new(format!("Virtual Trace | Seed: 42 | Roots: {}", num_roots)).strong());
-                } else {
-                    // File-based trace metadata
-                    let header_data = trace.metadata().header_data();
-                    let gpu_model = header_data
-                        .get("gpu_model")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown");
-                    let clock_freq = header_data
-                        .get("clock_frequency_mhz")
-                        .or_else(|| header_data.get("clock_frequency_ghz"))
-                        .and_then(|v| v.as_f64())
-                        .map(|f| format!("{:.2}", f))
-                        .unwrap_or_else(|| "Unknown".to_string());
-
-                    ui.label(RichText::new(format!("GPU: {} | Clock: {} MHz", gpu_model, clock_freq)).strong());
-                }
-
-                ui.separator();
-
+            if let Some(_trace) = &self.trace_data {
                 // Zoom controls
                 if ui.button("🔍+").clicked() {
                     self.zoom_level = (self.zoom_level * 1.5).min(10000.0);
@@ -286,8 +263,6 @@ impl JetsViewerApp {
                 }
 
                 ui.label(format!("Zoom: {:.1}x", self.zoom_level));
-            } else {
-                ui.label("No trace loaded");
             }
 
             // Push theme toggle button to the right
@@ -303,6 +278,48 @@ impl JetsViewerApp {
         if let Some(err) = &self.error_message {
             ui.colored_label(Color32::RED, err);
         }
+    }
+
+    // Renders the status panel at the bottom of the window with trace metadata.
+    fn render_status_panel(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if let Some(trace) = &self.trace_data {
+                let metadata = trace.metadata();
+                let (min_clk, max_clk) = metadata.trace_extent();
+                let time_range = format!("{}..{}", Self::format_clock(min_clk), Self::format_clock(max_clk));
+                let total_records = metadata.total_records().map(|n| n.to_string()).unwrap_or_else(|| "?".to_string());
+                let total_events = metadata.total_events().map(|n| n.to_string()).unwrap_or_else(|| "?".to_string());
+
+                if self.file_path.is_none() {
+                    // Virtual trace metadata
+                    let num_roots = trace.root_ids().len();
+                    ui.label(RichText::new(format!(
+                        "Virtual Trace | Seed: 42 | Roots: {} | Time: {} | Records: {} | Events: {}",
+                        num_roots, time_range, total_records, total_events
+                    )).strong());
+                } else {
+                    // File-based trace metadata
+                    let header_data = metadata.header_data();
+                    let gpu_model = header_data
+                        .get("gpu_model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+                    let clock_freq = header_data
+                        .get("clock_frequency_mhz")
+                        .or_else(|| header_data.get("clock_frequency_ghz"))
+                        .and_then(|v| v.as_f64())
+                        .map(|f| format!("{:.2}", f))
+                        .unwrap_or_else(|| "Unknown".to_string());
+
+                    ui.label(RichText::new(format!(
+                        "GPU: {} | Clock: {} MHz | Time: {} | Records: {} | Events: {}",
+                        gpu_model, clock_freq, time_range, total_records, total_events
+                    )).strong());
+                }
+            } else {
+                ui.label("No trace loaded");
+            }
+        });
     }
 
     // Renders the hierarchical tree view of trace records with columns for name, ID, clocks, and description.
@@ -1285,7 +1302,13 @@ impl eframe::App for JetsViewerApp {
             self.render_header(ui);
         });
 
-        // Bottom panel: Details
+        // Status panel at the very bottom
+        egui::TopBottomPanel::bottom("status_panel")
+            .show(ctx, |ui| {
+                self.render_status_panel(ui);
+            });
+
+        // Details panel above status panel
         egui::TopBottomPanel::bottom("details_panel")
             .default_height(ctx.screen_rect().height() * (1.0 - self.split_ratio))
             .resizable(true)
