@@ -39,6 +39,9 @@ struct JetsViewerApp {
     // Drag panning state
     is_dragging: bool,
     drag_start_clk: i64,
+    // Zoom to region state
+    is_selecting_region: bool,
+    region_start_pos: Option<egui::Pos2>,
     // Cursor hover state
     cursor_hover_pos: Option<egui::Pos2>,
     cursor_hover_clk: Option<i64>,
@@ -73,6 +76,8 @@ impl JetsViewerApp {
             trace_max_clk: 0,
             is_dragging: false,
             drag_start_clk: 0,
+            is_selecting_region: false,
+            region_start_pos: None,
             cursor_hover_pos: None,
             cursor_hover_clk: None,
             selected_event: None,
@@ -653,49 +658,99 @@ impl JetsViewerApp {
         // Handle zoom and horizontal pan input
         let canvas_rect = ui.available_rect_before_wrap();
 
-        // Handle drag panning with left mouse button AND hover for cursor tracking
+        // Handle drag with left mouse button AND hover for cursor tracking
         let canvas_response = ui.interact(canvas_rect, ui.id().with("timeline_canvas"), egui::Sense::drag().union(egui::Sense::hover()));
 
+        // Check if Ctrl is held or right mouse button is being used
+        let ctrl_held = ctx.input(|i| i.modifiers.ctrl);
+        let right_mouse_held = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Secondary));
+
         if canvas_response.dragged() {
-            let drag_delta = canvas_response.drag_delta();
-
-            if !self.is_dragging {
-                // Starting drag
-                self.is_dragging = true;
-                if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
-                    self.drag_start_clk = self.x_to_clk(pos.x, canvas_rect);
+            if ctrl_held || right_mouse_held {
+                // Ctrl+Drag or Right Mouse Drag: Zoom to region selection
+                if !self.is_selecting_region {
+                    // Start region selection
+                    self.is_selecting_region = true;
+                    if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
+                        self.region_start_pos = Some(pos);
+                        println!("DEBUG: Region selection started at: {:?}", pos);
+                    }
+                } else {
+                    println!("DEBUG: Region selection in progress");
                 }
-                println!("DEBUG: Drag started at clk: {}", self.drag_start_clk);
+            } else {
+                // Normal drag: Panning
+                let drag_delta = canvas_response.drag_delta();
+
+                if !self.is_dragging {
+                    // Starting drag
+                    self.is_dragging = true;
+                    if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
+                        self.drag_start_clk = self.x_to_clk(pos.x, canvas_rect);
+                    }
+                    println!("DEBUG: Drag started at clk: {}", self.drag_start_clk);
+                }
+
+                // Calculate how much clock time the drag represents
+                let viewport_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
+                let pixels_to_clk_ratio = viewport_range / canvas_rect.width();
+                let clk_delta = (-drag_delta.x * pixels_to_clk_ratio) as i64;
+
+                println!("DEBUG: Dragging - delta.x: {}, clk_delta: {}", drag_delta.x, clk_delta);
+
+                // Apply the pan
+                self.viewport_start_clk += clk_delta;
+                self.viewport_end_clk += clk_delta;
+
+                // Clamp to trace bounds
+                if self.viewport_start_clk < self.trace_min_clk {
+                    let diff = self.trace_min_clk - self.viewport_start_clk;
+                    self.viewport_start_clk = self.trace_min_clk;
+                    self.viewport_end_clk += diff;
+                }
+                if self.viewport_end_clk > self.trace_max_clk {
+                    let diff = self.viewport_end_clk - self.trace_max_clk;
+                    self.viewport_end_clk = self.trace_max_clk;
+                    self.viewport_start_clk -= diff;
+                }
+
+                println!("DEBUG: Viewport after drag: {}..{}", self.viewport_start_clk, self.viewport_end_clk);
             }
+        } else {
+            // Mouse released
+            if self.is_selecting_region {
+                // Complete zoom to region
+                if let (Some(start_pos), Some(current_pos)) = (self.region_start_pos, ctx.input(|i| i.pointer.hover_pos())) {
+                    let start_clk = self.x_to_clk(start_pos.x, canvas_rect);
+                    let end_clk = self.x_to_clk(current_pos.x, canvas_rect);
 
-            // Calculate how much clock time the drag represents
-            let viewport_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
-            let pixels_to_clk_ratio = viewport_range / canvas_rect.width();
-            let clk_delta = (-drag_delta.x * pixels_to_clk_ratio) as i64;
+                    let (new_start_clk, new_end_clk) = if start_clk < end_clk {
+                        (start_clk, end_clk)
+                    } else {
+                        (end_clk, start_clk)
+                    };
 
-            println!("DEBUG: Dragging - delta.x: {}, clk_delta: {}", drag_delta.x, clk_delta);
+                    // Apply zoom to the selected region
+                    self.viewport_start_clk = new_start_clk.max(self.trace_min_clk);
+                    self.viewport_end_clk = new_end_clk.min(self.trace_max_clk);
 
-            // Apply the pan
-            self.viewport_start_clk += clk_delta;
-            self.viewport_end_clk += clk_delta;
+                    // Update zoom level
+                    let new_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
+                    let full_range = (self.trace_max_clk - self.trace_min_clk) as f32;
+                    self.zoom_level = full_range / new_range;
 
-            // Clamp to trace bounds
-            if self.viewport_start_clk < self.trace_min_clk {
-                let diff = self.trace_min_clk - self.viewport_start_clk;
-                self.viewport_start_clk = self.trace_min_clk;
-                self.viewport_end_clk += diff;
+                    println!("DEBUG: Zoomed to region: {}..{}, zoom level: {:.2}x",
+                        self.viewport_start_clk, self.viewport_end_clk, self.zoom_level);
+                }
+
+                self.is_selecting_region = false;
+                self.region_start_pos = None;
+                println!("DEBUG: Region selection ended");
+            } else if self.is_dragging {
+                // Drag ended
+                self.is_dragging = false;
+                println!("DEBUG: Drag ended");
             }
-            if self.viewport_end_clk > self.trace_max_clk {
-                let diff = self.viewport_end_clk - self.trace_max_clk;
-                self.viewport_end_clk = self.trace_max_clk;
-                self.viewport_start_clk -= diff;
-            }
-
-            println!("DEBUG: Viewport after drag: {}..{}", self.viewport_start_clk, self.viewport_end_clk);
-        } else if self.is_dragging {
-            // Drag ended
-            self.is_dragging = false;
-            println!("DEBUG: Drag ended");
         }
 
         // Track cursor hover position for vertical cursor line
@@ -884,6 +939,41 @@ impl JetsViewerApp {
                 font_id,
                 label_color,
             );
+        }
+
+        // Draw zoom region selection overlay if active
+        if self.is_selecting_region {
+            if let (Some(start_pos), Some(current_pos)) = (self.region_start_pos, ctx.input(|i| i.pointer.hover_pos())) {
+                let scroll_rect = scroll_output.inner_rect;
+                let content_top = scroll_rect.top();
+                let content_bottom = scroll_rect.bottom();
+
+                // Calculate the selection rectangle
+                let left_x = start_pos.x.min(current_pos.x);
+                let right_x = start_pos.x.max(current_pos.x);
+
+                let selection_rect = egui::Rect::from_min_max(
+                    egui::pos2(left_x, content_top),
+                    egui::pos2(right_x, content_bottom),
+                );
+
+                // Use debug_painter to draw on top
+                let painter = ui.ctx().debug_painter();
+
+                // Draw semi-transparent overlay
+                painter.rect_filled(
+                    selection_rect,
+                    0.0,
+                    Color32::from_rgba_premultiplied(100, 150, 255, 80),
+                );
+
+                // Draw border
+                painter.rect_stroke(
+                    selection_rect,
+                    0.0,
+                    egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 255)),
+                );
+            }
         }
     }
 
