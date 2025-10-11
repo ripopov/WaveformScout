@@ -1,4 +1,5 @@
-use rjets::{TraceWriter, TraceReader, JetsTraceReader, VirtualTraceReader};
+use rjets::{TraceWriter, TraceReader, JetsTraceReader, VirtualTraceReader, parse_trace};
+use rjets::TraceData;
 use anyhow::Result;
 use std::fs;
 
@@ -338,6 +339,181 @@ fn test_read_real_trace_file() -> Result<()> {
             assert!(record.name().len() > 0);
         }
     }
-    
+
+    Ok(())
+}
+
+#[test]
+fn test_brotli_write_and_read() -> Result<()> {
+    let compressed_file = "/tmp/test_brotli_trace.jets.br";
+    let uncompressed_file = "/tmp/test_brotli_trace_uncompressed.jets";
+
+    // Clean up any existing files
+    let _ = fs::remove_file(compressed_file);
+    let _ = fs::remove_file(uncompressed_file);
+
+    // Write compressed trace
+    {
+        let mut writer = TraceWriter::new(compressed_file)?;
+
+        // Write header
+        writer.write_header(
+            "2.0",
+            serde_json::json!({
+                "test": "brotli_compression",
+                "expected": "transparent_decompression"
+            })
+        )?;
+
+        // Write root record
+        writer.write_record(
+            1,
+            None,
+            "TestRoot",
+            1000,
+            "root_record",
+            "Root record for Brotli test",
+            Some(serde_json::json!({"test_field": "test_value"}))
+        )?;
+
+        // Write child record
+        writer.write_record(
+            2,
+            Some(1),
+            "TestChild",
+            1100,
+            "child_record",
+            "Child record for Brotli test",
+            None
+        )?;
+
+        // Write annotation
+        writer.write_annotation(
+            2,
+            "test_annotation",
+            "Test annotation for Brotli",
+            serde_json::json!({"annotation_key": "annotation_value"})
+        )?;
+
+        // Write event
+        writer.write_event(
+            2,
+            "TestEvent",
+            "Test event for Brotli",
+            1150,
+            Some(serde_json::json!({"event_key": "event_value"}))
+        )?;
+
+        // End records
+        writer.write_record_end(2, 1200)?;
+        writer.write_record_end(1, 1300)?;
+
+        // Write footer
+        writer.write_footer(Some(1300))?;
+    }
+
+    // Also write uncompressed version for size comparison
+    {
+        let mut writer = TraceWriter::new(uncompressed_file)?;
+        writer.write_header(
+            "2.0",
+            serde_json::json!({"test": "brotli_compression"})
+        )?;
+        writer.write_record(1, None, "TestRoot", 1000, "root_record", "Root record for Brotli test", Some(serde_json::json!({"test_field": "test_value"})))?;
+        writer.write_record(2, Some(1), "TestChild", 1100, "child_record", "Child record for Brotli test", None)?;
+        writer.write_annotation(2, "test_annotation", "Test annotation for Brotli", serde_json::json!({"annotation_key": "annotation_value"}))?;
+        writer.write_event(2, "TestEvent", "Test event for Brotli", 1150, Some(serde_json::json!({"event_key": "event_value"})))?;
+        writer.write_record_end(2, 1200)?;
+        writer.write_record_end(1, 1300)?;
+        writer.write_footer(Some(1300))?;
+    }
+
+    // Read compressed trace back using parse_trace (automatic decompression)
+    let trace = parse_trace(compressed_file)?;
+
+    // Verify metadata
+    assert_eq!(trace.metadata().version(), "2.0");
+    assert_eq!(trace.metadata().header_data()["test"], "brotli_compression");
+
+    // Verify root record
+    let root_ids = trace.root_ids();
+    assert_eq!(root_ids.len(), 1);
+
+    let root = trace.get_record(root_ids[0]).unwrap();
+    assert_eq!(root.id(), 1);
+    assert_eq!(root.name(), "root_record");
+    assert_eq!(root.description(), "Root record for Brotli test");
+    assert_eq!(root.clk(), 1000);
+    assert_eq!(root.end_clk(), Some(1300));
+
+    // Verify child record
+    let children = root.children();
+    assert_eq!(children.len(), 1);
+    let child = children[0];
+    assert_eq!(child.id(), 2);
+    assert_eq!(child.name(), "child_record");
+    assert_eq!(child.parent_id(), Some(1));
+    assert_eq!(child.clk(), 1100);
+    assert_eq!(child.end_clk(), Some(1200));
+
+    // Verify annotation (merged into data)
+    let child_data = child.data();
+    assert!(child_data.contains_key("test_annotation"));
+    assert_eq!(child_data["test_annotation"]["annotation_key"], "annotation_value");
+
+    // Verify event
+    let events = child.events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].name(), "TestEvent");
+    assert_eq!(events[0].description(), "Test event for Brotli");
+    assert_eq!(events[0].clk(), 1150);
+
+    // Verify footer
+    assert_eq!(trace.metadata().capture_end_clk(), Some(1300));
+    assert_eq!(trace.metadata().total_records(), Some(2));
+    assert_eq!(trace.metadata().total_annotations(), Some(1));
+    assert_eq!(trace.metadata().total_events(), Some(1));
+
+    // Compare file sizes (compressed should be smaller for larger traces)
+    let compressed_size = fs::metadata(compressed_file)?.len();
+    let uncompressed_size = fs::metadata(uncompressed_file)?.len();
+
+    println!("Uncompressed size: {} bytes", uncompressed_size);
+    println!("Compressed size: {} bytes", compressed_size);
+    println!("Compression ratio: {:.1}%", 100.0 * (compressed_size as f64) / (uncompressed_size as f64));
+
+    // For this small trace, compressed might actually be larger due to overhead
+    // But verify that compression doesn't break functionality
+    assert!(compressed_size > 0, "Compressed file should not be empty");
+
+    // Clean up
+    fs::remove_file(compressed_file)?;
+    fs::remove_file(uncompressed_file)?;
+
+    Ok(())
+}
+
+#[test]
+fn test_brotli_detection_by_extension() -> Result<()> {
+    // Test that .jets.br triggers compression
+    let br_file = "/tmp/test_extension.jets.br";
+    let _ = fs::remove_file(br_file);
+
+    {
+        let mut writer = TraceWriter::new(br_file)?;
+        writer.write_header("2.0", serde_json::json!({}))?;
+        writer.write_footer(None)?;
+    }
+
+    // Verify file is actually compressed (not just renamed)
+    let content = fs::read(br_file)?;
+    // Brotli magic bytes are not standardized, but we can check it's not JSON
+    assert!(!content.starts_with(b"{\"type\":\"header\""));
+
+    // Verify we can read it back
+    let trace = parse_trace(br_file)?;
+    assert_eq!(trace.metadata().version(), "2.0");
+
+    fs::remove_file(br_file)?;
     Ok(())
 }

@@ -67,6 +67,7 @@ struct Config {
     num_instr_min: usize,
     num_instr_max: usize,
     output_file: Option<String>,
+    use_brotli: bool,
 }
 
 impl Default for Config {
@@ -78,6 +79,7 @@ impl Default for Config {
             num_instr_min: 100,
             num_instr_max: 100,
             output_file: None,
+            use_brotli: false,
         }
     }
 }
@@ -170,6 +172,9 @@ fn parse_args() -> Result<Config> {
                 }
                 config.output_file = Some(args[i].clone());
             }
+            "-brotli" => {
+                config.use_brotli = true;
+            }
             "-h" | "-help" | "--help" => {
                 print_help();
                 std::process::exit(0);
@@ -195,6 +200,7 @@ fn print_help() {
     println!("  -num_instr <N> [M]     Number of instructions (default: 100)");
     println!("                         If two numbers provided, generates random count in range [N, M]");
     println!("  -out <FILE>            Output file path (default: trace.jets)");
+    println!("  -brotli                Write compressed trace using Brotli (output: *.jets.br)");
     println!("  -h, -help, --help      Show this help message");
 }
 
@@ -202,12 +208,19 @@ fn main() -> Result<()> {
     let config = parse_args()?;
 
     // Create trace writer
-    let output_path = config.output_file.clone().unwrap_or_else(|| "trace.jets".to_string());
+    let output_path = config.output_file.clone()
+        .unwrap_or_else(|| {
+            if config.use_brotli {
+                "trace.jets.br".to_string()
+            } else {
+                "trace.jets".to_string()
+            }
+        });
     let mut writer = TraceWriter::new(&output_path)?;
 
     generate_trace(&mut writer, &config)?;
 
-    if output_path == "trace.jets" {
+    if output_path == "trace.jets" || output_path == "trace.jets.br" {
         println!("Trace written to: {}", output_path);
     }
 

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use anyhow::{Result, Context, anyhow};
+use brotli::Decompressor;
 use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,10 +138,43 @@ enum TraceLine {
     },
 }
 
+/// Parses a JETS trace file from disk.
+///
+/// Automatically detects and decompresses Brotli-compressed traces
+/// based on file extension (`.br`).
+///
+/// # Supported Formats
+///
+/// - `.jets` — Uncompressed JSON Lines
+/// - `.jsonl` — Uncompressed JSON Lines
+/// - `.jets.br` — Brotli-compressed JETS
+/// - `.jsonl.br` — Brotli-compressed JSON Lines
+///
+/// # Examples
+///
+/// ```no_run
+/// # use rjets::parse_trace;
+/// # fn main() -> anyhow::Result<()> {
+/// // Parse uncompressed trace
+/// let trace = parse_trace("trace.jets")?;
+///
+/// // Parse compressed trace (automatic decompression)
+/// let trace = parse_trace("trace.jets.br")?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
     let file = File::open(file_path)
         .with_context(|| format!("Failed to open file: {}", file_path))?;
-    let reader = BufReader::new(file);
+
+    let reader: Box<dyn BufRead> = if file_path.ends_with(".br") {
+        // Brotli decompression enabled
+        let decompressor = Decompressor::new(file, 4096);
+        Box::new(BufReader::new(decompressor))
+    } else {
+        // No decompression
+        Box::new(BufReader::new(file))
+    };
 
     let mut header: Option<JetsTraceHeader> = None;
     let mut footer: Option<JetsTraceFooter> = None;

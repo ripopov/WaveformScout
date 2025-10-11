@@ -279,7 +279,7 @@ impl JetsViewerApp {
         ui.horizontal(|ui| {
             if ui.button("📁 Open Trace").clicked() {
                 let mut dialog = rfd::FileDialog::new()
-                    .add_filter("JETS Traces", &["jets", "jsonl"]);
+                    .add_filter("JETS Traces", &["jets", "jsonl", "br"]);
 
                 if let Ok(cwd) = std::env::current_dir() {
                     dialog = dialog.set_directory(cwd);

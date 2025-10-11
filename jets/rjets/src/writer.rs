@@ -2,21 +2,60 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{Result, Context};
+use brotli::enc::BrotliEncoderParams;
+use brotli::CompressorWriter;
 
 pub struct TraceWriter {
-    writer: BufWriter<File>,
+    writer: Box<dyn Write>,
     record_count: usize,
     annotation_count: usize,
     event_count: usize,
 }
 
 impl TraceWriter {
+    /// Creates a new TraceWriter for the specified file path.
+    ///
+    /// Automatically enables Brotli compression if the file path ends with `.br`
+    /// (e.g., `trace.jets.br` or `trace.jsonl.br`).
+    ///
+    /// # Compression
+    ///
+    /// Brotli compression uses quality level 6 (balanced speed/ratio).
+    /// Typical compression ratios: 60-70% size reduction for JSON traces.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use rjets::TraceWriter;
+    /// # fn main() -> anyhow::Result<()> {
+    /// // Uncompressed trace
+    /// let mut writer = TraceWriter::new("trace.jets")?;
+    ///
+    /// // Compressed trace
+    /// let mut writer = TraceWriter::new("trace.jets.br")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(file_path: &str) -> Result<Self> {
         let file = File::create(file_path)
             .with_context(|| format!("Failed to create file: {}", file_path))?;
 
+        let writer: Box<dyn Write> = if file_path.ends_with(".br") {
+            // Brotli compression enabled
+            let buf_writer = BufWriter::new(file);
+            let params = BrotliEncoderParams {
+                quality: 6,  // Balanced compression
+                lgwin: 22,   // Window size
+                ..Default::default()
+            };
+            Box::new(CompressorWriter::with_params(buf_writer, 4096, &params))
+        } else {
+            // No compression
+            Box::new(BufWriter::new(file))
+        };
+
         Ok(TraceWriter {
-            writer: BufWriter::new(file),
+            writer,
             record_count: 0,
             annotation_count: 0,
             event_count: 0,
