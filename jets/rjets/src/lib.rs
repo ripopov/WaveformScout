@@ -2,6 +2,7 @@ pub mod traits;
 pub mod parser;
 pub mod writer;
 pub mod virtual_reader;
+pub mod theme;
 
 // Export traits
 pub use traits::{
@@ -23,3 +24,6 @@ pub use virtual_reader::{
 
 // Export writer (unchanged)
 pub use writer::TraceWriter;
+
+// Export theme support
+pub use theme::{Theme, ThemeColors, ThemeManager, hex_to_color32, adjust_brightness, with_alpha};

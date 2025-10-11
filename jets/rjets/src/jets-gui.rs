@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui::{Color32, RichText, ScrollArea};
-use rjets::{TraceReader, TraceData, JetsTraceReader, VirtualTraceReader};
+use rjets::{TraceReader, TraceData, JetsTraceReader, VirtualTraceReader, ThemeManager, ThemeColors};
 use std::path::PathBuf;
 
 // Application entry point that initializes and launches the JETS trace viewer GUI.
@@ -15,7 +15,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "JETS Trace Viewer",
         options,
-        Box::new(|_cc| Ok(Box::new(JetsViewerApp::new()))),
+        Box::new(|cc| Ok(Box::new(JetsViewerApp::new(cc)))),
     )
 }
 
@@ -27,7 +27,8 @@ struct JetsViewerApp {
     expanded_nodes: std::collections::HashSet<u64>,
     error_message: Option<String>,
     split_ratio: f32,
-    dark_mode: bool,
+    theme_manager: ThemeManager,
+    current_theme_name: String,
     column_widths: [f32; 5], // Name, ID, Start Clock, End Clock, Description
     // Timeline state
     timeline_split_ratio: f32,
@@ -52,13 +53,6 @@ struct JetsViewerApp {
 
 impl Default for JetsViewerApp {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl JetsViewerApp {
-    // Creates a new viewer instance with default settings and empty state.
-    fn new() -> Self {
         Self {
             reader: Box::new(JetsTraceReader::new()),
             trace_data: None,
@@ -67,7 +61,46 @@ impl JetsViewerApp {
             expanded_nodes: std::collections::HashSet::new(),
             error_message: None,
             split_ratio: 0.7,
-            dark_mode: true,
+            theme_manager: ThemeManager::new(),
+            current_theme_name: "Dark".to_string(),
+            column_widths: [250.0, 80.0, 120.0, 120.0, 300.0],
+            timeline_split_ratio: 0.3,
+            zoom_level: 1.0,
+            viewport_start_clk: 0,
+            viewport_end_clk: 0,
+            shared_scroll_y: 0.0,
+            trace_min_clk: 0,
+            trace_max_clk: 0,
+            is_dragging: false,
+            drag_start_clk: 0,
+            is_selecting_region: false,
+            region_start_pos: None,
+            cursor_hover_pos: None,
+            cursor_hover_clk: None,
+            selected_event: None,
+        }
+    }
+}
+
+impl JetsViewerApp {
+    // Creates a new viewer instance with default settings and empty state.
+    // Loads the theme preference from storage if available.
+    fn new(cc: &eframe::CreationContext) -> Self {
+        // Load theme from persistent storage, default to "Dark" if not found
+        let current_theme_name = cc.egui_ctx.data_mut(|data| {
+            data.get_persisted::<String>(egui::Id::new("theme_preference"))
+        }).unwrap_or_else(|| "Dark".to_string());
+
+        Self {
+            reader: Box::new(JetsTraceReader::new()),
+            trace_data: None,
+            file_path: None,
+            selected_record_id: None,
+            expanded_nodes: std::collections::HashSet::new(),
+            error_message: None,
+            split_ratio: 0.7,
+            theme_manager: ThemeManager::new(),
+            current_theme_name,
             column_widths: [250.0, 80.0, 120.0, 120.0, 300.0], // Default column widths
             timeline_split_ratio: 0.3,
             zoom_level: 1.0,
@@ -265,13 +298,29 @@ impl JetsViewerApp {
                 ui.label(format!("Zoom: {:.1}x", self.zoom_level));
             }
 
-            // Push theme toggle button to the right
+            // Push theme selector to the right
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
-                let theme_text = if self.dark_mode { "Light" } else { "Dark" };
-                if ui.button(format!("{} {}", theme_icon, theme_text)).clicked() {
-                    self.dark_mode = !self.dark_mode;
+                let old_theme = self.current_theme_name.clone();
+                egui::ComboBox::from_id_salt("theme_selector")
+                    .selected_text(&self.current_theme_name)
+                    .show_ui(ui, |ui| {
+                        for theme_name in self.theme_manager.list_themes() {
+                            ui.selectable_value(
+                                &mut self.current_theme_name,
+                                theme_name.to_string(),
+                                theme_name
+                            );
+                        }
+                    });
+
+                // Save theme preference if it changed
+                if old_theme != self.current_theme_name {
+                    ui.ctx().data_mut(|data| {
+                        data.insert_persisted(egui::Id::new("theme_preference"), self.current_theme_name.clone());
+                    });
                 }
+
+                ui.label("Theme:");
             });
         });
 
@@ -493,7 +542,7 @@ impl JetsViewerApp {
             ui.painter().rect_filled(
                 row_rect,
                 0.0,
-                Color32::from_rgb(50, 80, 120),
+                self.theme_colors().selection,
             );
         }
 
@@ -637,7 +686,7 @@ impl JetsViewerApp {
                         "id": record.id(),
                         "parent_id": record.parent_id()
                     });
-                    ui.colored_label(Color32::from_rgb(100, 150, 255),
+                    ui.colored_label(self.theme_colors().blue,
                         serde_json::to_string(&record_json).unwrap());
 
                     ui.add_space(10.0);
@@ -654,7 +703,7 @@ impl JetsViewerApp {
                                 key: value
                             });
                             ui.colored_label(
-                                Color32::from_rgb(100, 200, 100),
+                                self.theme_colors().green,
                                 serde_json::to_string(&data_json).unwrap()
                             );
                         }
@@ -664,11 +713,12 @@ impl JetsViewerApp {
 
                     ui.add_space(10.0);
 
-                    // Show events - ALL of them
+                    // Show events - ALL of them, sorted by timestamp
                     ui.label(RichText::new("Events:").strong());
-                    let events = record.events();
+                    let mut events = record.events();
+                    events.sort_by_key(|e| e.clk());
                     if !events.is_empty() {
-                        for event in events {
+                        for event in &events {
                             let evt_json = serde_json::json!({
                                 "clk": event.clk(),
                                 "name": event.name(),
@@ -682,9 +732,9 @@ impl JetsViewerApp {
                             let is_event_selected = self.selected_event == Some((event.record_id(), event.clk()));
 
                             if is_event_selected {
-                                // Draw with highlighted background
-                                let text_color = Color32::from_rgb(255, 200, 100);
-                                let bg_color = Color32::from_rgb(60, 40, 20);
+                                // Draw with highlighted background using theme selection color
+                                let text_color = self.theme_colors().orange;
+                                let bg_color = self.theme_colors().selection;
 
                                 // Use a frame with background color
                                 egui::Frame::none()
@@ -696,7 +746,7 @@ impl JetsViewerApp {
                                     });
                             } else {
                                 ui.colored_label(
-                                    Color32::from_rgb(255, 165, 0),
+                                    self.theme_colors().orange,
                                     event_text
                                 );
                             }
@@ -971,13 +1021,13 @@ impl JetsViewerApp {
                     egui::pos2(line_x, content_top),
                     egui::pos2(line_x, content_bottom),
                 ],
-                egui::Stroke::new(1.5, Color32::from_rgb(255, 255, 100)),
+                egui::Stroke::new(1.5, self.theme_colors().yellow),
             );
 
             // Draw timestamp label at the bottom of the line
             let label_text = Self::format_clock(hover_clk);
             let font_id = egui::FontId::proportional(12.0);
-            let label_color = Color32::from_rgb(255, 255, 100);
+            let label_color = self.theme_colors().yellow;
             let bg_color = Color32::from_rgba_premultiplied(0, 0, 0, 200);
 
             // Measure text size to create background box
@@ -1032,14 +1082,14 @@ impl JetsViewerApp {
                 painter.rect_filled(
                     selection_rect,
                     0.0,
-                    Color32::from_rgba_premultiplied(100, 150, 255, 80),
+                    rjets::with_alpha(self.theme_colors().blue, 80),
                 );
 
                 // Draw border
                 painter.rect_stroke(
                     selection_rect,
                     0.0,
-                    egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 255)),
+                    egui::Stroke::new(2.0, self.theme_colors().blue),
                 );
             }
         }
@@ -1092,7 +1142,7 @@ impl JetsViewerApp {
 
             let is_selected = self.selected_record_id == Some(record_id);
             let bar_color = if is_selected {
-                Color32::from_rgb(52, 152, 219)
+                self.theme_colors().blue
             } else {
                 self.get_record_color(record.name())
             };
@@ -1100,7 +1150,7 @@ impl JetsViewerApp {
             ui.painter().rect_filled(bar_rect, 2.0, bar_color);
 
             if is_selected {
-                ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, Color32::from_rgb(100, 180, 255)));
+                ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, rjets::adjust_brightness(self.theme_colors().blue, 1.2)));
             }
 
             // Handle click on bar for selection (only when not dragging)
@@ -1171,9 +1221,9 @@ impl JetsViewerApp {
 
                     // Draw the event circle
                     let event_color = if is_event_selected {
-                        Color32::from_rgb(255, 100, 80) // Brighter color when selected
+                        rjets::adjust_brightness(self.theme_colors().red, 1.2) // Brighter color when selected
                     } else {
-                        Color32::from_rgb(231, 76, 60)
+                        self.theme_colors().red
                     };
                     ui.painter().circle_filled(marker_pos, marker_radius, event_color);
 
@@ -1182,7 +1232,7 @@ impl JetsViewerApp {
                         ui.painter().circle_stroke(
                             marker_pos,
                             marker_radius + 1.0,
-                            egui::Stroke::new(1.5, Color32::from_rgb(255, 200, 100))
+                            egui::Stroke::new(1.5, self.theme_colors().yellow)
                         );
                     }
                 }
@@ -1274,16 +1324,28 @@ impl JetsViewerApp {
         }
     }
 
+    // Returns a reference to the current theme's color palette
+    fn theme_colors(&self) -> &ThemeColors {
+        self.theme_manager
+            .get_theme(&self.current_theme_name)
+            .map(|t| &t.colors)
+            .unwrap_or_else(|| {
+                // Fallback to dark theme colors
+                &self.theme_manager.get_theme("Dark").unwrap().colors
+            })
+    }
+
     // Returns a color for timeline bars based on the record's name pattern.
     fn get_record_color(&self, name: &str) -> Color32 {
+        let colors = self.theme_colors();
         match name {
-            n if n.contains("HostProgram") => Color32::from_rgb(52, 152, 219),
-            n if n.contains("GpuContext") => Color32::from_rgb(155, 89, 182),
-            n if n.contains("Dispatch") => Color32::from_rgb(46, 204, 113),
-            n if n.contains("ThreadBlock") => Color32::from_rgb(243, 156, 18),
-            n if n.contains("Warp") => Color32::from_rgb(231, 76, 60),
-            n if n.contains("Instruction") => Color32::from_rgb(149, 165, 166),
-            _ => Color32::from_rgb(52, 73, 94),
+            n if n.contains("HostProgram") => colors.blue,
+            n if n.contains("GpuContext") => colors.purple,
+            n if n.contains("Dispatch") => colors.green,
+            n if n.contains("ThreadBlock") => colors.orange,
+            n if n.contains("Warp") => colors.red,
+            n if n.contains("Instruction") => colors.gray,
+            _ => colors.text_dim,
         }
     }
 }
@@ -1291,11 +1353,16 @@ impl JetsViewerApp {
 impl eframe::App for JetsViewerApp {
     // Main update loop that renders all UI panels and handles application state.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Apply theme based on dark_mode state
-        if self.dark_mode {
-            ctx.set_visuals(egui::Visuals::dark());
-        } else {
-            ctx.set_visuals(egui::Visuals::light());
+        // Apply theme based on current theme selection
+        if let Some(theme) = self.theme_manager.get_theme(&self.current_theme_name) {
+            let mut visuals = if theme.name == "Light" {
+                egui::Visuals::light()
+            } else {
+                egui::Visuals::dark()
+            };
+
+            self.theme_manager.apply_theme(theme, &mut visuals);
+            ctx.set_visuals(visuals);
         }
 
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
