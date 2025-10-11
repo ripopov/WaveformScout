@@ -2,8 +2,17 @@ use eframe::egui;
 use egui::{Color32, RichText, ScrollArea};
 use rjets::{TraceReader, TraceData, JetsTraceReader, VirtualTraceReader, ThemeManager, ThemeColors};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver};
+use std::thread;
 
 const THEME_KEY: &str = "theme_preference";
+
+// Holds the state of an async file loading operation.
+// Only the in_progress flag is shared; results come through a channel.
+struct LoadingState {
+    in_progress: bool,
+}
 
 // Application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
@@ -22,7 +31,6 @@ fn main() -> eframe::Result {
 }
 
 struct JetsViewerApp {
-    reader: Box<dyn TraceReader>,
     trace_data: Option<Box<dyn TraceData>>,
     file_path: Option<PathBuf>,
     selected_record_id: Option<u64>,
@@ -51,12 +59,15 @@ struct JetsViewerApp {
     cursor_hover_clk: Option<i64>,
     // Selected event state (record_id, event_clk)
     selected_event: Option<(u64, i64)>,
+    // Async loading state
+    loading_state: Arc<Mutex<LoadingState>>,
+    pending_load_path: Option<PathBuf>,
+    loading_receiver: Option<Receiver<Result<Box<dyn TraceData>, String>>>,
 }
 
 impl Default for JetsViewerApp {
     fn default() -> Self {
         Self {
-            reader: Box::new(JetsTraceReader::new()),
             trace_data: None,
             file_path: None,
             selected_record_id: None,
@@ -80,6 +91,11 @@ impl Default for JetsViewerApp {
             cursor_hover_pos: None,
             cursor_hover_clk: None,
             selected_event: None,
+            loading_state: Arc::new(Mutex::new(LoadingState {
+                in_progress: false,
+            })),
+            pending_load_path: None,
+            loading_receiver: None,
         }
     }
 }
@@ -111,7 +127,6 @@ impl JetsViewerApp {
         eprintln!("DEBUG [new]: Using theme: '{}'", current_theme_name);
 
         Self {
-            reader: Box::new(JetsTraceReader::new()),
             trace_data: None,
             file_path: None,
             selected_record_id: None,
@@ -135,31 +150,104 @@ impl JetsViewerApp {
             cursor_hover_pos: None,
             cursor_hover_clk: None,
             selected_event: None,
+            loading_state: Arc::new(Mutex::new(LoadingState {
+                in_progress: false,
+            })),
+            pending_load_path: None,
+            loading_receiver: None,
         }
     }
 
-    // Loads a trace file from the specified path and initializes viewport to full trace extent.
-    fn open_file(&mut self, path: PathBuf) {
-        match self.reader.read(path.to_str().unwrap()) {
-            Ok(data) => {
-                // Get trace extent from metadata
-                let (min_clk, max_clk) = data.metadata().trace_extent();
+    // Loads a trace file asynchronously from the specified path in a background thread.
+    // The GUI remains responsive during loading, and a loading indicator is displayed.
+    fn open_file(&mut self, path: PathBuf, ctx: &egui::Context) {
+        // Immediately clear previous trace data to show loading indicator
+        self.trace_data = None;
+        self.file_path = None;
+        self.expanded_nodes.clear();
+        self.selected_record_id = None;
+        self.selected_event = None;
+        self.error_message = None;
 
-                self.trace_data = Some(data);
-                self.file_path = Some(path);
-                self.error_message = None;
-                self.expanded_nodes.clear();
-                self.selected_record_id = None;
+        // Create a channel for receiving the result
+        let (sender, receiver) = channel();
+        self.loading_receiver = Some(receiver);
 
-                self.trace_min_clk = min_clk;
-                self.trace_max_clk = max_clk;
-                self.viewport_start_clk = min_clk;
-                self.viewport_end_clk = max_clk;
-                self.zoom_level = 1.0;
-                self.shared_scroll_y = 0.0;
+        // Set loading state
+        {
+            let mut state = self.loading_state.lock().unwrap();
+            state.in_progress = true;
+        }
+
+        self.pending_load_path = Some(path.clone());
+
+        // Clone Arc and Context for background thread
+        let loading_state = Arc::clone(&self.loading_state);
+        let ctx_handle = ctx.clone();
+        let path_string = path.to_str().unwrap().to_owned();
+
+        // Spawn background thread for file loading
+        thread::spawn(move || {
+            // Create a new reader in the background thread
+            let reader = Box::new(JetsTraceReader::new());
+
+            // Parse the trace file (blocking operation)
+            let parse_result = reader.read(&path_string);
+
+            // Convert Result<Box<dyn TraceData>, anyhow::Error> to Result<Box<dyn TraceData>, String>
+            let result = parse_result.map_err(|e| e.to_string());
+
+            // Send result through channel
+            let _ = sender.send(result);
+
+            // Update loading state
+            {
+                let mut state = loading_state.lock().unwrap();
+                state.in_progress = false;
             }
-            Err(e) => {
-                self.error_message = Some(format!("Error loading trace: {}", e));
+
+            // Notify GUI thread to repaint
+            ctx_handle.request_repaint();
+        });
+    }
+
+    // Checks if background loading has completed and applies the result if available.
+    // Called once per frame in the update loop.
+    fn check_loading_completion(&mut self) {
+        // Try to receive result from channel
+        if let Some(receiver) = &self.loading_receiver {
+            if let Ok(result) = receiver.try_recv() {
+                // Process the result
+                match result {
+                    Ok(data) => {
+                        // Success: Initialize trace data and viewport
+                        let (min_clk, max_clk) = data.metadata().trace_extent();
+
+                        self.trace_data = Some(data);
+                        if let Some(path) = self.pending_load_path.take() {
+                            self.file_path = Some(path);
+                        }
+                        self.error_message = None;
+                        self.expanded_nodes.clear();
+                        self.selected_record_id = None;
+
+                        self.trace_min_clk = min_clk;
+                        self.trace_max_clk = max_clk;
+                        self.viewport_start_clk = min_clk;
+                        self.viewport_end_clk = max_clk;
+                        self.zoom_level = 1.0;
+                        self.shared_scroll_y = 0.0;
+                    }
+                    Err(error_msg) => {
+                        // Error: Display error message
+                        self.error_message = Some(format!("Error loading trace: {}", error_msg));
+                        self.trace_data = None;
+                        self.pending_load_path = None;
+                    }
+                }
+
+                // Clear the receiver after processing
+                self.loading_receiver = None;
             }
         }
     }
@@ -286,7 +374,7 @@ impl JetsViewerApp {
                 }
 
                 if let Some(path) = dialog.pick_file() {
-                    self.open_file(path);
+                    self.open_file(path, ui.ctx());
                 }
             }
 
@@ -792,6 +880,30 @@ impl JetsViewerApp {
 
     // Renders the interactive timeline view with zoom, pan, and event selection capabilities.
     fn render_timeline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Check if loading is in progress
+        let is_loading = {
+            let state = self.loading_state.lock().unwrap();
+            state.in_progress
+        };
+
+        if is_loading {
+            // Show loading indicator
+            let canvas_rect = ui.available_rect_before_wrap();
+            let center_pos = canvas_rect.center();
+
+            let font = egui::FontId::proportional(48.0);
+            let color = self.theme_colors().text_dim;
+
+            ui.painter().text(
+                center_pos,
+                egui::Align2::CENTER_CENTER,
+                "Loading...",
+                font,
+                color,
+            );
+            return;
+        }
+
         if self.trace_data.is_none() {
             ui.label("No trace loaded - open a JETS trace file to view timeline");
             return;
@@ -1406,6 +1518,9 @@ impl eframe::App for JetsViewerApp {
 
     // Main update loop that renders all UI panels and handles application state.
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // Check for async loading completion first
+        self.check_loading_completion();
+
         // Apply theme based on current theme selection
         if let Some(theme) = self.theme_manager.get_theme(&self.current_theme_name) {
             let mut visuals = if theme.name == "Light" {

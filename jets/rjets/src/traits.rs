@@ -7,7 +7,8 @@ pub trait TraceReader {
 }
 
 /// Trait for accessing trace data
-pub trait TraceData {
+/// TraceData must be Send to support async loading in background threads
+pub trait TraceData: Send {
     /// Returns metadata (information from headers and footers)
     fn metadata(&self) -> &dyn TraceMetadata;
 
