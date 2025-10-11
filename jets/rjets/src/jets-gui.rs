@@ -34,7 +34,6 @@ struct JetsViewerApp {
     viewport_start_clk: i64,
     viewport_end_clk: i64,
     shared_scroll_y: f32,
-    show_grid: bool,
     trace_min_clk: i64,
     trace_max_clk: i64,
     // Drag panning state
@@ -43,6 +42,8 @@ struct JetsViewerApp {
     // Cursor hover state
     cursor_hover_pos: Option<egui::Pos2>,
     cursor_hover_clk: Option<i64>,
+    // Selected event state (record_id, event_clk)
+    selected_event: Option<(u64, i64)>,
 }
 
 impl Default for JetsViewerApp {
@@ -68,13 +69,13 @@ impl JetsViewerApp {
             viewport_start_clk: 0,
             viewport_end_clk: 0,
             shared_scroll_y: 0.0,
-            show_grid: true,
             trace_min_clk: 0,
             trace_max_clk: 0,
             is_dragging: false,
             drag_start_clk: 0,
             cursor_hover_pos: None,
             cursor_hover_clk: None,
+            selected_event: None,
         }
     }
 
@@ -176,39 +177,6 @@ impl JetsViewerApp {
         }
         let exponent = value.log10().ceil() as i32;
         10_i64.pow(exponent as u32)
-    }
-
-    // Helper: Compute visible rows (record_id, y_offset)
-    fn compute_visible_rows(&self) -> Vec<(u64, f32)> {
-        let mut rows = Vec::new();
-        if let Some(trace) = &self.trace_data {
-            let root_ids = trace.root_ids();
-            let mut current_y = 0.0;
-            for root_id in root_ids {
-                self.compute_visible_rows_recursive(trace.as_ref(), root_id, 0, &mut current_y, &mut rows);
-            }
-        }
-        rows
-    }
-
-    fn compute_visible_rows_recursive(
-        &self,
-        trace: &dyn TraceData,
-        record_id: u64,
-        _depth: usize,
-        current_y: &mut f32,
-        rows: &mut Vec<(u64, f32)>
-    ) {
-        rows.push((record_id, *current_y));
-        *current_y += 22.0;
-
-        if self.expanded_nodes.contains(&record_id) {
-            if let Some(record) = trace.get_record(record_id) {
-                for child in record.children() {
-                    self.compute_visible_rows_recursive(trace, child.id(), _depth + 1, current_y, rows);
-                }
-            }
-        }
     }
 
     fn render_header(&mut self, ui: &mut egui::Ui) {
@@ -393,17 +361,24 @@ impl JetsViewerApp {
 
     fn render_tree_node(&mut self, ui: &mut egui::Ui, record_id: u64, depth: usize) {
         // Extract all needed data from the record first to avoid borrow checker issues
-        let (has_children, name, description, clk, end_clk, child_ids) = if let Some(trace) = &self.trace_data {
+        let (has_children, name, description, clk, end_clk, child_ids, first_event_clk) = if let Some(trace) = &self.trace_data {
             if let Some(record) = trace.get_record(record_id) {
                 let children = record.children();
                 let child_ids: Vec<u64> = children.iter().map(|c| c.id()).collect();
+                let events = record.events();
+                let first_event_clk = if !events.is_empty() {
+                    Some(events[0].clk())
+                } else {
+                    None
+                };
                 (
                     !children.is_empty(),
                     record.name().to_string(),
                     record.description().to_string(),
                     record.clk(),
                     record.end_clk(),
-                    child_ids
+                    child_ids,
+                    first_event_clk
                 )
             } else {
                 return;
@@ -426,7 +401,20 @@ impl JetsViewerApp {
         );
 
         if row_response.clicked() {
+            // Check if this is a new selection
+            let was_already_selected = self.selected_record_id == Some(record_id);
             self.selected_record_id = Some(record_id);
+
+            // Auto-select first event if this is a new record selection
+            if !was_already_selected {
+                if let Some(event_clk) = first_event_clk {
+                    self.selected_event = Some((record_id, event_clk));
+                    println!("DEBUG: Auto-selected first event at clk {}", event_clk);
+                } else {
+                    // Clear event selection if no events
+                    self.selected_event = None;
+                }
+            }
         }
 
         // Draw background for selected row
@@ -616,10 +604,30 @@ impl JetsViewerApp {
                                 "record_id": event.record_id(),
                                 "data": event.data()
                             });
-                            ui.colored_label(
-                                Color32::from_rgb(255, 165, 0),
-                                serde_json::to_string(&evt_json).unwrap()
-                            );
+                            let event_text = serde_json::to_string(&evt_json).unwrap();
+
+                            // Check if this event is selected
+                            let is_event_selected = self.selected_event == Some((event.record_id(), event.clk()));
+
+                            if is_event_selected {
+                                // Draw with highlighted background
+                                let text_color = Color32::from_rgb(255, 200, 100);
+                                let bg_color = Color32::from_rgb(60, 40, 20);
+
+                                // Use a frame with background color
+                                egui::Frame::none()
+                                    .fill(bg_color)
+                                    .inner_margin(4.0)
+                                    .rounding(2.0)
+                                    .show(ui, |ui| {
+                                        ui.colored_label(text_color, event_text);
+                                    });
+                            } else {
+                                ui.colored_label(
+                                    Color32::from_rgb(255, 165, 0),
+                                    event_text
+                                );
+                            }
                         }
                     } else {
                         ui.colored_label(Color32::GRAY, "(no events)");
@@ -764,7 +772,24 @@ impl JetsViewerApp {
                     // Negative scroll_y means scroll down/right, positive means scroll up/left
                     // Invert the sign so scrolling down moves the timeline left (showing later times)
                     let viewport_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
-                    let pan_clk = (-scroll_y_for_pan / 100.0) * viewport_range * 0.1;
+
+                    // Calculate pan amount with minimum threshold to ensure movement at high zoom
+                    let pan_amount = (-scroll_y_for_pan / 100.0) * viewport_range * 0.1;
+
+                    // At high zoom levels (small viewport_range), ensure we always move at least 1 clock
+                    // Use a minimum of 1 clock or 2% of viewport range, whichever is larger
+                    let min_pan = (viewport_range * 0.02).max(1.0);
+                    let pan_clk = if pan_amount.abs() < min_pan {
+                        if pan_amount >= 0.0 {
+                            min_pan
+                        } else {
+                            -min_pan
+                        }
+                    } else {
+                        pan_amount
+                    };
+
+                    println!("DEBUG: viewport_range: {}, pan_amount: {}, pan_clk: {}", viewport_range, pan_amount, pan_clk);
 
                     self.viewport_start_clk += pan_clk as i64;
                     self.viewport_end_clk += pan_clk as i64;
@@ -924,8 +949,23 @@ impl JetsViewerApp {
             let bar_response = ui.interact(bar_rect, bar_id, egui::Sense::click());
 
             if bar_response.clicked() && !self.is_dragging {
+                // Check if this is a new selection
+                let was_already_selected = self.selected_record_id == Some(record_id);
                 self.selected_record_id = Some(record_id);
                 println!("DEBUG: Selected record {}", record_id);
+
+                // Auto-select first event if this is a new record selection
+                if !was_already_selected {
+                    let events = record.events();
+                    if !events.is_empty() {
+                        let first_event = &events[0];
+                        self.selected_event = Some((record_id, first_event.clk()));
+                        println!("DEBUG: Auto-selected first event at clk {}", first_event.clk());
+                    } else {
+                        // Clear event selection if no events
+                        self.selected_event = None;
+                    }
+                }
             }
 
             // Handle hover tooltip (only when not dragging)
@@ -949,9 +989,42 @@ impl JetsViewerApp {
                         egui::pos2(canvas_rect.max.x, start_y + row_height)
                     ));
                     let marker_pos = egui::pos2(x, start_y + 11.0);
-                    let marker_radius = 4.0;
 
-                    ui.painter().circle_filled(marker_pos, marker_radius, Color32::from_rgb(231, 76, 60));
+                    // Check if this event is selected
+                    let is_event_selected = self.selected_event == Some((record_id, event_clk));
+                    let marker_radius = if is_event_selected { 6.0 } else { 4.0 };
+
+                    // Create interaction rect for the event marker
+                    let marker_rect = egui::Rect::from_center_size(
+                        marker_pos,
+                        egui::vec2(marker_radius * 2.0, marker_radius * 2.0)
+                    );
+
+                    let marker_id = ui.id().with(format!("event_marker_{}_{}", record_id, event_clk));
+                    let marker_response = ui.interact(marker_rect, marker_id, egui::Sense::click());
+
+                    // Handle click to select event (only when not dragging)
+                    if marker_response.clicked() && !self.is_dragging {
+                        self.selected_event = Some((record_id, event_clk));
+                        println!("DEBUG: Selected event at clk {} for record {}", event_clk, record_id);
+                    }
+
+                    // Draw the event circle
+                    let event_color = if is_event_selected {
+                        Color32::from_rgb(255, 100, 80) // Brighter color when selected
+                    } else {
+                        Color32::from_rgb(231, 76, 60)
+                    };
+                    ui.painter().circle_filled(marker_pos, marker_radius, event_color);
+
+                    // Draw selection ring for selected events
+                    if is_event_selected {
+                        ui.painter().circle_stroke(
+                            marker_pos,
+                            marker_radius + 1.0,
+                            egui::Stroke::new(1.5, Color32::from_rgb(255, 200, 100))
+                        );
+                    }
                 }
             }
         }
@@ -1036,145 +1109,6 @@ impl JetsViewerApp {
             }
 
             tick_clk += tick_interval;
-        }
-    }
-
-    fn render_grid(&self, ui: &mut egui::Ui, canvas_rect: egui::Rect, visible_rows: &[(u64, f32)]) {
-        let visible_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
-        if visible_range <= 0.0 {
-            return;
-        }
-
-        let tick_interval = Self::next_power_of_10(visible_range / 10.0);
-        let first_tick = (self.viewport_start_clk / tick_interval) * tick_interval;
-
-        // Calculate total height needed for all rows
-        let total_height = visible_rows.len() as f32 * 22.0;
-
-        let mut tick_clk = first_tick;
-        while tick_clk <= self.viewport_end_clk {
-            let x = self.clk_to_x(tick_clk, canvas_rect);
-            ui.painter().line_segment(
-                [
-                    egui::pos2(x, canvas_rect.min.y),
-                    egui::pos2(x, canvas_rect.min.y + total_height),
-                ],
-                egui::Stroke::new(1.0, Color32::from_rgba_premultiplied(200, 200, 200, 30)),
-            );
-            tick_clk += tick_interval;
-        }
-    }
-
-    fn render_record_bars(&mut self, ui: &mut egui::Ui, canvas_rect: egui::Rect, visible_rows: &[(u64, f32)], _ctx: &egui::Context) {
-        let trace = match &self.trace_data {
-            Some(t) => t,
-            None => return,
-        };
-
-        for &(record_id, y_offset) in visible_rows {
-            let y = canvas_rect.min.y + y_offset;
-
-            if let Some(record) = trace.get_record(record_id) {
-
-                let start_clk = record.clk();
-                let end_clk = record.end_clk().unwrap_or(self.viewport_end_clk);
-
-                let x_start = self.clk_to_x(start_clk, canvas_rect);
-                let x_end = self.clk_to_x(end_clk, canvas_rect);
-                let width = (x_end - x_start).max(2.0);
-
-                if width < 0.5 {
-                    continue;
-                }
-
-                let bar_rect = egui::Rect::from_min_size(
-                    egui::pos2(x_start, y),
-                    egui::vec2(width, 22.0),
-                );
-
-                let is_selected = self.selected_record_id == Some(record_id);
-                let bar_color = if is_selected {
-                    Color32::from_rgb(52, 152, 219)
-                } else {
-                    self.get_record_color(record.name())
-                };
-
-                ui.painter().rect_filled(bar_rect, 2.0, bar_color);
-
-                if is_selected {
-                    ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, Color32::from_rgb(100, 180, 255)));
-                }
-
-                // Handle click on bar
-                let bar_id = ui.id().with(format!("bar_{}", record_id));
-                let bar_response = ui.interact(bar_rect, bar_id, egui::Sense::click());
-                if bar_response.clicked() {
-                    self.selected_record_id = Some(record_id);
-                }
-
-                // Show tooltip on hover
-                if bar_response.hovered() {
-                    bar_response.on_hover_ui(|ui| {
-                        ui.label(format!("{}", record.name()));
-                        ui.label(format!("Start: {}", Self::format_clock(start_clk)));
-                        if let Some(end) = record.end_clk() {
-                            ui.label(format!("End: {}", Self::format_clock(end)));
-                            ui.label(format!("Duration: {}", Self::format_clock(end - start_clk)));
-                        }
-                    });
-                }
-            }
-        }
-    }
-
-    fn render_event_markers(&mut self, ui: &mut egui::Ui, canvas_rect: egui::Rect, visible_rows: &[(u64, f32)], _ctx: &egui::Context) {
-        let trace = match &self.trace_data {
-            Some(t) => t,
-            None => return,
-        };
-
-        for &(record_id, y_offset) in visible_rows {
-            let y = canvas_rect.min.y + y_offset + 11.0;
-
-            if let Some(record) = trace.get_record(record_id) {
-                for event in record.events() {
-                    let event_clk = event.clk();
-                    if event_clk < self.viewport_start_clk || event_clk > self.viewport_end_clk {
-                        continue;
-                    }
-
-                    let x = self.clk_to_x(event_clk, canvas_rect);
-                    let marker_pos = egui::pos2(x, y);
-                    let marker_radius = 4.0;
-
-                    let marker_rect = egui::Rect::from_center_size(marker_pos, egui::vec2(marker_radius * 2.0, marker_radius * 2.0));
-                    let marker_id = ui.id().with(format!("event_{}_{}", record_id, event_clk));
-                    let marker_response = ui.interact(marker_rect, marker_id, egui::Sense::hover());
-
-                    let color = if marker_response.hovered() {
-                        Color32::from_rgb(192, 57, 43)
-                    } else {
-                        Color32::from_rgb(231, 76, 60)
-                    };
-
-                    ui.painter().circle_filled(marker_pos, marker_radius, color);
-
-                    if marker_response.hovered() {
-                        marker_response.on_hover_ui(|ui| {
-                            ui.label(RichText::new(event.name()).strong());
-                            ui.label(format!("CLK: {}", Self::format_clock(event_clk)));
-                            let desc = event.description();
-                            if !desc.is_empty() {
-                                ui.label(desc);
-                            }
-                            let data = serde_json::to_string(&event.data()).unwrap_or_default();
-                            if !data.is_empty() && data != "{}" {
-                                ui.label(format!("Data: {}", data));
-                            }
-                        });
-                    }
-                }
-            }
         }
     }
 
