@@ -866,28 +866,37 @@ impl JetsViewerApp {
         } else {
             // Mouse released
             if self.is_selecting_region {
-                // Complete zoom to region
+                // Complete zoom to region only if selection is large enough (filter out misclicks)
+                const MIN_SELECTION_PIXELS: f32 = 5.0;
+
                 if let (Some(start_pos), Some(current_pos)) = (self.region_start_pos, ctx.input(|i| i.pointer.hover_pos())) {
-                    let start_clk = self.x_to_clk(start_pos.x, canvas_rect);
-                    let end_clk = self.x_to_clk(current_pos.x, canvas_rect);
+                    let pixel_distance = (current_pos.x - start_pos.x).abs();
 
-                    let (new_start_clk, new_end_clk) = if start_clk < end_clk {
-                        (start_clk, end_clk)
+                    if pixel_distance >= MIN_SELECTION_PIXELS {
+                        // Selection is large enough, proceed with zoom
+                        let start_clk = self.x_to_clk(start_pos.x, canvas_rect);
+                        let end_clk = self.x_to_clk(current_pos.x, canvas_rect);
+
+                        let (new_start_clk, new_end_clk) = if start_clk < end_clk {
+                            (start_clk, end_clk)
+                        } else {
+                            (end_clk, start_clk)
+                        };
+
+                        // Apply zoom to the selected region
+                        self.viewport_start_clk = new_start_clk.max(self.trace_min_clk);
+                        self.viewport_end_clk = new_end_clk.min(self.trace_max_clk);
+
+                        // Update zoom level
+                        let new_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
+                        let full_range = (self.trace_max_clk - self.trace_min_clk) as f32;
+                        self.zoom_level = full_range / new_range;
+
+                        println!("DEBUG: Zoomed to region: {}..{}, zoom level: {:.2}x",
+                            self.viewport_start_clk, self.viewport_end_clk, self.zoom_level);
                     } else {
-                        (end_clk, start_clk)
-                    };
-
-                    // Apply zoom to the selected region
-                    self.viewport_start_clk = new_start_clk.max(self.trace_min_clk);
-                    self.viewport_end_clk = new_end_clk.min(self.trace_max_clk);
-
-                    // Update zoom level
-                    let new_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
-                    let full_range = (self.trace_max_clk - self.trace_min_clk) as f32;
-                    self.zoom_level = full_range / new_range;
-
-                    println!("DEBUG: Zoomed to region: {}..{}, zoom level: {:.2}x",
-                        self.viewport_start_clk, self.viewport_end_clk, self.zoom_level);
+                        println!("DEBUG: Region selection too small ({:.1}px), ignoring zoom", pixel_distance);
+                    }
                 }
 
                 self.is_selecting_region = false;
@@ -1251,9 +1260,9 @@ impl JetsViewerApp {
 
                     // Draw the event circle
                     let event_color = if is_event_selected {
-                        rjets::adjust_brightness(self.theme_colors().red, 1.2) // Brighter color when selected
+                        rjets::adjust_brightness(self.theme_colors().yellow, 1.2) // Brighter color when selected
                     } else {
-                        self.theme_colors().red
+                        self.theme_colors().yellow
                     };
                     ui.painter().circle_filled(marker_pos, marker_radius, event_color);
 
@@ -1262,7 +1271,7 @@ impl JetsViewerApp {
                         ui.painter().circle_stroke(
                             marker_pos,
                             marker_radius + 1.0,
-                            egui::Stroke::new(1.5, self.theme_colors().yellow)
+                            egui::Stroke::new(1.5, self.theme_colors().blue)
                         );
                     }
                 }
