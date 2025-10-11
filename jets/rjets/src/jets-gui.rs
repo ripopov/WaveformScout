@@ -37,6 +37,9 @@ struct JetsViewerApp {
     show_grid: bool,
     trace_min_clk: i64,
     trace_max_clk: i64,
+    // Drag panning state
+    is_dragging: bool,
+    drag_start_clk: i64,
 }
 
 impl Default for JetsViewerApp {
@@ -65,6 +68,8 @@ impl JetsViewerApp {
             show_grid: true,
             trace_min_clk: 0,
             trace_max_clk: 0,
+            is_dragging: false,
+            drag_start_clk: 0,
         }
     }
 
@@ -634,12 +639,76 @@ impl JetsViewerApp {
 
         // Handle zoom and horizontal pan input
         let canvas_rect = ui.available_rect_before_wrap();
+
+        // Handle drag panning with left mouse button
+        let canvas_response = ui.interact(canvas_rect, ui.id().with("timeline_canvas"), egui::Sense::drag());
+
+        if canvas_response.dragged() {
+            let drag_delta = canvas_response.drag_delta();
+
+            if !self.is_dragging {
+                // Starting drag
+                self.is_dragging = true;
+                if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
+                    self.drag_start_clk = self.x_to_clk(pos.x, canvas_rect);
+                }
+                println!("DEBUG: Drag started at clk: {}", self.drag_start_clk);
+            }
+
+            // Calculate how much clock time the drag represents
+            let viewport_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
+            let pixels_to_clk_ratio = viewport_range / canvas_rect.width();
+            let clk_delta = (-drag_delta.x * pixels_to_clk_ratio) as i64;
+
+            println!("DEBUG: Dragging - delta.x: {}, clk_delta: {}", drag_delta.x, clk_delta);
+
+            // Apply the pan
+            self.viewport_start_clk += clk_delta;
+            self.viewport_end_clk += clk_delta;
+
+            // Clamp to trace bounds
+            if self.viewport_start_clk < self.trace_min_clk {
+                let diff = self.trace_min_clk - self.viewport_start_clk;
+                self.viewport_start_clk = self.trace_min_clk;
+                self.viewport_end_clk += diff;
+            }
+            if self.viewport_end_clk > self.trace_max_clk {
+                let diff = self.viewport_end_clk - self.trace_max_clk;
+                self.viewport_end_clk = self.trace_max_clk;
+                self.viewport_start_clk -= diff;
+            }
+
+            println!("DEBUG: Viewport after drag: {}..{}", self.viewport_start_clk, self.viewport_end_clk);
+        } else if self.is_dragging {
+            // Drag ended
+            self.is_dragging = false;
+            println!("DEBUG: Drag ended");
+        }
+
         if ui.rect_contains_pointer(canvas_rect) {
             ctx.input(|i| {
-                if i.modifiers.ctrl && i.smooth_scroll_delta.y != 0.0 {
-                    let zoom_factor = 1.0 + i.smooth_scroll_delta.y * 0.002;
+                // DEBUG: Print all scroll-related inputs
+                if i.raw_scroll_delta != egui::Vec2::ZERO || i.smooth_scroll_delta != egui::Vec2::ZERO {
+                    println!("DEBUG: raw_scroll_delta: {:?}, smooth_scroll_delta: {:?}, modifiers.ctrl: {}",
+                        i.raw_scroll_delta, i.smooth_scroll_delta, i.modifiers.ctrl);
+                }
+
+                // Handle zoom (Ctrl + Mouse Wheel)
+                // Try both raw_scroll_delta and smooth_scroll_delta for compatibility
+                let scroll_y = if i.raw_scroll_delta.y != 0.0 {
+                    i.raw_scroll_delta.y
+                } else {
+                    i.smooth_scroll_delta.y
+                };
+
+                if i.modifiers.ctrl && scroll_y != 0.0 {
+                    println!("DEBUG: Zoom triggered! scroll_y: {}, current zoom_level: {}", scroll_y, self.zoom_level);
+
+                    let zoom_factor = 1.0 + scroll_y * 0.002;
                     let mouse_pos = i.pointer.hover_pos().unwrap_or(canvas_rect.center());
                     let mouse_clk = self.x_to_clk(mouse_pos.x, canvas_rect);
+
+                    println!("DEBUG: zoom_factor: {}, mouse_clk: {}", zoom_factor, mouse_clk);
 
                     self.zoom_level = (self.zoom_level * zoom_factor).clamp(1.0, 10000.0);
 
@@ -655,15 +724,43 @@ impl JetsViewerApp {
                     self.viewport_end_clk = self.viewport_start_clk + new_range as i64;
                     self.viewport_start_clk = self.viewport_start_clk.max(self.trace_min_clk);
                     self.viewport_end_clk = self.viewport_end_clk.min(self.trace_max_clk);
+
+                    println!("DEBUG: New zoom_level: {}, viewport: {}..{}",
+                        self.zoom_level, self.viewport_start_clk, self.viewport_end_clk);
                 }
 
-                // Handle pan (horizontal scroll without Ctrl)
-                if !i.modifiers.ctrl && i.smooth_scroll_delta.x != 0.0 {
-                    let pan_clk = (i.smooth_scroll_delta.x / canvas_rect.width()) * (self.viewport_end_clk - self.viewport_start_clk) as f32;
-                    self.viewport_start_clk -= pan_clk as i64;
-                    self.viewport_end_clk -= pan_clk as i64;
-                    self.viewport_start_clk = self.viewport_start_clk.max(self.trace_min_clk);
-                    self.viewport_end_clk = self.viewport_end_clk.min(self.trace_max_clk);
+                // Handle pan (mouse wheel without Ctrl or middle-mouse drag)
+                // Mouse wheel Y-axis pans horizontally in the timeline
+                let scroll_y_for_pan = if i.raw_scroll_delta.y != 0.0 {
+                    i.raw_scroll_delta.y
+                } else {
+                    i.smooth_scroll_delta.y
+                };
+
+                if !i.modifiers.ctrl && scroll_y_for_pan != 0.0 {
+                    println!("DEBUG: Pan triggered! scroll_y_for_pan: {}", scroll_y_for_pan);
+
+                    // Negative scroll_y means scroll down/right, positive means scroll up/left
+                    // Invert the sign so scrolling down moves the timeline left (showing later times)
+                    let viewport_range = (self.viewport_end_clk - self.viewport_start_clk) as f32;
+                    let pan_clk = (-scroll_y_for_pan / 100.0) * viewport_range * 0.1;
+
+                    self.viewport_start_clk += pan_clk as i64;
+                    self.viewport_end_clk += pan_clk as i64;
+
+                    // Clamp to trace bounds
+                    if self.viewport_start_clk < self.trace_min_clk {
+                        let diff = self.trace_min_clk - self.viewport_start_clk;
+                        self.viewport_start_clk = self.trace_min_clk;
+                        self.viewport_end_clk += diff;
+                    }
+                    if self.viewport_end_clk > self.trace_max_clk {
+                        let diff = self.viewport_end_clk - self.trace_max_clk;
+                        self.viewport_end_clk = self.trace_max_clk;
+                        self.viewport_start_clk -= diff;
+                    }
+
+                    println!("DEBUG: New viewport after pan: {}..{}", self.viewport_start_clk, self.viewport_end_clk);
                 }
             });
         }
@@ -701,14 +798,11 @@ impl JetsViewerApp {
         let start_y = ui.cursor().min.y;
 
         // Allocate space for this row (matching tree's allocation)
-        let (row_rect, row_response) = ui.allocate_exact_size(
+        // Use hover sense instead of click to avoid interfering with canvas drag
+        let (_row_rect, _row_response) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), row_height),
-            egui::Sense::click()
+            egui::Sense::hover()
         );
-
-        if row_response.clicked() {
-            self.selected_record_id = Some(record_id);
-        }
 
         // Get canvas rect for horizontal positioning
         let canvas_rect = ui.available_rect_before_wrap();
@@ -746,9 +840,18 @@ impl JetsViewerApp {
                 ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, Color32::from_rgb(100, 180, 255)));
             }
 
-            // Handle hover tooltip
-            if row_response.hovered() {
-                row_response.on_hover_ui(|ui| {
+            // Handle click on bar for selection (only when not dragging)
+            let bar_id = ui.id().with(format!("bar_select_{}", record_id));
+            let bar_response = ui.interact(bar_rect, bar_id, egui::Sense::click());
+
+            if bar_response.clicked() && !self.is_dragging {
+                self.selected_record_id = Some(record_id);
+                println!("DEBUG: Selected record {}", record_id);
+            }
+
+            // Handle hover tooltip (only when not dragging)
+            if bar_response.hovered() && !self.is_dragging {
+                bar_response.on_hover_ui(|ui| {
                     ui.label(format!("{}", record.name()));
                     ui.label(format!("Start: {}", Self::format_clock(start_clk)));
                     if let Some(end) = record.end_clk() {
