@@ -1082,7 +1082,7 @@ impl JetsViewerApp {
 
                     // Check if this event is selected
                     let is_event_selected = self.selected_event == Some((record_id, event_clk));
-                    let marker_radius = if is_event_selected { 6.0 } else { 4.0 };
+                    let marker_radius = if is_event_selected { 6.0 } else { 5.2 };
 
                     // Create interaction rect for the event marker
                     let marker_rect = egui::Rect::from_center_size(
@@ -1096,6 +1096,7 @@ impl JetsViewerApp {
                     // Handle click to select event (only when not dragging)
                     if marker_response.clicked() && !self.is_dragging {
                         self.selected_event = Some((record_id, event_clk));
+                        self.selected_record_id = Some(record_id);
                         println!("DEBUG: Selected event at clk {} for record {}", event_clk, record_id);
                     }
 
