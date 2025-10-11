@@ -3,12 +3,37 @@ use egui::{Color32, RichText, ScrollArea};
 use rjets::{TraceReader, TraceData, JetsTraceReader, VirtualTraceReader, ThemeManager, ThemeColors};
 use std::path::PathBuf;
 
+const THEME_KEY: &str = "theme_preference";
+
 // Application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
+    // Get the config directory based on the platform
+    // Linux: ~/.config/jets-viewer/
+    // macOS: ~/Library/Application Support/jets-viewer/
+    // Windows: C:\Users\<user>\AppData\Roaming\jets-viewer\
+    let persistence_path = dirs::config_dir()
+        .map(|config_dir| {
+            let app_config = config_dir.join("jets-viewer");
+            // Create the directory if it doesn't exist
+            if let Err(e) = std::fs::create_dir_all(&app_config) {
+                eprintln!("DEBUG [main]: Failed to create config directory {:?}: {}", app_config, e);
+            } else {
+                eprintln!("DEBUG [main]: Config directory ready: {:?}", app_config);
+            }
+            let pref_path = app_config.join("preferences.ron");
+            eprintln!("DEBUG [main]: Persistence path set to: {:?}", pref_path);
+            pref_path
+        });
+
+    if persistence_path.is_none() {
+        eprintln!("DEBUG [main]: WARNING - No persistence path available (config_dir() returned None)");
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
             .with_title("JETS Trace Viewer"),
+        persistence_path,
         ..Default::default()
     };
 
@@ -86,10 +111,27 @@ impl JetsViewerApp {
     // Creates a new viewer instance with default settings and empty state.
     // Loads the theme preference from storage if available.
     fn new(cc: &eframe::CreationContext) -> Self {
-        // Load theme from persistent storage, default to "Dark" if not found
-        let current_theme_name = cc.egui_ctx.data_mut(|data| {
-            data.get_persisted::<String>(egui::Id::new("theme_preference"))
-        }).unwrap_or_else(|| "Dark".to_string());
+        eprintln!("DEBUG [new]: Attempting to load theme from persistent storage");
+
+        // Load theme using Storage API directly
+        let current_theme_name = if let Some(storage) = cc.storage {
+            eprintln!("DEBUG [new]: Storage is available");
+            match storage.get_string(THEME_KEY) {
+                Some(t) => {
+                    eprintln!("DEBUG [new]: Loaded theme from storage: '{}'", t);
+                    t
+                }
+                None => {
+                    eprintln!("DEBUG [new]: No saved theme found in storage, defaulting to 'Dark'");
+                    "Dark".to_string()
+                }
+            }
+        } else {
+            eprintln!("DEBUG [new]: No storage available, defaulting to 'Dark'");
+            "Dark".to_string()
+        };
+
+        eprintln!("DEBUG [new]: Using theme: '{}'", current_theme_name);
 
         Self {
             reader: Box::new(JetsTraceReader::new()),
@@ -315,9 +357,9 @@ impl JetsViewerApp {
 
                 // Save theme preference if it changed
                 if old_theme != self.current_theme_name {
-                    ui.ctx().data_mut(|data| {
-                        data.insert_persisted(egui::Id::new("theme_preference"), self.current_theme_name.clone());
-                    });
+                    eprintln!("DEBUG [render_header]: Theme changed from '{}' to '{}'", old_theme, self.current_theme_name);
+                    // Mark that we need to save on next frame (we'll handle this in update with frame.storage_mut)
+                    ui.ctx().request_repaint();
                 }
 
                 ui.label("Theme:");
@@ -737,10 +779,10 @@ impl JetsViewerApp {
                                 let bg_color = self.theme_colors().selection;
 
                                 // Use a frame with background color
-                                egui::Frame::none()
+                                egui::Frame::NONE
                                     .fill(bg_color)
                                     .inner_margin(4.0)
-                                    .rounding(2.0)
+                                    .corner_radius(2.0)
                                     .show(ui, |ui| {
                                         ui.colored_label(text_color, event_text);
                                     });
@@ -1047,7 +1089,7 @@ impl JetsViewerApp {
                 egui::vec2(text_size.x + padding.x * 2.0, text_size.y + padding.y * 2.0),
             );
             painter.rect_filled(bg_rect, 2.0, bg_color);
-            painter.rect_stroke(bg_rect, 2.0, egui::Stroke::new(1.0, label_color));
+            painter.rect_stroke(bg_rect, 2.0, egui::Stroke::new(1.0, label_color), egui::StrokeKind::Outside);
 
             // Draw text
             painter.text(
@@ -1090,6 +1132,7 @@ impl JetsViewerApp {
                     selection_rect,
                     0.0,
                     egui::Stroke::new(2.0, self.theme_colors().blue),
+                    egui::StrokeKind::Outside,
                 );
             }
         }
@@ -1150,7 +1193,7 @@ impl JetsViewerApp {
             ui.painter().rect_filled(bar_rect, 2.0, bar_color);
 
             if is_selected {
-                ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, rjets::adjust_brightness(self.theme_colors().blue, 1.2)));
+                ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(2.0, rjets::adjust_brightness(self.theme_colors().blue, 1.2)), egui::StrokeKind::Outside);
             }
 
             // Handle click on bar for selection (only when not dragging)
@@ -1350,9 +1393,23 @@ impl JetsViewerApp {
     }
 }
 
+impl Drop for JetsViewerApp {
+    fn drop(&mut self) {
+        eprintln!("DEBUG [drop]: Application shutting down with theme: '{}'", self.current_theme_name);
+    }
+}
+
 impl eframe::App for JetsViewerApp {
+    // Called when the app is being shut down - ensures preferences are saved
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eprintln!("DEBUG [save]: Saving theme '{}' to storage", self.current_theme_name);
+        storage.set_string(THEME_KEY, self.current_theme_name.clone());
+        storage.flush();
+        eprintln!("DEBUG [save]: Storage flushed");
+    }
+
     // Main update loop that renders all UI panels and handles application state.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Apply theme based on current theme selection
         if let Some(theme) = self.theme_manager.get_theme(&self.current_theme_name) {
             let mut visuals = if theme.name == "Light" {
@@ -1363,6 +1420,11 @@ impl eframe::App for JetsViewerApp {
 
             self.theme_manager.apply_theme(theme, &mut visuals);
             ctx.set_visuals(visuals);
+        }
+
+        // Save theme preference to storage (will be written to disk when app closes)
+        if let Some(storage) = frame.storage_mut() {
+            storage.set_string(THEME_KEY, self.current_theme_name.clone());
         }
 
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
@@ -1377,7 +1439,7 @@ impl eframe::App for JetsViewerApp {
 
         // Details panel above status panel
         egui::TopBottomPanel::bottom("details_panel")
-            .default_height(ctx.screen_rect().height() * (1.0 - self.split_ratio))
+            .default_height(ctx.content_rect().height() * (1.0 - self.split_ratio))
             .resizable(true)
             .show(ctx, |ui| {
                 egui::Frame::default()
@@ -1389,11 +1451,11 @@ impl eframe::App for JetsViewerApp {
 
         // Left panel: Tree
         let tree_frame = egui::Frame::default()
-            .inner_margin(egui::Margin::same(4.0))
+            .inner_margin(egui::Margin::same(4))
             .fill(ctx.style().visuals.panel_fill);
 
         egui::SidePanel::left("tree_panel")
-            .default_width(ctx.screen_rect().width() * self.timeline_split_ratio)
+            .default_width(ctx.content_rect().width() * self.timeline_split_ratio)
             .resizable(true)
             .frame(tree_frame)
             .show(ctx, |ui| {
@@ -1404,7 +1466,7 @@ impl eframe::App for JetsViewerApp {
 
         // Right panel: Timeline
         let timeline_frame = egui::Frame::default()
-            .inner_margin(egui::Margin::same(4.0))
+            .inner_margin(egui::Margin::same(4))
             .fill(ctx.style().visuals.panel_fill);
 
         egui::CentralPanel::default()
