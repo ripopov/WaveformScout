@@ -59,19 +59,9 @@ impl ThemeState {
         &self.theme_manager
     }
 
-    /// Returns a mutable reference to the theme manager.
-    pub fn theme_manager_mut(&mut self) -> &mut ThemeManager {
-        &mut self.theme_manager
-    }
-
     /// Returns the name of the current theme.
     pub fn current_theme_name(&self) -> &str {
         &self.current_theme_name
-    }
-
-    /// Returns true if the given theme is currently active.
-    pub fn is_theme_active(&self, theme_name: &str) -> bool {
-        self.current_theme_name == theme_name
     }
 
     // ===== Theme Mutations =====

@@ -61,29 +61,9 @@ impl TraceState {
         self.trace_data.as_ref().map(|data| data.as_ref())
     }
 
-    /// Returns a mutable reference to the loaded trace data, if any.
-    pub fn trace_data_mut(&mut self) -> Option<&mut (dyn TraceData + '_)> {
-        match &mut self.trace_data {
-            Some(data) => Some(data.as_mut()),
-            None => None,
-        }
-    }
-
     /// Returns the file path of the loaded trace, if any.
     pub fn file_path(&self) -> Option<&PathBuf> {
         self.file_path.as_ref()
-    }
-
-    /// Returns true if a trace is currently loaded.
-    pub fn has_trace(&self) -> bool {
-        self.trace_data.is_some()
-    }
-
-    /// Returns the time extent of the loaded trace.
-    ///
-    /// Returns (0, 0) if no trace is loaded.
-    pub fn trace_extent(&self) -> (i64, i64) {
-        (self.min_clk, self.max_clk)
     }
 
     /// Returns the minimum clock value in the trace.
@@ -94,10 +74,5 @@ impl TraceState {
     /// Returns the maximum clock value in the trace.
     pub fn max_clk(&self) -> i64 {
         self.max_clk
-    }
-
-    /// Returns the total duration of the trace in clock units.
-    pub fn duration(&self) -> i64 {
-        self.max_clk - self.min_clk
     }
 }

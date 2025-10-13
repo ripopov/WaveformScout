@@ -47,11 +47,6 @@ impl InteractionState {
         self.is_dragging
     }
 
-    /// Returns the clock value where the drag started.
-    pub fn drag_start_clk(&self) -> i64 {
-        self.drag_start_clk
-    }
-
     // ===== Region Selection State Queries =====
 
     /// Returns true if a region selection is in progress.
@@ -62,56 +57,6 @@ impl InteractionState {
     /// Returns the start position of the region selection, if any.
     pub fn region_start_pos(&self) -> Option<egui::Pos2> {
         self.region_start_pos
-    }
-
-    /// Returns true if any interaction is in progress.
-    pub fn has_active_interaction(&self) -> bool {
-        self.is_dragging || self.is_selecting_region
-    }
-
-    // ===== Drag/Pan Mutations =====
-
-    /// Starts a drag/pan operation at the given clock value.
-    ///
-    /// # Arguments
-    /// * `start_clk` - The clock value at the drag start position
-    pub fn start_drag(&mut self, start_clk: i64) {
-        self.is_dragging = true;
-        self.drag_start_clk = start_clk;
-    }
-
-    /// Ends the current drag/pan operation.
-    pub fn end_drag(&mut self) {
-        self.is_dragging = false;
-        self.drag_start_clk = 0;
-    }
-
-    // ===== Region Selection Mutations =====
-
-    /// Starts a region selection at the given screen position.
-    ///
-    /// # Arguments
-    /// * `start_pos` - The screen position where region selection starts
-    pub fn start_region_selection(&mut self, start_pos: egui::Pos2) {
-        self.is_selecting_region = true;
-        self.region_start_pos = Some(start_pos);
-    }
-
-    /// Ends the current region selection and returns the start position if it existed.
-    ///
-    /// # Returns
-    /// The start position of the completed region selection, if any.
-    pub fn end_region_selection(&mut self) -> Option<egui::Pos2> {
-        let start_pos = self.region_start_pos;
-        self.is_selecting_region = false;
-        self.region_start_pos = None;
-        start_pos
-    }
-
-    /// Cancels the current region selection without completing it.
-    pub fn cancel_region_selection(&mut self) {
-        self.is_selecting_region = false;
-        self.region_start_pos = None;
     }
 
     // ===== Low-Level Accessors (for input handlers) =====

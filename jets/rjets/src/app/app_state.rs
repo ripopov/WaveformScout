@@ -7,8 +7,6 @@
 //! - Provides intent-revealing methods for state mutations
 //! - Mirrors established Rust UI projects (dioxus, iced)
 
-use rjets::TraceData;
-use std::path::PathBuf;
 use crate::cache::TreeCache;
 use crate::state::{
     TraceState, ViewportState, SelectionState, TreeState,
@@ -114,32 +112,4 @@ impl AppState {
         self.viewport.fit_to_trace(min_clk, max_clk);
     }
 
-    // ===== Convenience Accessors for Backward Compatibility =====
-    // These methods provide direct access to commonly-used nested state
-    // to ease the migration from the old flat structure.
-
-    /// Returns a reference to the loaded trace data, if any.
-    pub fn trace_data(&self) -> Option<&dyn TraceData> {
-        self.trace.trace_data()
-    }
-
-    /// Returns a mutable reference to the loaded trace data, if any.
-    pub fn trace_data_mut(&mut self) -> Option<&mut dyn TraceData> {
-        self.trace.trace_data_mut()
-    }
-
-    /// Returns the file path of the loaded trace, if any.
-    pub fn file_path(&self) -> Option<&PathBuf> {
-        self.trace.file_path()
-    }
-
-    /// Returns the trace extent (min_clk, max_clk).
-    pub fn trace_extent(&self) -> (i64, i64) {
-        self.trace.trace_extent()
-    }
-
-    /// Returns true if a trace is currently loaded.
-    pub fn has_trace(&self) -> bool {
-        self.trace.has_trace()
-    }
 }

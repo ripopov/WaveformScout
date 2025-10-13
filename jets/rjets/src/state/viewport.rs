@@ -76,11 +76,6 @@ impl ViewportState {
         self.viewport_end_clk
     }
 
-    /// Returns the visible time range as (start, end).
-    pub fn visible_range(&self) -> (i64, i64) {
-        (self.viewport_start_clk, self.viewport_end_clk)
-    }
-
     /// Returns the visible duration in clock units.
     pub fn visible_duration(&self) -> i64 {
         self.viewport_end_clk - self.viewport_start_clk
@@ -89,11 +84,6 @@ impl ViewportState {
     /// Returns the shared vertical scroll position.
     pub fn scroll_y(&self) -> f32 {
         self.shared_scroll_y
-    }
-
-    /// Returns true if the given clock value is within the visible viewport.
-    pub fn is_visible(&self, clk: i64) -> bool {
-        clk >= self.viewport_start_clk && clk <= self.viewport_end_clk
     }
 
     // ===== Viewport Mutations =====
@@ -114,31 +104,6 @@ impl ViewportState {
     pub fn set_range(&mut self, start_clk: i64, end_clk: i64) {
         self.viewport_start_clk = start_clk;
         self.viewport_end_clk = end_clk;
-    }
-
-    /// Pans the viewport by a clock delta, maintaining visible duration.
-    ///
-    /// # Arguments
-    /// * `delta_clk` - Amount to pan in clock units (positive = pan right)
-    /// * `min_clk` - Minimum allowed clock (trace boundary)
-    /// * `max_clk` - Maximum allowed clock (trace boundary)
-    pub fn pan_by(&mut self, delta_clk: i64, min_clk: i64, max_clk: i64) {
-        let duration = self.visible_duration();
-        let mut new_start = self.viewport_start_clk + delta_clk;
-        let mut new_end = new_start + duration;
-
-        // Clamp to trace boundaries
-        if new_start < min_clk {
-            new_start = min_clk;
-            new_end = new_start + duration;
-        }
-        if new_end > max_clk {
-            new_end = max_clk;
-            new_start = new_end - duration;
-        }
-
-        self.viewport_start_clk = new_start;
-        self.viewport_end_clk = new_end;
     }
 
     /// Zooms in/out around a specific clock point.
@@ -182,14 +147,6 @@ impl ViewportState {
     /// * `y` - New vertical scroll position in pixels
     pub fn set_scroll_y(&mut self, y: f32) {
         self.shared_scroll_y = y.max(0.0);
-    }
-
-    /// Scrolls vertically by a delta amount.
-    ///
-    /// # Arguments
-    /// * `delta_y` - Amount to scroll in pixels (positive = scroll down)
-    pub fn scroll_by(&mut self, delta_y: f32) {
-        self.shared_scroll_y = (self.shared_scroll_y + delta_y).max(0.0);
     }
 
     // ===== Low-Level Accessors (for input handlers) =====

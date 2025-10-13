@@ -53,21 +53,6 @@ impl SelectionState {
         self.selected_event
     }
 
-    /// Returns true if the given record is currently selected.
-    pub fn is_record_selected(&self, record_id: u64) -> bool {
-        self.selected_record_id == Some(record_id)
-    }
-
-    /// Returns true if the given event is currently selected.
-    pub fn is_event_selected(&self, record_id: u64, event_clk: i64) -> bool {
-        self.selected_event == Some((record_id, event_clk))
-    }
-
-    /// Returns true if any record is selected.
-    pub fn has_selection(&self) -> bool {
-        self.selected_record_id.is_some()
-    }
-
     // ===== Hover Queries =====
 
     /// Returns the current cursor hover position, if any.
@@ -78,11 +63,6 @@ impl SelectionState {
     /// Returns the clock value at the cursor hover position, if any.
     pub fn hover_clk(&self) -> Option<i64> {
         self.cursor_hover_clk
-    }
-
-    /// Returns true if the cursor is currently hovering.
-    pub fn is_hovering(&self) -> bool {
-        self.cursor_hover_pos.is_some()
     }
 
     // ===== Selection Mutations =====
@@ -109,35 +89,6 @@ impl SelectionState {
     pub fn select_event(&mut self, record_id: u64, event_clk: i64) {
         self.selected_record_id = Some(record_id);
         self.selected_event = Some((record_id, event_clk));
-    }
-
-    /// Clears the event selection but keeps the record selection.
-    pub fn clear_event_selection(&mut self) {
-        self.selected_event = None;
-    }
-
-    /// Clears the record selection (also clears event selection).
-    pub fn clear_record_selection(&mut self) {
-        self.selected_record_id = None;
-        self.selected_event = None;
-    }
-
-    // ===== Hover Mutations =====
-
-    /// Updates the hover position and associated clock value.
-    ///
-    /// # Arguments
-    /// * `pos` - The cursor position
-    /// * `clk` - The corresponding clock value at that position
-    pub fn set_hover(&mut self, pos: egui::Pos2, clk: i64) {
-        self.cursor_hover_pos = Some(pos);
-        self.cursor_hover_clk = Some(clk);
-    }
-
-    /// Clears the hover state.
-    pub fn clear_hover(&mut self) {
-        self.cursor_hover_pos = None;
-        self.cursor_hover_clk = None;
     }
 
     // ===== Low-Level Accessors (for input handlers) =====

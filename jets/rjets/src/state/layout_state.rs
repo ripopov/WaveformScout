@@ -52,59 +52,6 @@ impl LayoutState {
         &self.column_widths
     }
 
-    /// Returns the width of a specific column.
-    ///
-    /// # Arguments
-    /// * `index` - The column index (0-4)
-    ///
-    /// # Returns
-    /// The column width, or 0.0 if index is out of bounds.
-    pub fn column_width(&self, index: usize) -> f32 {
-        self.column_widths.get(index).copied().unwrap_or(0.0)
-    }
-
-    // ===== Layout Mutations =====
-
-    /// Sets the main split ratio.
-    ///
-    /// # Arguments
-    /// * `ratio` - The new split ratio (clamped to 0.0-1.0)
-    pub fn set_split_ratio(&mut self, ratio: f32) {
-        self.split_ratio = ratio.clamp(0.0, 1.0);
-    }
-
-    /// Sets the timeline split ratio.
-    ///
-    /// # Arguments
-    /// * `ratio` - The new split ratio (clamped to 0.0-1.0)
-    pub fn set_timeline_split_ratio(&mut self, ratio: f32) {
-        self.timeline_split_ratio = ratio.clamp(0.0, 1.0);
-    }
-
-    /// Sets all column widths at once.
-    ///
-    /// # Arguments
-    /// * `widths` - The new column widths array
-    pub fn set_column_widths(&mut self, widths: [f32; 5]) {
-        self.column_widths = widths;
-    }
-
-    /// Sets the width of a specific column.
-    ///
-    /// # Arguments
-    /// * `index` - The column index (0-4)
-    /// * `width` - The new column width (clamped to >= 0.0)
-    pub fn set_column_width(&mut self, index: usize, width: f32) {
-        if index < self.column_widths.len() {
-            self.column_widths[index] = width.max(0.0);
-        }
-    }
-
-    /// Resets all layout values to defaults.
-    pub fn reset(&mut self) {
-        *self = Self::new();
-    }
-
     // ===== Low-Level Accessors (for UI handlers) =====
     // These methods provide direct mutable access to internal state
     // for UI rendering code that needs fine-grained control.
