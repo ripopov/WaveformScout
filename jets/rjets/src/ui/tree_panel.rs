@@ -1,0 +1,171 @@
+//! Tree panel UI rendering
+//!
+//! Handles the left panel with hierarchical tree view of trace records.
+//! Uses virtual scrolling for performance with large traces.
+
+use crate::app::AppState;
+use crate::rendering::tree_renderer;
+use crate::ui::{table_header, virtual_scroll_manager::VirtualScrollManager};
+use egui::ScrollArea;
+use rjets::ThemeColors;
+
+/// Result of tree panel interactions that need to be handled by the application.
+pub enum TreePanelInteraction {
+    /// A tree node was selected
+    NodeSelected {
+        record_id: u64,
+        was_already_selected: bool,
+        first_event_clk: Option<i64>,
+    },
+    /// A tree node's expansion state was toggled
+    NodeExpandToggled {
+        record_id: u64,
+        was_expanded: bool,
+    },
+}
+
+/// Renders the complete tree panel with header and virtual scrolling content.
+///
+/// This function encapsulates all tree panel rendering logic that was previously
+/// in JetsViewerApp::render_tree().
+pub fn render_tree_panel(
+    ui: &mut egui::Ui,
+    state: &mut AppState,
+    theme_colors: &ThemeColors,
+) -> Option<TreePanelInteraction> {
+    // Check if we have trace data
+    let trace = match &state.trace_data {
+        Some(t) => t.as_ref(),
+        None => {
+            ui.label("No trace data to display");
+            return None;
+        }
+    };
+
+    // Calculate dynamic expand column width based on max visible depth
+    let max_depth = VirtualScrollManager::get_max_visible_depth(
+        trace,
+        &state.expanded_nodes,
+        &mut state.tree_cache,
+    );
+    let expand_width = VirtualScrollManager::calculate_expand_width(max_depth);
+
+    // Render table header
+    table_header::render_table_header(ui, expand_width, &mut state.column_widths);
+    ui.separator();
+
+    // Track interactions to return
+    let mut interaction: Option<TreePanelInteraction> = None;
+
+    // Render scrollable content with virtual scrolling
+    let scroll_area = ScrollArea::vertical()
+        .id_salt("tree_scroll_area")
+        .show(ui, |ui| {
+            // Get viewport metrics
+            let viewport_height = ui.available_height();
+            let scroll_offset = state.shared_scroll_y;
+
+            // Collect only visible nodes
+            let visible_nodes = VirtualScrollManager::collect_visible_nodes(
+                trace,
+                &state.expanded_nodes,
+                &mut state.tree_cache,
+                scroll_offset,
+                viewport_height,
+            );
+
+            if visible_nodes.is_empty() {
+                return;
+            }
+
+            // Calculate padding
+            let total_visible_nodes = VirtualScrollManager::get_total_visible_nodes(
+                trace,
+                &state.expanded_nodes,
+                &mut state.tree_cache,
+            );
+
+            // Add top padding for skipped rows
+            let top_padding = VirtualScrollManager::calculate_top_padding(&visible_nodes);
+            if top_padding > 0.0 {
+                ui.add_space(top_padding);
+            }
+
+            // Render visible nodes
+            for node in &visible_nodes {
+                if let Some(node_interaction) = render_tree_node(
+                    ui,
+                    trace,
+                    node.record_id,
+                    node.depth,
+                    expand_width,
+                    &state.column_widths,
+                    &state.expanded_nodes,
+                    state.selected_record_id,
+                    theme_colors,
+                    &mut state.tree_cache,
+                ) {
+                    interaction = Some(node_interaction);
+                }
+            }
+
+            // Add bottom padding for remaining rows
+            let bottom_padding = VirtualScrollManager::calculate_bottom_padding(
+                &visible_nodes,
+                total_visible_nodes,
+            );
+            if bottom_padding > 0.0 {
+                ui.add_space(bottom_padding);
+            }
+        });
+
+    // Update shared scroll position
+    state.shared_scroll_y = scroll_area.state.offset.y;
+
+    interaction
+}
+
+/// Renders a single tree node row (delegates to tree_renderer).
+fn render_tree_node(
+    ui: &mut egui::Ui,
+    trace: &dyn rjets::TraceData,
+    record_id: u64,
+    depth: usize,
+    expand_width: f32,
+    column_widths: &[f32; 5],
+    expanded_nodes: &std::collections::HashSet<u64>,
+    selected_record_id: Option<u64>,
+    theme_colors: &ThemeColors,
+    tree_cache: &mut crate::cache::TreeCache,
+) -> Option<TreePanelInteraction> {
+    tree_renderer::render_tree_node(
+        ui,
+        trace,
+        record_id,
+        depth,
+        expand_width,
+        column_widths,
+        expanded_nodes,
+        selected_record_id,
+        theme_colors,
+        tree_cache,
+    )
+    .map(|tree_interaction| match tree_interaction {
+        tree_renderer::TreeNodeInteraction::Selected {
+            record_id,
+            was_already_selected,
+            first_event_clk,
+        } => TreePanelInteraction::NodeSelected {
+            record_id,
+            was_already_selected,
+            first_event_clk,
+        },
+        tree_renderer::TreeNodeInteraction::ExpandToggled {
+            record_id,
+            was_expanded,
+        } => TreePanelInteraction::NodeExpandToggled {
+            record_id,
+            was_expanded,
+        },
+    })
+}
