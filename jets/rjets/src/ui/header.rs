@@ -46,46 +46,36 @@ pub fn render_header(ui: &mut egui::Ui, state: &mut AppState) -> Option<HeaderIn
 
         ui.separator();
 
-        if state.trace_data.is_some() {
+        if state.trace.trace_data().is_some() {
             // Zoom controls
             if ui.button("🔍+").clicked() {
-                state.zoom_level = (state.zoom_level * 1.5).min(10000.0);
-                let new_range = (state.trace_max_clk - state.trace_min_clk) as f32 / state.zoom_level;
-                let center = (state.viewport_start_clk + state.viewport_end_clk) / 2;
-                state.viewport_start_clk = center - (new_range / 2.0) as i64;
-                state.viewport_end_clk = center + (new_range / 2.0) as i64;
-                state.viewport_start_clk = state.viewport_start_clk.max(state.trace_min_clk);
-                state.viewport_end_clk = state.viewport_end_clk.min(state.trace_max_clk);
+                let center = (state.viewport.viewport_start_clk() + state.viewport.viewport_end_clk()) / 2;
+                state.viewport.zoom_around(1.5, center, state.trace.min_clk(), state.trace.max_clk());
             }
 
             if ui.button("🔍-").clicked() {
-                state.zoom_level = (state.zoom_level / 1.5).max(1.0);
-                let new_range = (state.trace_max_clk - state.trace_min_clk) as f32 / state.zoom_level;
-                let center = (state.viewport_start_clk + state.viewport_end_clk) / 2;
-                state.viewport_start_clk = center - (new_range / 2.0) as i64;
-                state.viewport_end_clk = center + (new_range / 2.0) as i64;
-                state.viewport_start_clk = state.viewport_start_clk.max(state.trace_min_clk);
-                state.viewport_end_clk = state.viewport_end_clk.min(state.trace_max_clk);
+                let center = (state.viewport.viewport_start_clk() + state.viewport.viewport_end_clk()) / 2;
+                state.viewport.zoom_around(1.0 / 1.5, center, state.trace.min_clk(), state.trace.max_clk());
             }
 
             if ui.button("⛶ Fit").clicked() {
-                state.zoom_level = 1.0;
-                state.viewport_start_clk = state.trace_min_clk;
-                state.viewport_end_clk = state.trace_max_clk;
+                state.viewport.set_zoom(1.0);
+                state.viewport.set_range(state.trace.min_clk(), state.trace.max_clk());
             }
 
-            ui.label(format!("Zoom: {:.1}x", state.zoom_level));
+            ui.label(format!("Zoom: {:.1}x", state.viewport.zoom_level()));
         }
 
         // Push theme selector to the right
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let old_theme = state.current_theme_name.clone();
+            let old_theme = state.theme.current_theme_name().to_string();
+            let mut current_theme = old_theme.clone();
             egui::ComboBox::from_id_salt("theme_selector")
-                .selected_text(&state.current_theme_name)
+                .selected_text(&current_theme)
                 .show_ui(ui, |ui| {
-                    for theme_name in state.theme_manager.list_themes() {
+                    for theme_name in state.theme.theme_manager().list_themes() {
                         ui.selectable_value(
-                            &mut state.current_theme_name,
+                            &mut current_theme,
                             theme_name.to_string(),
                             theme_name
                         );
@@ -93,8 +83,9 @@ pub fn render_header(ui: &mut egui::Ui, state: &mut AppState) -> Option<HeaderIn
                 });
 
             // Save theme preference if it changed
-            if old_theme != state.current_theme_name {
-                eprintln!("DEBUG [render_header]: Theme changed from '{}' to '{}'", old_theme, state.current_theme_name);
+            if old_theme != current_theme {
+                eprintln!("DEBUG [render_header]: Theme changed from '{}' to '{}'", old_theme, current_theme);
+                state.theme.set_theme(current_theme);
                 // Mark that we need to save on next frame (we'll handle this in update with frame.storage_mut)
                 ui.ctx().request_repaint();
             }

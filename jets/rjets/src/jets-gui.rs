@@ -10,19 +10,21 @@
 //!
 //! The application is built with a modular architecture:
 //! - `app/` - Application state management and coordination
-//! - `domain/` - Core business logic (tree operations, viewport calculations, color mapping)
+//! - `domain/` - Core business logic (tree operations, viewport calculations)
+//! - `presentation/` - Visual styling and color mapping (separated from domain logic)
 //! - `cache/` - Performance caching for tree computations
 //! - `io/` - File loading and virtual trace generation
 //! - `utils/` - Utility functions for formatting and geometry
-//! - `ui/` - UI panel rendering and interaction
+//! - `ui/` - UI panel rendering, interaction, and input handling
 //! - `rendering/` - Low-level rendering for tree nodes and timelines
-//! - `state/` - State management for viewport, selection, and interaction
+//! - `state/` - State management for viewport and selection
 
 use eframe::egui;
 
 mod utils;
 mod cache;
 mod domain;
+mod presentation;
 mod io;
 mod app;
 mod rendering;
@@ -143,7 +145,7 @@ impl Drop for JetsViewerApp {
     fn drop(&mut self) {
         eprintln!(
             "DEBUG [drop]: Application shutting down with theme: '{}'",
-            self.state.current_theme_name
+            self.state.theme.current_theme_name()
         );
     }
 }
@@ -151,7 +153,7 @@ impl Drop for JetsViewerApp {
 impl eframe::App for JetsViewerApp {
     /// Called when the app is being shut down - ensures preferences are saved.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        ThemeCoordinator::save_theme_to_storage(storage, &self.state.current_theme_name);
+        ThemeCoordinator::save_theme_to_storage(storage, self.state.theme.current_theme_name());
     }
 
     /// Main update loop that renders all UI panels and handles application state.
@@ -170,7 +172,7 @@ impl eframe::App for JetsViewerApp {
 
         // Persist theme preference during frame (for crash resilience)
         if let Some(storage) = frame.storage_mut() {
-            storage.set_string("theme_preference", self.state.current_theme_name.clone());
+            storage.set_string("theme_preference", self.state.theme.current_theme_name().to_string());
         }
 
         // Render all panels and get interaction result

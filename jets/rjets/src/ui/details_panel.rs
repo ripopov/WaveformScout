@@ -14,7 +14,7 @@ use crate::app::AppState;
 /// * `state` - Reference to application state
 /// * `theme_colors` - Color palette for the current theme
 pub fn render_details_panel(ui: &mut egui::Ui, state: &AppState, theme_colors: &ThemeColors) {
-    if let (Some(trace), Some(selected_id)) = (&state.trace_data, state.selected_record_id) {
+    if let (Some(trace), Some(selected_id)) = (state.trace.trace_data(), state.selection.selected_record_id()) {
         if let Some(record) = trace.get_record(selected_id) {
             ui.label(RichText::new(format!("Details for record: {}", selected_id)).strong());
             ui.separator();
@@ -77,7 +77,7 @@ pub fn render_details_panel(ui: &mut egui::Ui, state: &AppState, theme_colors: &
                         let event_text = serde_json::to_string(&evt_json).unwrap();
 
                         // Check if this event is selected
-                        let is_event_selected = state.selected_event == Some((event.record_id(), event.clk()));
+                        let is_event_selected = state.selection.selected_event() == Some((event.record_id(), event.clk()));
 
                         if is_event_selected {
                             // Draw with highlighted background using theme selection color

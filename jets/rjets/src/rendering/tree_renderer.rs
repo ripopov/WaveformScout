@@ -7,7 +7,7 @@ use eframe::egui;
 use rjets::{TraceData, ThemeColors};
 use std::collections::HashSet;
 
-use crate::domain::virtual_scrolling::ROW_HEIGHT;
+use crate::ui::virtual_scrolling::ROW_HEIGHT;
 use crate::cache::TreeCache;
 
 /// Renders a single tree node row with expand/collapse controls and column data

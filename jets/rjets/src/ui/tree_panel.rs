@@ -34,8 +34,8 @@ pub fn render_tree_panel(
     theme_colors: &ThemeColors,
 ) -> Option<TreePanelInteraction> {
     // Check if we have trace data
-    let trace = match &state.trace_data {
-        Some(t) => t.as_ref(),
+    let trace = match state.trace.trace_data() {
+        Some(t) => t,
         None => {
             ui.label("No trace data to display");
             return None;
@@ -45,13 +45,13 @@ pub fn render_tree_panel(
     // Calculate dynamic expand column width based on max visible depth
     let max_depth = VirtualScrollManager::get_max_visible_depth(
         trace,
-        &state.expanded_nodes,
+        state.tree.expanded_nodes_set(),
         &mut state.tree_cache,
     );
     let expand_width = VirtualScrollManager::calculate_expand_width(max_depth);
 
     // Render table header
-    table_header::render_table_header(ui, expand_width, &mut state.column_widths);
+    table_header::render_table_header(ui, expand_width, state.layout.column_widths_mut());
     ui.separator();
 
     // Track interactions to return
@@ -63,12 +63,12 @@ pub fn render_tree_panel(
         .show(ui, |ui| {
             // Get viewport metrics
             let viewport_height = ui.available_height();
-            let scroll_offset = state.shared_scroll_y;
+            let scroll_offset = state.viewport.scroll_y();
 
             // Collect only visible nodes
             let visible_nodes = VirtualScrollManager::collect_visible_nodes(
                 trace,
-                &state.expanded_nodes,
+                state.tree.expanded_nodes_set(),
                 &mut state.tree_cache,
                 scroll_offset,
                 viewport_height,
@@ -81,7 +81,7 @@ pub fn render_tree_panel(
             // Calculate padding
             let total_visible_nodes = VirtualScrollManager::get_total_visible_nodes(
                 trace,
-                &state.expanded_nodes,
+                state.tree.expanded_nodes_set(),
                 &mut state.tree_cache,
             );
 
@@ -99,9 +99,9 @@ pub fn render_tree_panel(
                     node.record_id,
                     node.depth,
                     expand_width,
-                    &state.column_widths,
-                    &state.expanded_nodes,
-                    state.selected_record_id,
+                    state.layout.column_widths(),
+                    state.tree.expanded_nodes_set(),
+                    state.selection.selected_record_id(),
                     theme_colors,
                     &mut state.tree_cache,
                 ) {
@@ -120,7 +120,7 @@ pub fn render_tree_panel(
         });
 
     // Update shared scroll position
-    state.shared_scroll_y = scroll_area.state.offset.y;
+    state.viewport.set_scroll_y(scroll_area.state.offset.y);
 
     interaction
 }

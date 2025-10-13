@@ -4,7 +4,7 @@
 //! calculating padding, and managing scroll synchronization.
 
 use crate::cache::TreeCache;
-use crate::domain::virtual_scrolling::{self, VisibleNode};
+use crate::ui::virtual_scrolling::{self, VisibleNode};
 use rjets::TraceData;
 use std::collections::HashSet;
 

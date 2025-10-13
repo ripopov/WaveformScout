@@ -6,7 +6,7 @@
 use crate::app::AppState;
 use crate::io::AsyncLoader;
 use crate::ui::{details_panel, header, status_bar, timeline_panel, tree_panel};
-use crate::domain::color_mapping;
+use crate::presentation::color_mapping;
 use egui::Color32;
 
 /// Result of panel interactions that need to be handled by the application coordinator.
@@ -55,7 +55,7 @@ impl PanelManager {
         let mut interaction: Option<PanelInteraction> = None;
 
         // Get theme colors for rendering
-        let theme_colors = color_mapping::theme_colors(&state.theme_manager, &state.current_theme_name).clone();
+        let theme_colors = color_mapping::theme_colors(state.theme.theme_manager(), state.theme.current_theme_name()).clone();
 
         // Header panel at the top
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
@@ -78,7 +78,7 @@ impl PanelManager {
 
         // Details panel above status panel
         egui::TopBottomPanel::bottom("details_panel")
-            .default_height(ctx.content_rect().height() * (1.0 - state.split_ratio))
+            .default_height(ctx.content_rect().height() * (1.0 - state.layout.split_ratio()))
             .resizable(true)
             .show(ctx, |ui| {
                 egui::Frame::default().inner_margin(4.0).show(ui, |ui| {
@@ -92,7 +92,7 @@ impl PanelManager {
             .fill(ctx.style().visuals.panel_fill);
 
         egui::SidePanel::left("tree_panel")
-            .default_width(ctx.content_rect().width() * state.timeline_split_ratio)
+            .default_width(ctx.content_rect().width() * state.layout.timeline_split_ratio())
             .resizable(true)
             .frame(tree_frame)
             .show(ctx, |ui| {

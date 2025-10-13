@@ -48,14 +48,15 @@ impl ThemeCoordinator {
     ///
     /// Called every frame to ensure theme is correctly applied.
     pub fn apply_current_theme(ctx: &egui::Context, state: &AppState) {
-        if let Some(theme) = state.theme_manager.get_theme(&state.current_theme_name) {
+        let theme_name = state.theme.current_theme_name();
+        if let Some(theme) = state.theme.theme_manager().get_theme(theme_name) {
             let mut visuals = if theme.name == "Light" {
                 egui::Visuals::light()
             } else {
                 egui::Visuals::dark()
             };
 
-            state.theme_manager.apply_theme(theme, &mut visuals);
+            state.theme.theme_manager().apply_theme(theme, &mut visuals);
             ctx.set_visuals(visuals);
         }
     }

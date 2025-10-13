@@ -7,7 +7,7 @@ use eframe::egui;
 use egui::Color32;
 use rjets::{ThemeColors, TraceData};
 
-use crate::domain::virtual_scrolling::ROW_HEIGHT;
+use crate::ui::virtual_scrolling::ROW_HEIGHT;
 use crate::domain::viewport_operations;
 use crate::utils::format_clock;
 

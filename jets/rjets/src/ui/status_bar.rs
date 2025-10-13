@@ -14,14 +14,14 @@ use crate::utils::format_clock;
 /// * `state` - Reference to application state
 pub fn render_status_bar(ui: &mut egui::Ui, state: &AppState) {
     ui.horizontal(|ui| {
-        if let Some(trace) = &state.trace_data {
+        if let Some(trace) = state.trace.trace_data() {
             let metadata = trace.metadata();
             let (min_clk, max_clk) = metadata.trace_extent();
             let time_range = format!("{}..{}", format_clock(min_clk), format_clock(max_clk));
             let total_records = metadata.total_records().map(|n| n.to_string()).unwrap_or_else(|| "?".to_string());
             let total_events = metadata.total_events().map(|n| n.to_string()).unwrap_or_else(|| "?".to_string());
 
-            if state.file_path.is_none() {
+            if state.trace.file_path().is_none() {
                 // Virtual trace metadata
                 let num_roots = trace.root_ids().len();
                 ui.label(RichText::new(format!(

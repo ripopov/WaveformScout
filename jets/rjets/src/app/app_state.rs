@@ -1,94 +1,54 @@
 //! Centralized application state for the JETS viewer.
+//!
+//! This module implements the State pattern by composing focused state components
+//! that each manage a specific aspect of the application's state. This approach:
+//! - Keeps invariants local within each component
+//! - Allows borrow-checker friendly access to different state aspects
+//! - Provides intent-revealing methods for state mutations
+//! - Mirrors established Rust UI projects (dioxus, iced)
 
-use rjets::{TraceData, ThemeManager};
-use std::collections::HashSet;
+use rjets::TraceData;
 use std::path::PathBuf;
 use crate::cache::TreeCache;
+use crate::state::{
+    TraceState, ViewportState, SelectionState, TreeState,
+    InteractionState, ThemeState, LayoutState
+};
 
-/// Main application state containing all data and UI state.
+/// Main application state composed of focused state components.
 ///
-/// This struct consolidates all application state that was previously scattered
-/// across individual fields in JetsViewerApp. It provides a cleaner separation
-/// between the eframe app implementation and the actual application logic.
+/// This struct uses the State pattern to organize application state into
+/// cohesive, independently-manageable components. Each component has:
+/// - Private fields to enforce invariants
+/// - Intent-revealing public methods
+/// - Clear separation of concerns
 pub struct AppState {
-    // ===== Trace Data & File State =====
-    /// The currently loaded trace data (if any)
-    pub trace_data: Option<Box<dyn TraceData>>,
+    // ===== Focused State Components =====
+    /// Trace data and file state
+    pub trace: TraceState,
 
-    /// Path to the currently loaded file (None for virtual traces)
-    pub file_path: Option<PathBuf>,
+    /// Viewport and zoom state
+    pub viewport: ViewportState,
 
-    // ===== Selection & Interaction State =====
-    /// Currently selected record ID
-    pub selected_record_id: Option<u64>,
+    /// Selection and hover state
+    pub selection: SelectionState,
 
-    /// Currently selected event (record_id, event_clk)
-    pub selected_event: Option<(u64, i64)>,
+    /// Tree expansion state
+    pub tree: TreeState,
 
-    /// Cursor hover position for visual feedback
-    pub cursor_hover_pos: Option<egui::Pos2>,
+    /// Interaction state (drag, pan, region selection)
+    pub interaction: InteractionState,
 
-    /// Clock value at cursor hover position
-    pub cursor_hover_clk: Option<i64>,
+    /// Theme and styling state
+    pub theme: ThemeState,
 
-    // ===== Tree Expansion State =====
-    /// Set of expanded node IDs in the tree view
-    pub expanded_nodes: HashSet<u64>,
+    /// UI layout state
+    pub layout: LayoutState,
 
-    // ===== Viewport & Zoom State =====
-    /// Current zoom level (1.0 = fit, higher = zoomed in)
-    pub zoom_level: f32,
-
-    /// Start of visible viewport in clock units
-    pub viewport_start_clk: i64,
-
-    /// End of visible viewport in clock units
-    pub viewport_end_clk: i64,
-
-    /// Minimum clock in trace
-    pub trace_min_clk: i64,
-
-    /// Maximum clock in trace
-    pub trace_max_clk: i64,
-
-    /// Shared vertical scroll position between tree and timeline
-    pub shared_scroll_y: f32,
-
-    // ===== Drag & Pan Interaction State =====
-    /// Whether user is currently dragging to pan
-    pub is_dragging: bool,
-
-    /// Clock value where drag started
-    pub drag_start_clk: i64,
-
-    /// Whether user is selecting a region to zoom
-    pub is_selecting_region: bool,
-
-    /// Start position of region selection
-    pub region_start_pos: Option<egui::Pos2>,
-
-    // ===== UI Layout State =====
-    /// Split ratio between details panel and main view
-    pub split_ratio: f32,
-
-    /// Split ratio between tree and timeline panels
-    pub timeline_split_ratio: f32,
-
-    /// Column widths for tree view [Name, ID, Start Clock, End Clock, Description]
-    pub column_widths: [f32; 5],
-
-    // ===== Theme & Styling =====
-    /// Theme manager instance
-    pub theme_manager: ThemeManager,
-
-    /// Name of currently selected theme
-    pub current_theme_name: String,
-
-    // ===== Error Handling =====
+    // ===== Top-Level State =====
     /// Current error message to display (if any)
     pub error_message: Option<String>,
 
-    // ===== Caching =====
     /// Tree computation cache for performance optimization
     pub tree_cache: TreeCache,
 }
@@ -103,64 +63,83 @@ impl AppState {
     /// Creates a new application state with default values.
     pub fn new() -> Self {
         Self {
-            trace_data: None,
-            file_path: None,
-            selected_record_id: None,
-            expanded_nodes: HashSet::new(),
+            trace: TraceState::new(),
+            viewport: ViewportState::new(),
+            selection: SelectionState::new(),
+            tree: TreeState::new(),
+            interaction: InteractionState::new(),
+            theme: ThemeState::new(),
+            layout: LayoutState::new(),
             error_message: None,
-            split_ratio: 0.7,
-            theme_manager: ThemeManager::new(),
-            current_theme_name: "Dark".to_string(),
-            column_widths: [250.0, 80.0, 120.0, 120.0, 300.0],
-            timeline_split_ratio: 0.3,
-            zoom_level: 1.0,
-            viewport_start_clk: 0,
-            viewport_end_clk: 0,
-            shared_scroll_y: 0.0,
-            trace_min_clk: 0,
-            trace_max_clk: 0,
-            is_dragging: false,
-            drag_start_clk: 0,
-            is_selecting_region: false,
-            region_start_pos: None,
-            cursor_hover_pos: None,
-            cursor_hover_clk: None,
-            selected_event: None,
             tree_cache: TreeCache::new(),
         }
     }
 
     /// Creates a new AppState with a specific theme loaded from storage.
     pub fn with_theme(theme_name: String) -> Self {
-        let mut state = Self::new();
-        state.current_theme_name = theme_name;
-        state
+        Self {
+            trace: TraceState::new(),
+            viewport: ViewportState::new(),
+            selection: SelectionState::new(),
+            tree: TreeState::new(),
+            interaction: InteractionState::new(),
+            theme: ThemeState::with_theme(theme_name),
+            layout: LayoutState::new(),
+            error_message: None,
+            tree_cache: TreeCache::new(),
+        }
     }
 
+    // ===== High-Level Coordination Methods =====
+
     /// Resets the trace-related state when loading a new trace.
+    ///
+    /// This clears trace data, selection, viewport, and tree expansion.
     pub fn reset_trace_state(&mut self) {
-        self.trace_data = None;
-        self.file_path = None;
-        self.expanded_nodes.clear();
-        self.selected_record_id = None;
-        self.selected_event = None;
+        self.trace.clear();
+        self.viewport.reset();
+        self.selection.clear();
+        self.tree.clear();
+        self.interaction.reset();
         self.error_message = None;
         self.tree_cache.invalidate();
-        self.viewport_start_clk = 0;
-        self.viewport_end_clk = 0;
-        self.trace_min_clk = 0;
-        self.trace_max_clk = 0;
-        self.zoom_level = 1.0;
-        self.shared_scroll_y = 0.0;
     }
 
     /// Initializes viewport after trace data is loaded.
+    ///
+    /// # Arguments
+    /// * `min_clk` - Minimum clock value in trace
+    /// * `max_clk` - Maximum clock value in trace
     pub fn initialize_viewport(&mut self, min_clk: i64, max_clk: i64) {
-        self.trace_min_clk = min_clk;
-        self.trace_max_clk = max_clk;
-        self.viewport_start_clk = min_clk;
-        self.viewport_end_clk = max_clk;
-        self.zoom_level = 1.0;
-        self.shared_scroll_y = 0.0;
+        self.viewport.fit_to_trace(min_clk, max_clk);
+    }
+
+    // ===== Convenience Accessors for Backward Compatibility =====
+    // These methods provide direct access to commonly-used nested state
+    // to ease the migration from the old flat structure.
+
+    /// Returns a reference to the loaded trace data, if any.
+    pub fn trace_data(&self) -> Option<&dyn TraceData> {
+        self.trace.trace_data()
+    }
+
+    /// Returns a mutable reference to the loaded trace data, if any.
+    pub fn trace_data_mut(&mut self) -> Option<&mut dyn TraceData> {
+        self.trace.trace_data_mut()
+    }
+
+    /// Returns the file path of the loaded trace, if any.
+    pub fn file_path(&self) -> Option<&PathBuf> {
+        self.trace.file_path()
+    }
+
+    /// Returns the trace extent (min_clk, max_clk).
+    pub fn trace_extent(&self) -> (i64, i64) {
+        self.trace.trace_extent()
+    }
+
+    /// Returns true if a trace is currently loaded.
+    pub fn has_trace(&self) -> bool {
+        self.trace.has_trace()
     }
 }

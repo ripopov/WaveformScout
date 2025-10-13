@@ -6,7 +6,7 @@
 use crate::app::AppState;
 use crate::io::AsyncLoader;
 use crate::rendering::{time_axis_renderer, timeline_overlays, timeline_renderer};
-use crate::state::timeline_input_handler;
+use crate::ui::input::timeline_input_handler;
 use crate::ui::virtual_scroll_manager::VirtualScrollManager;
 use egui::ScrollArea;
 use rjets::ThemeColors;
@@ -45,8 +45,8 @@ pub fn render_timeline_panel(
     }
 
     // Check if we have trace data
-    let trace = match &state.trace_data {
-        Some(t) => t.as_ref(),
+    let trace = match state.trace.trace_data() {
+        Some(t) => t,
         None => {
             ui.label("No trace loaded - open a JETS trace file to view timeline");
             return None;
@@ -65,21 +65,28 @@ pub fn render_timeline_panel(
         egui::Sense::drag().union(egui::Sense::hover()),
     );
 
+    // Get mutable references to state components for input handling
+    let trace_min_clk = state.trace.min_clk();
+    let trace_max_clk = state.trace.max_clk();
+    let (viewport_start_clk, viewport_end_clk, zoom_level) = state.viewport.for_input_handler();
+    let (is_dragging, drag_start_clk, is_selecting_region, region_start_pos) = state.interaction.for_input_handler();
+    let (cursor_hover_pos, cursor_hover_clk) = state.selection.for_input_handler();
+
     timeline_input_handler::handle_timeline_input(
         ctx,
         canvas_rect,
         &canvas_response,
-        &mut state.viewport_start_clk,
-        &mut state.viewport_end_clk,
-        state.trace_min_clk,
-        state.trace_max_clk,
-        &mut state.zoom_level,
-        &mut state.is_dragging,
-        &mut state.drag_start_clk,
-        &mut state.is_selecting_region,
-        &mut state.region_start_pos,
-        &mut state.cursor_hover_pos,
-        &mut state.cursor_hover_clk,
+        viewport_start_clk,
+        viewport_end_clk,
+        trace_min_clk,
+        trace_max_clk,
+        zoom_level,
+        is_dragging,
+        drag_start_clk,
+        is_selecting_region,
+        region_start_pos,
+        cursor_hover_pos,
+        cursor_hover_clk,
     );
 
     // Track interactions to return
@@ -89,17 +96,17 @@ pub fn render_timeline_panel(
     let scroll_area = ScrollArea::vertical()
         .id_salt("timeline_scroll_area")
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-        .vertical_scroll_offset(state.shared_scroll_y);
+        .vertical_scroll_offset(state.viewport.scroll_y());
 
     let scroll_output = scroll_area.show(ui, |ui| {
         // Get viewport metrics
         let viewport_height = ui.available_height();
-        let scroll_offset = state.shared_scroll_y;
+        let scroll_offset = state.viewport.scroll_y();
 
         // Collect only visible nodes (same as tree view)
         let visible_nodes = VirtualScrollManager::collect_visible_nodes(
             trace,
-            &state.expanded_nodes,
+            state.tree.expanded_nodes_set(),
             &mut state.tree_cache,
             scroll_offset,
             viewport_height,
@@ -112,7 +119,7 @@ pub fn render_timeline_panel(
         // Calculate padding
         let total_visible_nodes = VirtualScrollManager::get_total_visible_nodes(
             trace,
-            &state.expanded_nodes,
+            state.tree.expanded_nodes_set(),
             &mut state.tree_cache,
         );
 
@@ -128,11 +135,11 @@ pub fn render_timeline_panel(
                 ui,
                 trace,
                 node.record_id,
-                state.viewport_start_clk,
-                state.viewport_end_clk,
-                state.selected_record_id,
-                state.selected_event,
-                state.is_dragging,
+                state.viewport.viewport_start_clk(),
+                state.viewport.viewport_end_clk(),
+                state.selection.selected_record_id(),
+                state.selection.selected_event(),
+                state.interaction.is_dragging(),
                 theme_colors,
                 &get_record_color,
             ) {
@@ -149,7 +156,7 @@ pub fn render_timeline_panel(
     });
 
     // Draw cursor line overlay if hovering
-    if let (Some(hover_pos), Some(hover_clk)) = (state.cursor_hover_pos, state.cursor_hover_clk) {
+    if let (Some(hover_pos), Some(hover_clk)) = (state.selection.hover_pos(), state.selection.hover_clk()) {
         timeline_overlays::render_cursor_overlay(
             ctx,
             scroll_output.inner_rect,
@@ -160,9 +167,9 @@ pub fn render_timeline_panel(
     }
 
     // Draw zoom region selection overlay if active
-    if state.is_selecting_region {
+    if state.interaction.is_selecting_region() {
         if let (Some(start_pos), Some(current_pos)) =
-            (state.region_start_pos, ctx.input(|i| i.pointer.hover_pos()))
+            (state.interaction.region_start_pos(), ctx.input(|i| i.pointer.hover_pos()))
         {
             timeline_overlays::render_region_selection_overlay(
                 ctx,
@@ -190,8 +197,8 @@ fn render_timeline_header(ui: &mut egui::Ui, state: &AppState) {
     time_axis_renderer::render_time_axis(
         ui,
         header_rect,
-        state.viewport_start_clk,
-        state.viewport_end_clk,
+        state.viewport.viewport_start_clk(),
+        state.viewport.viewport_end_clk(),
     );
 }
 
