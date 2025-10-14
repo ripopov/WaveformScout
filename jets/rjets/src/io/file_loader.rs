@@ -8,8 +8,6 @@
 pub struct LoadingState {
     /// True if a file loading operation is currently in progress
     pub in_progress: bool,
-    /// Current memory usage in megabytes (updated during loading)
-    pub current_memory_mb: f64,
 }
 
 impl LoadingState {
@@ -17,7 +15,6 @@ impl LoadingState {
     pub fn new() -> Self {
         Self {
             in_progress: false,
-            current_memory_mb: 0.0,
         }
     }
 }

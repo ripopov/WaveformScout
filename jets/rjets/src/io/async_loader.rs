@@ -9,8 +9,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
-use std::time::Duration;
-use sysinfo::{System, RefreshKind, ProcessRefreshKind, Pid};
 use crate::io::LoadingState;
 
 /// Result of a completed trace loading operation.
@@ -60,12 +58,6 @@ impl AsyncLoader {
         state.in_progress
     }
 
-    /// Gets the current memory usage in MB during loading.
-    pub fn current_memory_mb(&self) -> f64 {
-        let state = self.loading_state.lock().unwrap();
-        state.current_memory_mb
-    }
-
     /// Starts loading a trace file asynchronously from the specified path.
     ///
     /// The GUI remains responsive during loading, and a loading indicator can be displayed.
@@ -83,58 +75,14 @@ impl AsyncLoader {
         {
             let mut state = self.loading_state.lock().unwrap();
             state.in_progress = true;
-            state.current_memory_mb = 0.0;
         }
 
         self.pending_load_path = Some(path.clone());
 
         // Clone Arc and Context for background thread
         let loading_state = Arc::clone(&self.loading_state);
-        let loading_state_monitor = Arc::clone(&self.loading_state);
         let ctx_handle = ctx.clone();
-        let ctx_monitor = ctx.clone();
         let path_string = path.to_str().unwrap().to_owned();
-
-        // Spawn memory monitoring thread
-        thread::spawn(move || {
-            let mut sys = System::new_with_specifics(
-                RefreshKind::new().with_processes(ProcessRefreshKind::new().with_memory()),
-            );
-            let pid = Pid::from_u32(std::process::id());
-            
-            loop {
-                // Check if loading is still in progress
-                let still_loading = {
-                    let state = loading_state_monitor.lock().unwrap();
-                    state.in_progress
-                };
-                
-                if !still_loading {
-                    break;
-                }
-                
-                // Refresh memory info
-                sys.refresh_processes_specifics(ProcessRefreshKind::new().with_memory());
-                
-                // Get current process memory usage
-                if let Some(process) = sys.process(pid) {
-                    let memory_bytes = process.memory();
-                    let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
-                    
-                    // Update loading state
-                    {
-                        let mut state = loading_state_monitor.lock().unwrap();
-                        state.current_memory_mb = memory_mb;
-                    }
-                    
-                    // Request repaint to update UI
-                    ctx_monitor.request_repaint();
-                }
-                
-                // Sleep for 0.5 seconds before next update
-                thread::sleep(Duration::from_millis(500));
-            }
-        });
 
         // Spawn background thread for file loading
         thread::spawn(move || {

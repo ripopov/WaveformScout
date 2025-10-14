@@ -8,6 +8,7 @@ use crate::io::AsyncLoader;
 use crate::rendering::{time_axis_renderer, timeline_overlays, timeline_renderer};
 use crate::ui::input::timeline_input_handler;
 use crate::ui::virtual_scroll_manager::VirtualScrollManager;
+use crate::utils::{get_current_memory_mb, format_memory_mb};
 use egui::ScrollArea;
 use rjets::ThemeColors;
 
@@ -203,7 +204,7 @@ fn render_timeline_header(ui: &mut egui::Ui, state: &AppState) {
 }
 
 /// Renders a loading indicator when trace is being loaded.
-fn render_loading_indicator(ui: &mut egui::Ui, theme_colors: &ThemeColors, loader: &AsyncLoader) {
+fn render_loading_indicator(ui: &mut egui::Ui, theme_colors: &ThemeColors, _loader: &AsyncLoader) {
     let canvas_rect = ui.available_rect_before_wrap();
     let center_pos = canvas_rect.center();
 
@@ -220,14 +221,9 @@ fn render_loading_indicator(ui: &mut egui::Ui, theme_colors: &ThemeColors, loade
         color,
     );
 
-    // Display memory usage below
-    let memory_mb = loader.current_memory_mb();
-    let memory_text = if memory_mb > 1024.0 {
-        format!("Memory: {:.2} GB", memory_mb / 1024.0)
-    } else {
-        format!("Memory: {:.1} MB", memory_mb)
-    };
-    
+    // Display memory usage below using centralized utility
+    let memory_text = format_memory_mb(get_current_memory_mb());
+
     let memory_pos = egui::pos2(center_pos.x, center_pos.y + 60.0);
     ui.painter().text(
         memory_pos,

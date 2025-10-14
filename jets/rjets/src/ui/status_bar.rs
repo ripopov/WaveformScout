@@ -5,7 +5,7 @@
 use eframe::egui;
 use egui::RichText;
 use crate::app::AppState;
-use crate::utils::format_clock;
+use crate::utils::{format_clock, get_current_memory_mb, format_memory_mb};
 
 /// Renders the status panel at the bottom of the window with trace metadata
 ///
@@ -14,7 +14,13 @@ use crate::utils::format_clock;
 /// * `state` - Reference to application state
 pub fn render_status_bar(ui: &mut egui::Ui, state: &AppState) {
     ui.horizontal(|ui| {
+        // Always show memory usage first
+        let memory_text = format_memory_mb(get_current_memory_mb());
+        ui.label(RichText::new(&memory_text).strong());
+
         if let Some(trace) = state.trace.trace_data() {
+            ui.label(RichText::new("|").strong());
+
             let metadata = trace.metadata();
             let (min_clk, max_clk) = metadata.trace_extent();
             let time_range = format!("{}..{}", format_clock(min_clk), format_clock(max_clk));
@@ -48,7 +54,7 @@ pub fn render_status_bar(ui: &mut egui::Ui, state: &AppState) {
                 )).strong());
             }
         } else {
-            ui.label("No trace loaded");
+            ui.label(RichText::new("| No trace loaded").strong());
         }
     });
 }
