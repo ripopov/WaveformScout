@@ -4,6 +4,7 @@ pub mod writer;
 pub mod virtual_reader;
 pub mod pipetrace_reader;
 pub mod theme;
+pub mod string_intern;
 
 // Export traits
 pub use traits::{
@@ -34,3 +35,6 @@ pub use writer::TraceWriter;
 
 // Export theme support
 pub use theme::{Theme, ThemeColors, ThemeManager, hex_to_color32, adjust_brightness, with_alpha};
+
+// Export string interning utility
+pub use string_intern::StringInterner;

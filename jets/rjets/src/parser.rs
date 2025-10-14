@@ -7,6 +7,7 @@ use once_cell::sync::OnceCell;
 use anyhow::{Result, Context, anyhow};
 use brotli::Decompressor;
 use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, RecordId};
+use crate::string_intern::StringInterner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JetsTraceHeader {
@@ -25,21 +26,43 @@ pub struct JetsTraceFooter {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JetsTraceAnnotation {
     #[serde(rename = "type")]
-    pub line_type: String,
-    pub name: String,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub line_type: Arc<str>,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub name: Arc<str>,
     pub record_id: RecordId,
-    pub description: String,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub description: Arc<str>,
     pub data: serde_json::Value,
+}
+
+// Serde helper functions for Arc<str>
+fn serialize_arc_str<S>(arc: &Arc<str>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(arc)
+}
+
+fn deserialize_arc_str<'de, D>(deserializer: D) -> Result<Arc<str>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(Arc::from(s))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JetsTraceEvent {
     pub clk: i64,
     #[serde(rename = "type")]
-    pub line_type: String,
-    pub name: String,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub line_type: Arc<str>,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub name: Arc<str>,
     pub record_id: RecordId,
-    pub description: String,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub description: Arc<str>,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
 }
@@ -47,11 +70,14 @@ pub struct JetsTraceEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JetsTraceRecord {
     pub clk: i64,
-    pub name: String,
-    pub record_type: String,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub name: Arc<str>,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub record_type: Arc<str>,
     pub id: RecordId,
     pub parent_id: Option<RecordId>,
-    pub description: String,
+    #[serde(serialize_with = "serialize_arc_str", deserialize_with = "deserialize_arc_str")]
+    pub description: Arc<str>,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
 
@@ -183,6 +209,13 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
         Box::new(BufReader::new(file))
     };
 
+    // Create string interner to deduplicate repeated strings
+    let mut interner = StringInterner::with_capacity(8192);
+
+    // Pre-intern common literal strings
+    let annotation_type = interner.intern("annotation");
+    let event_type = interner.intern("event");
+
     let mut header: Option<JetsTraceHeader> = None;
     let mut footer: Option<JetsTraceFooter> = None;
     let mut records_by_id: HashMap<RecordId, JetsTraceRecord> = HashMap::new();
@@ -213,11 +246,11 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
 
                 let record = JetsTraceRecord {
                     clk,
-                    name,
-                    record_type,
+                    name: interner.intern(&name),
+                    record_type: interner.intern(&record_type),
                     id: id.clone(),
                     parent_id,
-                    description,
+                    description: interner.intern(&description),
                     data,
                     end_clk: None,
                     duration: None,
@@ -243,10 +276,10 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
                     .ok_or_else(|| anyhow!("annotation references unknown record '{}' at line {}", record_id, line_num + 1))?;
 
                 record.annotations.push(JetsTraceAnnotation {
-                    line_type: "annotation".to_string(),
-                    name,
+                    line_type: Arc::clone(&annotation_type),
+                    name: interner.intern(&name),
                     record_id,
-                    description,
+                    description: interner.intern(&description),
                     data,
                 });
             }
@@ -257,10 +290,10 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
 
                 record.events.push(JetsTraceEvent {
                     clk,
-                    line_type: "event".to_string(),
-                    name,
+                    line_type: Arc::clone(&event_type),
+                    name: interner.intern(&name),
                     record_id,
-                    description,
+                    description: interner.intern(&description),
                     data,
                 });
             }
@@ -468,7 +501,7 @@ impl TraceRecord for JetsTraceRecord {
 
         // Merge annotations into the data dictionary
         for annotation in &self.annotations {
-            result.insert(annotation.name.clone(), annotation.data.clone());
+            result.insert(annotation.name.to_string(), annotation.data.clone());
         }
 
         result
