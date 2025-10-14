@@ -22,6 +22,7 @@
 //! - `state/` - State management for viewport and selection
 
 use eframe::egui;
+use std::path::PathBuf;
 
 mod utils;
 mod cache;
@@ -39,6 +40,11 @@ use ui::panel_manager::PanelManager;
 
 /// Main application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
+    // Parse command-line arguments to check for initial file to load
+    let initial_file = std::env::args()
+        .nth(1)
+        .map(PathBuf::from);
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
@@ -49,7 +55,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "JETS Trace Viewer",
         options,
-        Box::new(|cc| Ok(Box::new(JetsViewerApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(JetsViewerApp::new(cc, initial_file)))),
     )
 }
 
@@ -64,6 +70,8 @@ struct JetsViewerApp {
     state: AppState,
     /// Asynchronous file loader
     loader: AsyncLoader,
+    /// Optional file to load on first frame
+    pending_file_load: Option<PathBuf>,
 }
 
 impl Default for JetsViewerApp {
@@ -71,18 +79,21 @@ impl Default for JetsViewerApp {
         Self {
             state: AppState::new(),
             loader: AsyncLoader::new(),
+            pending_file_load: None,
         }
     }
 }
 
 impl JetsViewerApp {
     /// Creates a new viewer instance with theme loaded from persistent storage.
-    fn new(cc: &eframe::CreationContext) -> Self {
+    /// Optionally accepts an initial file path to load on startup.
+    fn new(cc: &eframe::CreationContext, initial_file: Option<PathBuf>) -> Self {
         let current_theme_name = ThemeCoordinator::load_theme_from_storage(cc.storage);
 
         Self {
             state: AppState::with_theme(current_theme_name),
             loader: AsyncLoader::new(),
+            pending_file_load: initial_file,
         }
     }
 
@@ -154,8 +165,9 @@ impl eframe::App for JetsViewerApp {
     /// This method is now very simple - it delegates to coordinators:
     /// 1. Check for async loading completion
     /// 2. Apply theme
-    /// 3. Render all panels via PanelManager
-    /// 4. Handle panel interactions
+    /// 3. Load initial file if specified via command line
+    /// 4. Render all panels via PanelManager
+    /// 5. Handle panel interactions
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Check for async loading completion
         ApplicationCoordinator::check_loading_completion(&mut self.state, &mut self.loader);
@@ -166,6 +178,11 @@ impl eframe::App for JetsViewerApp {
         // Persist theme preference during frame (for crash resilience)
         if let Some(storage) = frame.storage_mut() {
             storage.set_string("theme_preference", self.state.theme.current_theme_name().to_string());
+        }
+
+        // Load initial file if specified via command line (only on first frame)
+        if let Some(path) = self.pending_file_load.take() {
+            ApplicationCoordinator::open_file(&mut self.state, &mut self.loader, path, ctx);
         }
 
         // Render all panels and get interaction result
