@@ -8,7 +8,7 @@ pub mod theme;
 // Export traits
 pub use traits::{
     TraceReader, TraceData, TraceMetadata,
-    TraceRecord, TraceEvent
+    TraceRecord, TraceEvent, RecordId
 };
 
 // Export JETS implementation

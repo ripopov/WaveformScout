@@ -2,9 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::sync::Arc;
+use once_cell::sync::OnceCell;
 use anyhow::{Result, Context, anyhow};
 use brotli::Decompressor;
-use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, RecordId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JetsTraceHeader {
@@ -25,7 +27,7 @@ pub struct JetsTraceAnnotation {
     #[serde(rename = "type")]
     pub line_type: String,
     pub name: String,
-    pub record_id: u64,
+    pub record_id: RecordId,
     pub description: String,
     pub data: serde_json::Value,
 }
@@ -36,7 +38,7 @@ pub struct JetsTraceEvent {
     #[serde(rename = "type")]
     pub line_type: String,
     pub name: String,
-    pub record_id: u64,
+    pub record_id: RecordId,
     pub description: String,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
@@ -47,8 +49,8 @@ pub struct JetsTraceRecord {
     pub clk: i64,
     pub name: String,
     pub record_type: String,
-    pub id: u64,
-    pub parent_id: Option<u64>,
+    pub id: RecordId,
+    pub parent_id: Option<RecordId>,
     pub description: String,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
@@ -59,11 +61,16 @@ pub struct JetsTraceRecord {
     #[serde(skip)]
     pub duration: Option<i64>,
     #[serde(skip)]
-    pub children: Vec<JetsTraceRecord>,
+    pub child_indices: Vec<usize>,  // Indices into the arena, not owned children
     #[serde(skip)]
     pub annotations: Vec<JetsTraceAnnotation>,
     #[serde(skip)]
     pub events: Vec<JetsTraceEvent>,
+
+    // Shared reference to the arena for resolving child indices
+    // Uses OnceCell for lazy initialization to enable self-referential structure
+    #[serde(skip)]
+    arena: OnceCell<Arc<Vec<JetsTraceRecord>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,9 +83,9 @@ pub struct JetsTraceMetadata {
 #[derive(Debug, Clone)]
 pub struct JetsTraceData {
     pub metadata: JetsTraceMetadata,
-    pub roots: Vec<JetsTraceRecord>,
-    pub records_by_id: HashMap<u64, usize>, // Maps ID to index in flattened record list
-    pub all_records: Vec<JetsTraceRecord>,  // Flattened list of all records for lookup
+    pub root_indices: Vec<usize>,                  // Indices of root records in all_records
+    pub records_by_id: HashMap<RecordId, usize>,   // Maps record ID to vector index in arena
+    pub all_records: Arc<Vec<JetsTraceRecord>>,    // Arena: flat list of all records
 }
 
 pub struct JetsTraceReader;
@@ -102,8 +109,8 @@ enum TraceLine {
         clk: i64,
         name: String,
         record_type: String,
-        id: u64,
-        parent_id: Option<u64>,
+        id: RecordId,
+        parent_id: Option<RecordId>,
         description: String,
         #[serde(default)]
         data: Option<serde_json::Value>,
@@ -111,12 +118,12 @@ enum TraceLine {
     #[serde(rename = "record_end")]
     RecordEnd {
         clk: i64,
-        record_id: u64,
+        record_id: RecordId,
     },
     #[serde(rename = "annotation")]
     Annotation {
         name: String,
-        record_id: u64,
+        record_id: RecordId,
         description: String,
         data: serde_json::Value,
     },
@@ -124,7 +131,7 @@ enum TraceLine {
     Event {
         clk: i64,
         name: String,
-        record_id: u64,
+        record_id: RecordId,
         description: String,
         #[serde(default)]
         data: Option<serde_json::Value>,
@@ -178,7 +185,7 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
 
     let mut header: Option<JetsTraceHeader> = None;
     let mut footer: Option<JetsTraceFooter> = None;
-    let mut records_by_id: HashMap<u64, JetsTraceRecord> = HashMap::new();
+    let mut records_by_id: HashMap<RecordId, JetsTraceRecord> = HashMap::new();
 
     for (line_num, line_result) in reader.lines().enumerate() {
         let line = line_result
@@ -214,9 +221,10 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
                     data,
                     end_clk: None,
                     duration: None,
-                    children: Vec::new(),
+                    child_indices: Vec::new(),
                     annotations: Vec::new(),
                     events: Vec::new(),
+                    arena: OnceCell::new(),
                 };
 
                 records_by_id.insert(id, record);
@@ -270,72 +278,61 @@ pub fn parse_trace(file_path: &str) -> Result<JetsTraceData> {
 
     let header = header.ok_or_else(|| anyhow!("Missing header line"))?;
 
-    // Build tree structure
-    let mut roots = Vec::new();
+    // Build flat arena with all records
     let mut all_records: Vec<JetsTraceRecord> = records_by_id.into_values().collect();
 
-    // Separate roots from children
-    let mut children_map: HashMap<u64, Vec<JetsTraceRecord>> = HashMap::new();
-
-    for record in all_records.drain(..) {
-        if let Some(parent_id) = record.parent_id {
-            children_map.entry(parent_id)
-                .or_insert_with(Vec::new)
-                .push(record);
-        } else {
-            roots.push(record);
-        }
-    }
-
-    // Recursively attach children
-    fn attach_children(record: &mut JetsTraceRecord, children_map: &mut HashMap<u64, Vec<JetsTraceRecord>>) {
-        if let Some(mut children) = children_map.remove(&record.id) {
-            for child in &mut children {
-                attach_children(child, children_map);
-            }
-            // Sort children by clk first, then by name
-            children.sort_by(|a, b| {
-                a.clk.cmp(&b.clk).then_with(|| a.name.cmp(&b.name))
-            });
-            record.children = children;
-        }
-    }
-
-    for root in &mut roots {
-        attach_children(root, &mut children_map);
-    }
-
-    // Sort roots by clk first, then by name
-    roots.sort_by(|a, b| {
+    // Sort records to ensure consistent ordering (parents before children when possible)
+    all_records.sort_by(|a, b| {
         a.clk.cmp(&b.clk).then_with(|| a.name.cmp(&b.name))
     });
 
-    // Flatten all records for lookup
-    let mut all_records_flat = Vec::new();
-    let mut id_to_index = HashMap::new();
+    // Build index mapping: record ID -> vector index in arena
+    let mut id_to_index: HashMap<RecordId, usize> = HashMap::new();
+    for (index, record) in all_records.iter().enumerate() {
+        id_to_index.insert(record.id, index);
+    }
 
-    fn flatten_records(record: &JetsTraceRecord, all_records: &mut Vec<JetsTraceRecord>, id_map: &mut HashMap<u64, usize>) {
-        let index = all_records.len();
-        id_map.insert(record.id, index);
-        all_records.push(record.clone());
+    // Build parent-child relationships using indices
+    let mut children_by_parent: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut root_indices = Vec::new();
 
-        for child in &record.children {
-            flatten_records(child, all_records, id_map);
+    for (index, record) in all_records.iter().enumerate() {
+        if let Some(parent_id) = record.parent_id {
+            if let Some(&parent_index) = id_to_index.get(&parent_id) {
+                children_by_parent.entry(parent_index)
+                    .or_insert_with(Vec::new)
+                    .push(index);
+            }
+        } else {
+            root_indices.push(index);
         }
     }
 
-    for root in &roots {
-        flatten_records(root, &mut all_records_flat, &mut id_to_index);
+    // Sort children indices by clock time and name
+    for children in children_by_parent.values_mut() {
+        children.sort_by(|&a, &b| {
+            let rec_a = &all_records[a];
+            let rec_b = &all_records[b];
+            rec_a.clk.cmp(&rec_b.clk).then_with(|| rec_a.name.cmp(&rec_b.name))
+        });
     }
 
+    // Assign child_indices to each record
+    for (parent_index, child_indices) in children_by_parent {
+        all_records[parent_index].child_indices = child_indices;
+    }
+
+    // Wrap in Arc - arena references will be set lazily on first access
+    let arena = Arc::new(all_records);
+
     // Calculate trace extent (min_clk, max_clk)
-    let trace_extent = calculate_trace_extent(&all_records_flat);
+    let trace_extent = calculate_trace_extent(&arena);
 
     Ok(JetsTraceData {
         metadata: JetsTraceMetadata { header, footer, trace_extent },
-        roots,
+        root_indices,
         records_by_id: id_to_index,
-        all_records: all_records_flat,
+        all_records: arena,
     })
 }
 
@@ -409,13 +406,20 @@ impl TraceData for JetsTraceData {
     }
 
     fn root_ids(&self) -> Vec<u64> {
-        self.roots.iter().map(|r| r.id).collect()
+        self.root_indices.iter()
+            .filter_map(|&idx| self.all_records.get(idx))
+            .map(|r| r.id)
+            .collect()
     }
 
     fn get_record(&self, id: u64) -> Option<&dyn TraceRecord> {
         self.records_by_id.get(&id)
             .and_then(|&index| self.all_records.get(index))
-            .map(|r| r as &dyn TraceRecord)
+            .map(|record| {
+                // Lazily initialize arena reference on first access
+                let _ = record.arena.get_or_init(|| Arc::clone(&self.all_records));
+                record as &dyn TraceRecord
+            })
     }
 }
 
@@ -436,11 +440,11 @@ impl TraceRecord for JetsTraceRecord {
         &self.name
     }
 
-    fn id(&self) -> u64 {
+    fn id(&self) -> RecordId {
         self.id
     }
 
-    fn parent_id(&self) -> Option<u64> {
+    fn parent_id(&self) -> Option<RecordId> {
         self.parent_id
     }
 
@@ -471,9 +475,18 @@ impl TraceRecord for JetsTraceRecord {
     }
 
     fn children(&self) -> Vec<&dyn TraceRecord> {
-        self.children.iter()
-            .map(|c| c as &dyn TraceRecord)
-            .collect()
+        if let Some(arena) = self.arena.get() {
+            self.child_indices.iter()
+                .filter_map(|&idx| arena.get(idx))
+                .map(|child| {
+                    // Lazily initialize arena for children too, enabling transitive resolution
+                    let _ = child.arena.get_or_init(|| Arc::clone(arena));
+                    child as &dyn TraceRecord
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 
     fn events(&self) -> Vec<&dyn TraceEvent> {
@@ -492,7 +505,7 @@ impl TraceEvent for JetsTraceEvent {
         &self.name
     }
 
-    fn record_id(&self) -> u64 {
+    fn record_id(&self) -> RecordId {
         self.record_id
     }
 

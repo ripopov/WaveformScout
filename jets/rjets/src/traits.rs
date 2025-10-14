@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+/// Type alias for record IDs (domain identifiers from trace files)
+pub type RecordId = u64;
+
 /// Trait for reading trace files and returning TraceData
 pub trait TraceReader {
     /// Opens and parses a trace file, returning a TraceData implementation
@@ -13,10 +16,10 @@ pub trait TraceData: Send {
     fn metadata(&self) -> &dyn TraceMetadata;
 
     /// Returns the IDs of root records
-    fn root_ids(&self) -> Vec<u64>;
+    fn root_ids(&self) -> Vec<RecordId>;
 
     /// Gets a record by ID
-    fn get_record(&self, id: u64) -> Option<&dyn TraceRecord>;
+    fn get_record(&self, id: RecordId) -> Option<&dyn TraceRecord>;
 }
 
 /// Trait for accessing trace metadata
@@ -58,10 +61,10 @@ pub trait TraceRecord {
     fn name(&self) -> &str;
 
     /// Returns the record ID
-    fn id(&self) -> u64;
+    fn id(&self) -> RecordId;
 
     /// Returns the parent ID (if this is a child record)
-    fn parent_id(&self) -> Option<u64>;
+    fn parent_id(&self) -> Option<RecordId>;
 
     /// Returns the record description
     fn description(&self) -> &str;
@@ -85,7 +88,7 @@ pub trait TraceEvent {
     fn name(&self) -> &str;
 
     /// Returns the ID of the record this event belongs to
-    fn record_id(&self) -> u64;
+    fn record_id(&self) -> RecordId;
 
     /// Returns the event description
     fn description(&self) -> &str;
