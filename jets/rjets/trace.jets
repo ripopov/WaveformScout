@@ -1,0 +1,1222 @@
+{"type":"header","version":"2.0","metadata":{"hardware_model":"RISC-V SoC","architecture":"RISC-V Pipeline","clock_frequency_mhz":1000,"tool":"jets-tracegen v0.1","num_clusters":1,"num_cores":1,"num_threads":1}}
+{"clk":0,"type":"record","name":"cluster_0","record_type":"Cluster","id":1,"parent_id":null,"description":"Cluster 0"}
+{"clk":0,"type":"record","name":"core_0","record_type":"Core","id":2,"parent_id":1,"description":"Core 0"}
+{"clk":0,"type":"record","name":"thread_0","record_type":"Thread","id":3,"parent_id":2,"description":"Thread 0"}
+{"clk":1000,"type":"record","name":"0xFFFFFFFF00000000-AND","record_type":"Instruction","id":4,"parent_id":3,"description":"and  t3, s11, a4","data":{"pc":"0xFFFFFFFF00000000","opcode":"AND","disassembly":"and  t3, s11, a4"}}
+{"clk":1000,"type":"event","name":"F1","record_id":4,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1001,"type":"event","name":"F2","record_id":4,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1002,"type":"event","name":"D","record_id":4,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1002,"type":"record","name":"0xFFFFFFFF00000004-OR","record_type":"Instruction","id":5,"parent_id":3,"description":"or  s1, tp, gp","data":{"pc":"0xFFFFFFFF00000004","opcode":"OR","disassembly":"or  s1, tp, gp"}}
+{"clk":1002,"type":"event","name":"F1","record_id":5,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1003,"type":"event","name":"RN","record_id":4,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1003,"type":"event","name":"F2","record_id":5,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1003,"type":"record","name":"0xFFFFFFFF00000008-JAL","record_type":"Instruction","id":6,"parent_id":3,"description":"jal  a0, -96","data":{"pc":"0xFFFFFFFF00000008","opcode":"JAL","disassembly":"jal  a0, -96"}}
+{"clk":1003,"type":"event","name":"F1","record_id":6,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1004,"type":"event","name":"DS","record_id":4,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1004,"type":"event","name":"D","record_id":5,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1004,"type":"event","name":"F2","record_id":6,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1005,"type":"event","name":"IS","record_id":4,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1005,"type":"event","name":"RN","record_id":5,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1005,"type":"event","name":"D","record_id":6,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1005,"type":"record","name":"0xFFFFFFFF0000000C-SRL","record_type":"Instruction","id":7,"parent_id":3,"description":"srl  a5, s2, s9","data":{"pc":"0xFFFFFFFF0000000C","opcode":"SRL","disassembly":"srl  a5, s2, s9"}}
+{"clk":1005,"type":"event","name":"F1","record_id":7,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1006,"type":"event","name":"RR","record_id":4,"description":"Register Read. Read physical registers from register file"}
+{"clk":1006,"type":"event","name":"DS","record_id":5,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1006,"type":"event","name":"RN","record_id":6,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1006,"type":"event","name":"F2","record_id":7,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1007,"type":"event","name":"EX","record_id":4,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1007,"type":"event","name":"IS","record_id":5,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1007,"type":"event","name":"DS","record_id":6,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1007,"type":"event","name":"D","record_id":7,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1007,"type":"record","name":"0xFFFFFFFF00000010-JAL","record_type":"Instruction","id":8,"parent_id":3,"description":"jal  s7, 212","data":{"pc":"0xFFFFFFFF00000010","opcode":"JAL","disassembly":"jal  s7, 212"}}
+{"clk":1007,"type":"event","name":"F1","record_id":8,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1008,"type":"event","name":"WB","record_id":4,"description":"Writeback. Write results back to physical register file"}
+{"clk":1008,"type":"event","name":"RR","record_id":5,"description":"Register Read. Read physical registers from register file"}
+{"clk":1008,"type":"event","name":"IS","record_id":6,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1008,"type":"event","name":"RN","record_id":7,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1008,"type":"event","name":"F2","record_id":8,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1009,"type":"event","name":"C","record_id":4,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1009,"type":"record_end","record_id":4}
+{"clk":1009,"type":"event","name":"EX","record_id":5,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1009,"type":"event","name":"RR","record_id":6,"description":"Register Read. Read physical registers from register file"}
+{"clk":1009,"type":"event","name":"DS","record_id":7,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1009,"type":"event","name":"D","record_id":8,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1009,"type":"record","name":"0xFFFFFFFF00000014-LI","record_type":"Instruction","id":9,"parent_id":3,"description":"li  t6, 233","data":{"pc":"0xFFFFFFFF00000014","opcode":"LI","disassembly":"li  t6, 233"}}
+{"clk":1009,"type":"event","name":"F1","record_id":9,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1010,"type":"event","name":"EX","record_id":6,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1010,"type":"event","name":"RN","record_id":8,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1010,"type":"event","name":"F2","record_id":9,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1010,"type":"record","name":"0xFFFFFFFF00000018-OR","record_type":"Instruction","id":10,"parent_id":3,"description":"or  s8, t2, a0","data":{"pc":"0xFFFFFFFF00000018","opcode":"OR","disassembly":"or  s8, t2, a0"}}
+{"clk":1010,"type":"event","name":"F1","record_id":10,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1011,"type":"event","name":"WB","record_id":5,"description":"Writeback. Write results back to physical register file"}
+{"clk":1011,"type":"event","name":"WB","record_id":6,"description":"Writeback. Write results back to physical register file"}
+{"clk":1011,"type":"event","name":"DS","record_id":8,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1011,"type":"event","name":"D","record_id":9,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1011,"type":"event","name":"F2","record_id":10,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1012,"type":"event","name":"C","record_id":5,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1012,"type":"record_end","record_id":5}
+{"clk":1012,"type":"event","name":"C","record_id":6,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1012,"type":"record_end","record_id":6}
+{"clk":1012,"type":"event","name":"RN","record_id":9,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1012,"type":"event","name":"D","record_id":10,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1012,"type":"record","name":"0xFFFFFFFF0000001C-JALR","record_type":"Instruction","id":11,"parent_id":3,"description":"jalr  s5, 35(zero)","data":{"pc":"0xFFFFFFFF0000001C","opcode":"JALR","disassembly":"jalr  s5, 35(zero)"}}
+{"clk":1012,"type":"event","name":"F1","record_id":11,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1013,"type":"event","name":"IS","record_id":7,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1013,"type":"event","name":"DS","record_id":9,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1013,"type":"event","name":"RN","record_id":10,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1013,"type":"event","name":"F2","record_id":11,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1013,"type":"record","name":"0xFFFFFFFF00000020-AND","record_type":"Instruction","id":12,"parent_id":3,"description":"and  t1, t4, s0","data":{"pc":"0xFFFFFFFF00000020","opcode":"AND","disassembly":"and  t1, t4, s0"}}
+{"clk":1013,"type":"event","name":"F1","record_id":12,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1014,"type":"event","name":"RR","record_id":7,"description":"Register Read. Read physical registers from register file"}
+{"clk":1014,"type":"event","name":"IS","record_id":9,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1014,"type":"event","name":"DS","record_id":10,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1014,"type":"event","name":"D","record_id":11,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1014,"type":"event","name":"F2","record_id":12,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1015,"type":"event","name":"EX","record_id":7,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1015,"type":"event","name":"IS","record_id":8,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1015,"type":"event","name":"RR","record_id":9,"description":"Register Read. Read physical registers from register file"}
+{"clk":1015,"type":"event","name":"IS","record_id":10,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1015,"type":"event","name":"RN","record_id":11,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1015,"type":"event","name":"D","record_id":12,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1015,"type":"record","name":"0xFFFFFFFF00000024-JALR","record_type":"Instruction","id":13,"parent_id":3,"description":"jalr  s11, -23(a4)","data":{"pc":"0xFFFFFFFF00000024","opcode":"JALR","disassembly":"jalr  s11, -23(a4)"}}
+{"clk":1015,"type":"event","name":"F1","record_id":13,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1016,"type":"event","name":"WB","record_id":7,"description":"Writeback. Write results back to physical register file"}
+{"clk":1016,"type":"event","name":"RR","record_id":8,"description":"Register Read. Read physical registers from register file"}
+{"clk":1016,"type":"event","name":"EX","record_id":9,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1016,"type":"event","name":"RR","record_id":10,"description":"Register Read. Read physical registers from register file"}
+{"clk":1016,"type":"event","name":"DS","record_id":11,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1016,"type":"event","name":"RN","record_id":12,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1016,"type":"event","name":"F2","record_id":13,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1017,"type":"event","name":"C","record_id":7,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1017,"type":"record_end","record_id":7}
+{"clk":1017,"type":"event","name":"EX","record_id":8,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1017,"type":"event","name":"EX","record_id":10,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1017,"type":"event","name":"IS","record_id":11,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1017,"type":"event","name":"DS","record_id":12,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1017,"type":"event","name":"D","record_id":13,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1017,"type":"record","name":"0xFFFFFFFF00000028-OR","record_type":"Instruction","id":14,"parent_id":3,"description":"or  gp, s6, a3","data":{"pc":"0xFFFFFFFF00000028","opcode":"OR","disassembly":"or  gp, s6, a3"}}
+{"clk":1017,"type":"event","name":"F1","record_id":14,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1018,"type":"event","name":"WB","record_id":8,"description":"Writeback. Write results back to physical register file"}
+{"clk":1018,"type":"event","name":"WB","record_id":9,"description":"Writeback. Write results back to physical register file"}
+{"clk":1018,"type":"event","name":"WB","record_id":10,"description":"Writeback. Write results back to physical register file"}
+{"clk":1018,"type":"event","name":"RR","record_id":11,"description":"Register Read. Read physical registers from register file"}
+{"clk":1018,"type":"event","name":"IS","record_id":12,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1018,"type":"event","name":"RN","record_id":13,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1018,"type":"event","name":"F2","record_id":14,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1018,"type":"record","name":"0xFFFFFFFF0000002C-MV","record_type":"Instruction","id":15,"parent_id":3,"description":"mv  a2, a1","data":{"pc":"0xFFFFFFFF0000002C","opcode":"MV","disassembly":"mv  a2, a1"}}
+{"clk":1018,"type":"event","name":"F1","record_id":15,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1019,"type":"event","name":"C","record_id":8,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1019,"type":"record_end","record_id":8}
+{"clk":1019,"type":"event","name":"C","record_id":9,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1019,"type":"record_end","record_id":9}
+{"clk":1019,"type":"event","name":"C","record_id":10,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1019,"type":"record_end","record_id":10}
+{"clk":1019,"type":"event","name":"EX","record_id":11,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1019,"type":"event","name":"RR","record_id":12,"description":"Register Read. Read physical registers from register file"}
+{"clk":1019,"type":"event","name":"DS","record_id":13,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1019,"type":"event","name":"D","record_id":14,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1019,"type":"event","name":"F2","record_id":15,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1020,"type":"event","name":"EX","record_id":12,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1020,"type":"event","name":"RN","record_id":14,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1020,"type":"event","name":"D","record_id":15,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1020,"type":"record","name":"0xFFFFFFFF00000030-BEQ","record_type":"Instruction","id":16,"parent_id":3,"description":"beq  s9, s3, 112","data":{"pc":"0xFFFFFFFF00000030","opcode":"BEQ","disassembly":"beq  s9, s3, 112"}}
+{"clk":1020,"type":"event","name":"F1","record_id":16,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1021,"type":"event","name":"WB","record_id":11,"description":"Writeback. Write results back to physical register file"}
+{"clk":1021,"type":"event","name":"WB","record_id":12,"description":"Writeback. Write results back to physical register file"}
+{"clk":1021,"type":"event","name":"DS","record_id":14,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1021,"type":"event","name":"RN","record_id":15,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1021,"type":"event","name":"F2","record_id":16,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1022,"type":"event","name":"C","record_id":11,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1022,"type":"record_end","record_id":11}
+{"clk":1022,"type":"event","name":"C","record_id":12,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1022,"type":"record_end","record_id":12}
+{"clk":1022,"type":"event","name":"IS","record_id":13,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1022,"type":"event","name":"IS","record_id":14,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1022,"type":"event","name":"DS","record_id":15,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1022,"type":"event","name":"D","record_id":16,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1022,"type":"record","name":"0xFFFFFFFF00000034-JAL","record_type":"Instruction","id":17,"parent_id":3,"description":"jal  ra, 124","data":{"pc":"0xFFFFFFFF00000034","opcode":"JAL","disassembly":"jal  ra, 124"}}
+{"clk":1022,"type":"event","name":"F1","record_id":17,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1023,"type":"event","name":"RR","record_id":13,"description":"Register Read. Read physical registers from register file"}
+{"clk":1023,"type":"event","name":"RR","record_id":14,"description":"Register Read. Read physical registers from register file"}
+{"clk":1023,"type":"event","name":"RN","record_id":16,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1023,"type":"event","name":"F2","record_id":17,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1023,"type":"record","name":"0xFFFFFFFF00000038-SW","record_type":"Instruction","id":18,"parent_id":3,"description":"sw  sp, -32(s1)","data":{"pc":"0xFFFFFFFF00000038","opcode":"SW","disassembly":"sw  sp, -32(s1)"}}
+{"clk":1023,"type":"event","name":"F1","record_id":18,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1024,"type":"event","name":"EX","record_id":13,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1024,"type":"event","name":"EX","record_id":14,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1024,"type":"event","name":"DS","record_id":16,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1024,"type":"event","name":"D","record_id":17,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1024,"type":"event","name":"F2","record_id":18,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1024,"type":"record","name":"0xFFFFFFFF0000003C-AND","record_type":"Instruction","id":19,"parent_id":3,"description":"and  a0, a7, a2","data":{"pc":"0xFFFFFFFF0000003C","opcode":"AND","disassembly":"and  a0, a7, a2"}}
+{"clk":1024,"type":"event","name":"F1","record_id":19,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1025,"type":"event","name":"WB","record_id":13,"description":"Writeback. Write results back to physical register file"}
+{"clk":1025,"type":"event","name":"IS","record_id":15,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1025,"type":"event","name":"IS","record_id":16,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1025,"type":"event","name":"RN","record_id":17,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1025,"type":"event","name":"D","record_id":18,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1025,"type":"event","name":"F2","record_id":19,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1026,"type":"event","name":"C","record_id":13,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1026,"type":"record_end","record_id":13}
+{"clk":1026,"type":"event","name":"WB","record_id":14,"description":"Writeback. Write results back to physical register file"}
+{"clk":1026,"type":"event","name":"RR","record_id":15,"description":"Register Read. Read physical registers from register file"}
+{"clk":1026,"type":"event","name":"RR","record_id":16,"description":"Register Read. Read physical registers from register file"}
+{"clk":1026,"type":"event","name":"DS","record_id":17,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1026,"type":"event","name":"RN","record_id":18,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1026,"type":"event","name":"D","record_id":19,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1026,"type":"record","name":"0xFFFFFFFF00000040-JALR","record_type":"Instruction","id":20,"parent_id":3,"description":"jalr  a5, 45(s2)","data":{"pc":"0xFFFFFFFF00000040","opcode":"JALR","disassembly":"jalr  a5, 45(s2)"}}
+{"clk":1026,"type":"event","name":"F1","record_id":20,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1027,"type":"event","name":"C","record_id":14,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1027,"type":"record_end","record_id":14}
+{"clk":1027,"type":"event","name":"EX","record_id":15,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1027,"type":"event","name":"EX","record_id":16,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1027,"type":"event","name":"IS","record_id":17,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1027,"type":"event","name":"DS","record_id":18,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1027,"type":"event","name":"RN","record_id":19,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1027,"type":"event","name":"F2","record_id":20,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1027,"type":"record","name":"0xFFFFFFFF00000044-LI","record_type":"Instruction","id":21,"parent_id":3,"description":"li  s0, 826","data":{"pc":"0xFFFFFFFF00000044","opcode":"LI","disassembly":"li  s0, 826"}}
+{"clk":1027,"type":"event","name":"F1","record_id":21,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1028,"type":"event","name":"WB","record_id":15,"description":"Writeback. Write results back to physical register file"}
+{"clk":1028,"type":"event","name":"WB","record_id":16,"description":"Writeback. Write results back to physical register file"}
+{"clk":1028,"type":"event","name":"RR","record_id":17,"description":"Register Read. Read physical registers from register file"}
+{"clk":1028,"type":"event","name":"IS","record_id":18,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1028,"type":"event","name":"DS","record_id":19,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1028,"type":"event","name":"D","record_id":20,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1028,"type":"event","name":"F2","record_id":21,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1029,"type":"event","name":"C","record_id":15,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1029,"type":"record_end","record_id":15}
+{"clk":1029,"type":"event","name":"C","record_id":16,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1029,"type":"record_end","record_id":16}
+{"clk":1029,"type":"event","name":"EX","record_id":17,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1029,"type":"event","name":"RR","record_id":18,"description":"Register Read. Read physical registers from register file"}
+{"clk":1029,"type":"event","name":"IS","record_id":19,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1029,"type":"event","name":"RN","record_id":20,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1029,"type":"event","name":"D","record_id":21,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1029,"type":"record","name":"0xFFFFFFFF00000048-SW","record_type":"Instruction","id":22,"parent_id":3,"description":"sw  t0, 67(a6)","data":{"pc":"0xFFFFFFFF00000048","opcode":"SW","disassembly":"sw  t0, 67(a6)"}}
+{"clk":1029,"type":"event","name":"F1","record_id":22,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1030,"type":"event","name":"EX","record_id":18,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1030,"type":"event","name":"RR","record_id":19,"description":"Register Read. Read physical registers from register file"}
+{"clk":1030,"type":"event","name":"DS","record_id":20,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1030,"type":"event","name":"RN","record_id":21,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1030,"type":"event","name":"F2","record_id":22,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1031,"type":"event","name":"WB","record_id":17,"description":"Writeback. Write results back to physical register file"}
+{"clk":1031,"type":"event","name":"M","record_id":18,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1031,"type":"event","name":"EX","record_id":19,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1031,"type":"event","name":"IS","record_id":20,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1031,"type":"event","name":"DS","record_id":21,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1031,"type":"event","name":"D","record_id":22,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1031,"type":"record","name":"0xFFFFFFFF0000004C-ADDI","record_type":"Instruction","id":23,"parent_id":3,"description":"addi  a3, s8, 27","data":{"pc":"0xFFFFFFFF0000004C","opcode":"ADDI","disassembly":"addi  a3, s8, 27"}}
+{"clk":1031,"type":"event","name":"F1","record_id":23,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1032,"type":"event","name":"C","record_id":17,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1032,"type":"record_end","record_id":17}
+{"clk":1032,"type":"event","name":"WB","record_id":19,"description":"Writeback. Write results back to physical register file"}
+{"clk":1032,"type":"event","name":"RR","record_id":20,"description":"Register Read. Read physical registers from register file"}
+{"clk":1032,"type":"event","name":"IS","record_id":21,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1032,"type":"event","name":"RN","record_id":22,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1032,"type":"event","name":"F2","record_id":23,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1032,"type":"record","name":"0xFFFFFFFF00000050-LW","record_type":"Instruction","id":24,"parent_id":3,"description":"lw  t5, -4(s5)","data":{"pc":"0xFFFFFFFF00000050","opcode":"LW","disassembly":"lw  t5, -4(s5)"}}
+{"clk":1032,"type":"event","name":"F1","record_id":24,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1033,"type":"event","name":"C","record_id":19,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1033,"type":"record_end","record_id":19}
+{"clk":1033,"type":"event","name":"EX","record_id":20,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1033,"type":"event","name":"RR","record_id":21,"description":"Register Read. Read physical registers from register file"}
+{"clk":1033,"type":"event","name":"DS","record_id":22,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1033,"type":"event","name":"D","record_id":23,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1033,"type":"event","name":"F2","record_id":24,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1033,"type":"record","name":"0xFFFFFFFF00000054-SW","record_type":"Instruction","id":25,"parent_id":3,"description":"sw  t1, -76(t4)","data":{"pc":"0xFFFFFFFF00000054","opcode":"SW","disassembly":"sw  t1, -76(t4)"}}
+{"clk":1033,"type":"event","name":"F1","record_id":25,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1034,"type":"event","name":"WB","record_id":18,"description":"Writeback. Write results back to physical register file"}
+{"clk":1034,"type":"event","name":"EX","record_id":21,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1034,"type":"event","name":"IS","record_id":22,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1034,"type":"event","name":"RN","record_id":23,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1034,"type":"event","name":"D","record_id":24,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1034,"type":"event","name":"F2","record_id":25,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1035,"type":"event","name":"C","record_id":18,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1035,"type":"record_end","record_id":18}
+{"clk":1035,"type":"event","name":"WB","record_id":20,"description":"Writeback. Write results back to physical register file"}
+{"clk":1035,"type":"event","name":"WB","record_id":21,"description":"Writeback. Write results back to physical register file"}
+{"clk":1035,"type":"event","name":"RR","record_id":22,"description":"Register Read. Read physical registers from register file"}
+{"clk":1035,"type":"event","name":"DS","record_id":23,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1035,"type":"event","name":"RN","record_id":24,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1035,"type":"event","name":"D","record_id":25,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1035,"type":"record","name":"0xFFFFFFFF00000058-OR","record_type":"Instruction","id":26,"parent_id":3,"description":"or  t0, a6, t6","data":{"pc":"0xFFFFFFFF00000058","opcode":"OR","disassembly":"or  t0, a6, t6"}}
+{"clk":1035,"type":"event","name":"F1","record_id":26,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1036,"type":"event","name":"C","record_id":20,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1036,"type":"record_end","record_id":20}
+{"clk":1036,"type":"event","name":"C","record_id":21,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1036,"type":"record_end","record_id":21}
+{"clk":1036,"type":"event","name":"EX","record_id":22,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1036,"type":"event","name":"IS","record_id":23,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1036,"type":"event","name":"DS","record_id":24,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1036,"type":"event","name":"RN","record_id":25,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1036,"type":"event","name":"F2","record_id":26,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1036,"type":"record","name":"0xFFFFFFFF0000005C-AND","record_type":"Instruction","id":27,"parent_id":3,"description":"and  s6, a3, s8","data":{"pc":"0xFFFFFFFF0000005C","opcode":"AND","disassembly":"and  s6, a3, s8"}}
+{"clk":1036,"type":"event","name":"F1","record_id":27,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1037,"type":"event","name":"RR","record_id":23,"description":"Register Read. Read physical registers from register file"}
+{"clk":1037,"type":"event","name":"IS","record_id":24,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1037,"type":"event","name":"DS","record_id":25,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1037,"type":"event","name":"D","record_id":26,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1037,"type":"event","name":"F2","record_id":27,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1037,"type":"record","name":"0xFFFFFFFF00000060-BEQ","record_type":"Instruction","id":28,"parent_id":3,"description":"beq  t5, zero, 100","data":{"pc":"0xFFFFFFFF00000060","opcode":"BEQ","disassembly":"beq  t5, zero, 100"}}
+{"clk":1037,"type":"event","name":"F1","record_id":28,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1038,"type":"event","name":"M","record_id":22,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1038,"type":"event","name":"EX","record_id":23,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1038,"type":"event","name":"RR","record_id":24,"description":"Register Read. Read physical registers from register file"}
+{"clk":1038,"type":"event","name":"RN","record_id":26,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1038,"type":"event","name":"D","record_id":27,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1038,"type":"event","name":"F2","record_id":28,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1038,"type":"record","name":"0xFFFFFFFF00000064-BEQ","record_type":"Instruction","id":29,"parent_id":3,"description":"beq  t1, s0, 20","data":{"pc":"0xFFFFFFFF00000064","opcode":"BEQ","disassembly":"beq  t1, s0, 20"}}
+{"clk":1038,"type":"event","name":"F1","record_id":29,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1039,"type":"event","name":"EX","record_id":24,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1039,"type":"event","name":"IS","record_id":25,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1039,"type":"event","name":"DS","record_id":26,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1039,"type":"event","name":"RN","record_id":27,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1039,"type":"event","name":"D","record_id":28,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1039,"type":"event","name":"F2","record_id":29,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1039,"type":"record","name":"0xFFFFFFFF00000068-SLL","record_type":"Instruction","id":30,"parent_id":3,"description":"sll  a4, t0, a6","data":{"pc":"0xFFFFFFFF00000068","opcode":"SLL","disassembly":"sll  a4, t0, a6"}}
+{"clk":1039,"type":"event","name":"F1","record_id":30,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1040,"type":"event","name":"WB","record_id":22,"description":"Writeback. Write results back to physical register file"}
+{"clk":1040,"type":"event","name":"WB","record_id":23,"description":"Writeback. Write results back to physical register file"}
+{"clk":1040,"type":"event","name":"M","record_id":24,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1040,"type":"event","name":"RR","record_id":25,"description":"Register Read. Read physical registers from register file"}
+{"clk":1040,"type":"event","name":"IS","record_id":26,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1040,"type":"event","name":"DS","record_id":27,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1040,"type":"event","name":"RN","record_id":28,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1040,"type":"event","name":"D","record_id":29,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1040,"type":"event","name":"F2","record_id":30,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1041,"type":"event","name":"C","record_id":22,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1041,"type":"record_end","record_id":22}
+{"clk":1041,"type":"event","name":"C","record_id":23,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1041,"type":"record_end","record_id":23}
+{"clk":1041,"type":"event","name":"EX","record_id":25,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1041,"type":"event","name":"RR","record_id":26,"description":"Register Read. Read physical registers from register file"}
+{"clk":1041,"type":"event","name":"DS","record_id":28,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1041,"type":"event","name":"RN","record_id":29,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1041,"type":"event","name":"D","record_id":30,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1041,"type":"record","name":"0xFFFFFFFF0000006C-ADD","record_type":"Instruction","id":31,"parent_id":3,"description":"add  gp, s6, a3","data":{"pc":"0xFFFFFFFF0000006C","opcode":"ADD","disassembly":"add  gp, s6, a3"}}
+{"clk":1041,"type":"event","name":"F1","record_id":31,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1042,"type":"event","name":"EX","record_id":26,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1042,"type":"event","name":"IS","record_id":27,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1042,"type":"event","name":"IS","record_id":28,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1042,"type":"event","name":"DS","record_id":29,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1042,"type":"event","name":"RN","record_id":30,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1042,"type":"event","name":"F2","record_id":31,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1043,"type":"event","name":"WB","record_id":24,"description":"Writeback. Write results back to physical register file"}
+{"clk":1043,"type":"event","name":"M","record_id":25,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1043,"type":"event","name":"RR","record_id":27,"description":"Register Read. Read physical registers from register file"}
+{"clk":1043,"type":"event","name":"RR","record_id":28,"description":"Register Read. Read physical registers from register file"}
+{"clk":1043,"type":"event","name":"IS","record_id":29,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1043,"type":"event","name":"DS","record_id":30,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1043,"type":"event","name":"D","record_id":31,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1043,"type":"record","name":"0xFFFFFFFF00000070-BEQ","record_type":"Instruction","id":32,"parent_id":3,"description":"beq  a1, s5, 168","data":{"pc":"0xFFFFFFFF00000070","opcode":"BEQ","disassembly":"beq  a1, s5, 168"}}
+{"clk":1043,"type":"event","name":"F1","record_id":32,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1044,"type":"event","name":"C","record_id":24,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1044,"type":"record_end","record_id":24}
+{"clk":1044,"type":"event","name":"WB","record_id":26,"description":"Writeback. Write results back to physical register file"}
+{"clk":1044,"type":"event","name":"EX","record_id":27,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1044,"type":"event","name":"EX","record_id":28,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1044,"type":"event","name":"RR","record_id":29,"description":"Register Read. Read physical registers from register file"}
+{"clk":1044,"type":"event","name":"IS","record_id":30,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1044,"type":"event","name":"RN","record_id":31,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1044,"type":"event","name":"F2","record_id":32,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1045,"type":"event","name":"WB","record_id":25,"description":"Writeback. Write results back to physical register file"}
+{"clk":1045,"type":"event","name":"C","record_id":26,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1045,"type":"record_end","record_id":26}
+{"clk":1045,"type":"event","name":"EX","record_id":29,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1045,"type":"event","name":"RR","record_id":30,"description":"Register Read. Read physical registers from register file"}
+{"clk":1045,"type":"event","name":"DS","record_id":31,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1045,"type":"event","name":"D","record_id":32,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1045,"type":"record","name":"0xFFFFFFFF00000074-ADDI","record_type":"Instruction","id":33,"parent_id":3,"description":"addi  s3, t1, 57","data":{"pc":"0xFFFFFFFF00000074","opcode":"ADDI","disassembly":"addi  s3, t1, 57"}}
+{"clk":1045,"type":"event","name":"F1","record_id":33,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1046,"type":"event","name":"C","record_id":25,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1046,"type":"record_end","record_id":25}
+{"clk":1046,"type":"event","name":"WB","record_id":27,"description":"Writeback. Write results back to physical register file"}
+{"clk":1046,"type":"event","name":"WB","record_id":28,"description":"Writeback. Write results back to physical register file"}
+{"clk":1046,"type":"event","name":"EX","record_id":30,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1046,"type":"event","name":"RN","record_id":32,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1046,"type":"event","name":"F2","record_id":33,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1047,"type":"event","name":"C","record_id":27,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1047,"type":"record_end","record_id":27}
+{"clk":1047,"type":"event","name":"C","record_id":28,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1047,"type":"record_end","record_id":28}
+{"clk":1047,"type":"event","name":"WB","record_id":29,"description":"Writeback. Write results back to physical register file"}
+{"clk":1047,"type":"event","name":"WB","record_id":30,"description":"Writeback. Write results back to physical register file"}
+{"clk":1047,"type":"event","name":"IS","record_id":31,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1047,"type":"event","name":"DS","record_id":32,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1047,"type":"event","name":"D","record_id":33,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1047,"type":"record","name":"0xFFFFFFFF00000078-AND","record_type":"Instruction","id":34,"parent_id":3,"description":"and  s11, a4, t0","data":{"pc":"0xFFFFFFFF00000078","opcode":"AND","disassembly":"and  s11, a4, t0"}}
+{"clk":1047,"type":"event","name":"F1","record_id":34,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1048,"type":"event","name":"C","record_id":29,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1048,"type":"record_end","record_id":29}
+{"clk":1048,"type":"event","name":"C","record_id":30,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1048,"type":"record_end","record_id":30}
+{"clk":1048,"type":"event","name":"RR","record_id":31,"description":"Register Read. Read physical registers from register file"}
+{"clk":1048,"type":"event","name":"IS","record_id":32,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1048,"type":"event","name":"RN","record_id":33,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1048,"type":"event","name":"F2","record_id":34,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1048,"type":"record","name":"0xFFFFFFFF0000007C-AND","record_type":"Instruction","id":35,"parent_id":3,"description":"and  tp, gp, s6","data":{"pc":"0xFFFFFFFF0000007C","opcode":"AND","disassembly":"and  tp, gp, s6"}}
+{"clk":1048,"type":"event","name":"F1","record_id":35,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1049,"type":"event","name":"EX","record_id":31,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1049,"type":"event","name":"RR","record_id":32,"description":"Register Read. Read physical registers from register file"}
+{"clk":1049,"type":"event","name":"DS","record_id":33,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1049,"type":"event","name":"D","record_id":34,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1049,"type":"event","name":"F2","record_id":35,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1050,"type":"event","name":"WB","record_id":31,"description":"Writeback. Write results back to physical register file"}
+{"clk":1050,"type":"event","name":"EX","record_id":32,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1050,"type":"event","name":"RN","record_id":34,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1050,"type":"event","name":"D","record_id":35,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1050,"type":"record","name":"0xFFFFFFFF00000080-LI","record_type":"Instruction","id":36,"parent_id":3,"description":"li  a7, -1781","data":{"pc":"0xFFFFFFFF00000080","opcode":"LI","disassembly":"li  a7, -1781"}}
+{"clk":1050,"type":"event","name":"F1","record_id":36,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1051,"type":"event","name":"C","record_id":31,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1051,"type":"record_end","record_id":31}
+{"clk":1051,"type":"event","name":"WB","record_id":32,"description":"Writeback. Write results back to physical register file"}
+{"clk":1051,"type":"event","name":"IS","record_id":33,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1051,"type":"event","name":"DS","record_id":34,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1051,"type":"event","name":"RN","record_id":35,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1051,"type":"event","name":"F2","record_id":36,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1051,"type":"record","name":"0xFFFFFFFF00000084-SLL","record_type":"Instruction","id":37,"parent_id":3,"description":"sll  s2, s9, s4","data":{"pc":"0xFFFFFFFF00000084","opcode":"SLL","disassembly":"sll  s2, s9, s4"}}
+{"clk":1051,"type":"event","name":"F1","record_id":37,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1052,"type":"event","name":"C","record_id":32,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1052,"type":"record_end","record_id":32}
+{"clk":1052,"type":"event","name":"RR","record_id":33,"description":"Register Read. Read physical registers from register file"}
+{"clk":1052,"type":"event","name":"IS","record_id":34,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1052,"type":"event","name":"DS","record_id":35,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1052,"type":"event","name":"D","record_id":36,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1052,"type":"event","name":"F2","record_id":37,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1052,"type":"record","name":"0xFFFFFFFF00000088-JALR","record_type":"Instruction","id":38,"parent_id":3,"description":"jalr  s10, -64(ra)","data":{"pc":"0xFFFFFFFF00000088","opcode":"JALR","disassembly":"jalr  s10, -64(ra)"}}
+{"clk":1052,"type":"event","name":"F1","record_id":38,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1053,"type":"event","name":"EX","record_id":33,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1053,"type":"event","name":"RR","record_id":34,"description":"Register Read. Read physical registers from register file"}
+{"clk":1053,"type":"event","name":"IS","record_id":35,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1053,"type":"event","name":"RN","record_id":36,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1053,"type":"event","name":"D","record_id":37,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1053,"type":"event","name":"F2","record_id":38,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1054,"type":"event","name":"WB","record_id":33,"description":"Writeback. Write results back to physical register file"}
+{"clk":1054,"type":"event","name":"EX","record_id":34,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1054,"type":"event","name":"RR","record_id":35,"description":"Register Read. Read physical registers from register file"}
+{"clk":1054,"type":"event","name":"DS","record_id":36,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1054,"type":"event","name":"RN","record_id":37,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1054,"type":"event","name":"D","record_id":38,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1054,"type":"record","name":"0xFFFFFFFF0000008C-SLL","record_type":"Instruction","id":39,"parent_id":3,"description":"sll  t6, sp, s1","data":{"pc":"0xFFFFFFFF0000008C","opcode":"SLL","disassembly":"sll  t6, sp, s1"}}
+{"clk":1054,"type":"event","name":"F1","record_id":39,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1055,"type":"event","name":"C","record_id":33,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1055,"type":"record_end","record_id":33}
+{"clk":1055,"type":"event","name":"EX","record_id":35,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1055,"type":"event","name":"IS","record_id":36,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1055,"type":"event","name":"DS","record_id":37,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1055,"type":"event","name":"RN","record_id":38,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1055,"type":"event","name":"F2","record_id":39,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1055,"type":"record","name":"0xFFFFFFFF00000090-SLL","record_type":"Instruction","id":40,"parent_id":3,"description":"sll  s8, t2, a0","data":{"pc":"0xFFFFFFFF00000090","opcode":"SLL","disassembly":"sll  s8, t2, a0"}}
+{"clk":1055,"type":"event","name":"F1","record_id":40,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1056,"type":"event","name":"WB","record_id":34,"description":"Writeback. Write results back to physical register file"}
+{"clk":1056,"type":"event","name":"WB","record_id":35,"description":"Writeback. Write results back to physical register file"}
+{"clk":1056,"type":"event","name":"RR","record_id":36,"description":"Register Read. Read physical registers from register file"}
+{"clk":1056,"type":"event","name":"DS","record_id":38,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1056,"type":"event","name":"D","record_id":39,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1056,"type":"event","name":"F2","record_id":40,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1057,"type":"event","name":"C","record_id":34,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1057,"type":"record_end","record_id":34}
+{"clk":1057,"type":"event","name":"C","record_id":35,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1057,"type":"record_end","record_id":35}
+{"clk":1057,"type":"event","name":"EX","record_id":36,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1057,"type":"event","name":"IS","record_id":38,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1057,"type":"event","name":"RN","record_id":39,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1057,"type":"event","name":"D","record_id":40,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1057,"type":"record","name":"0xFFFFFFFF00000094-SRL","record_type":"Instruction","id":41,"parent_id":3,"description":"srl  s5, zero, a5","data":{"pc":"0xFFFFFFFF00000094","opcode":"SRL","disassembly":"srl  s5, zero, a5"}}
+{"clk":1057,"type":"event","name":"F1","record_id":41,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1058,"type":"event","name":"RR","record_id":38,"description":"Register Read. Read physical registers from register file"}
+{"clk":1058,"type":"event","name":"DS","record_id":39,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1058,"type":"event","name":"RN","record_id":40,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1058,"type":"event","name":"F2","record_id":41,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1059,"type":"event","name":"WB","record_id":36,"description":"Writeback. Write results back to physical register file"}
+{"clk":1059,"type":"event","name":"IS","record_id":37,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1059,"type":"event","name":"EX","record_id":38,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1059,"type":"event","name":"IS","record_id":39,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1059,"type":"event","name":"DS","record_id":40,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1059,"type":"event","name":"D","record_id":41,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1059,"type":"record","name":"0xFFFFFFFF00000098-SLL","record_type":"Instruction","id":42,"parent_id":3,"description":"sll  t4, s0, s7","data":{"pc":"0xFFFFFFFF00000098","opcode":"SLL","disassembly":"sll  t4, s0, s7"}}
+{"clk":1059,"type":"event","name":"F1","record_id":42,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1060,"type":"event","name":"C","record_id":36,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1060,"type":"record_end","record_id":36}
+{"clk":1060,"type":"event","name":"RR","record_id":37,"description":"Register Read. Read physical registers from register file"}
+{"clk":1060,"type":"event","name":"WB","record_id":38,"description":"Writeback. Write results back to physical register file"}
+{"clk":1060,"type":"event","name":"RR","record_id":39,"description":"Register Read. Read physical registers from register file"}
+{"clk":1060,"type":"event","name":"IS","record_id":40,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1060,"type":"event","name":"RN","record_id":41,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1060,"type":"event","name":"F2","record_id":42,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1060,"type":"record","name":"0xFFFFFFFF0000009C-SRL","record_type":"Instruction","id":43,"parent_id":3,"description":"srl  a4, t0, a6","data":{"pc":"0xFFFFFFFF0000009C","opcode":"SRL","disassembly":"srl  a4, t0, a6"}}
+{"clk":1060,"type":"event","name":"F1","record_id":43,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1061,"type":"event","name":"EX","record_id":37,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1061,"type":"event","name":"C","record_id":38,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1061,"type":"record_end","record_id":38}
+{"clk":1061,"type":"event","name":"EX","record_id":39,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1061,"type":"event","name":"RR","record_id":40,"description":"Register Read. Read physical registers from register file"}
+{"clk":1061,"type":"event","name":"DS","record_id":41,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1061,"type":"event","name":"D","record_id":42,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1061,"type":"event","name":"F2","record_id":43,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1062,"type":"event","name":"EX","record_id":40,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1062,"type":"event","name":"RN","record_id":42,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1062,"type":"event","name":"D","record_id":43,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1062,"type":"record","name":"0xFFFFFFFF000000A0-MV","record_type":"Instruction","id":44,"parent_id":3,"description":"mv  gp, s6","data":{"pc":"0xFFFFFFFF000000A0","opcode":"MV","disassembly":"mv  gp, s6"}}
+{"clk":1062,"type":"event","name":"F1","record_id":44,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1063,"type":"event","name":"WB","record_id":37,"description":"Writeback. Write results back to physical register file"}
+{"clk":1063,"type":"event","name":"WB","record_id":39,"description":"Writeback. Write results back to physical register file"}
+{"clk":1063,"type":"event","name":"WB","record_id":40,"description":"Writeback. Write results back to physical register file"}
+{"clk":1063,"type":"event","name":"DS","record_id":42,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1063,"type":"event","name":"RN","record_id":43,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1063,"type":"event","name":"F2","record_id":44,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1064,"type":"event","name":"C","record_id":37,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1064,"type":"record_end","record_id":37}
+{"clk":1064,"type":"event","name":"C","record_id":39,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1064,"type":"record_end","record_id":39}
+{"clk":1064,"type":"event","name":"C","record_id":40,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1064,"type":"record_end","record_id":40}
+{"clk":1064,"type":"event","name":"IS","record_id":42,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1064,"type":"event","name":"DS","record_id":43,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1064,"type":"event","name":"D","record_id":44,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1064,"type":"record","name":"0xFFFFFFFF000000A4-SRL","record_type":"Instruction","id":45,"parent_id":3,"description":"srl  a7, a2, a1","data":{"pc":"0xFFFFFFFF000000A4","opcode":"SRL","disassembly":"srl  a7, a2, a1"}}
+{"clk":1064,"type":"event","name":"F1","record_id":45,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1065,"type":"event","name":"IS","record_id":41,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1065,"type":"event","name":"RR","record_id":42,"description":"Register Read. Read physical registers from register file"}
+{"clk":1065,"type":"event","name":"IS","record_id":43,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1065,"type":"event","name":"RN","record_id":44,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1065,"type":"event","name":"F2","record_id":45,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1066,"type":"event","name":"RR","record_id":41,"description":"Register Read. Read physical registers from register file"}
+{"clk":1066,"type":"event","name":"EX","record_id":42,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1066,"type":"event","name":"RR","record_id":43,"description":"Register Read. Read physical registers from register file"}
+{"clk":1066,"type":"event","name":"DS","record_id":44,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1066,"type":"event","name":"D","record_id":45,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1066,"type":"record","name":"0xFFFFFFFF000000A8-LW","record_type":"Instruction","id":46,"parent_id":3,"description":"lw  s9, 55(s4)","data":{"pc":"0xFFFFFFFF000000A8","opcode":"LW","disassembly":"lw  s9, 55(s4)"}}
+{"clk":1066,"type":"event","name":"F1","record_id":46,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1067,"type":"event","name":"EX","record_id":41,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1067,"type":"event","name":"EX","record_id":43,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1067,"type":"event","name":"IS","record_id":44,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1067,"type":"event","name":"RN","record_id":45,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1067,"type":"event","name":"F2","record_id":46,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1068,"type":"event","name":"WB","record_id":41,"description":"Writeback. Write results back to physical register file"}
+{"clk":1068,"type":"event","name":"WB","record_id":42,"description":"Writeback. Write results back to physical register file"}
+{"clk":1068,"type":"event","name":"WB","record_id":43,"description":"Writeback. Write results back to physical register file"}
+{"clk":1068,"type":"event","name":"RR","record_id":44,"description":"Register Read. Read physical registers from register file"}
+{"clk":1068,"type":"event","name":"DS","record_id":45,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1068,"type":"event","name":"D","record_id":46,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1068,"type":"record","name":"0xFFFFFFFF000000AC-LI","record_type":"Instruction","id":47,"parent_id":3,"description":"li  ra, 1115","data":{"pc":"0xFFFFFFFF000000AC","opcode":"LI","disassembly":"li  ra, 1115"}}
+{"clk":1068,"type":"event","name":"F1","record_id":47,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1069,"type":"event","name":"C","record_id":41,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1069,"type":"record_end","record_id":41}
+{"clk":1069,"type":"event","name":"C","record_id":42,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1069,"type":"record_end","record_id":42}
+{"clk":1069,"type":"event","name":"C","record_id":43,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1069,"type":"record_end","record_id":43}
+{"clk":1069,"type":"event","name":"EX","record_id":44,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1069,"type":"event","name":"RN","record_id":46,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1069,"type":"event","name":"F2","record_id":47,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1070,"type":"event","name":"WB","record_id":44,"description":"Writeback. Write results back to physical register file"}
+{"clk":1070,"type":"event","name":"DS","record_id":46,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1070,"type":"event","name":"D","record_id":47,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1070,"type":"record","name":"0xFFFFFFFF000000B0-SRL","record_type":"Instruction","id":48,"parent_id":3,"description":"srl  s1, tp, gp","data":{"pc":"0xFFFFFFFF000000B0","opcode":"SRL","disassembly":"srl  s1, tp, gp"}}
+{"clk":1070,"type":"event","name":"F1","record_id":48,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1071,"type":"event","name":"C","record_id":44,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1071,"type":"record_end","record_id":44}
+{"clk":1071,"type":"event","name":"IS","record_id":46,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1071,"type":"event","name":"RN","record_id":47,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1071,"type":"event","name":"F2","record_id":48,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1071,"type":"record","name":"0xFFFFFFFF000000B4-JALR","record_type":"Instruction","id":49,"parent_id":3,"description":"jalr  a0, 72(a7)","data":{"pc":"0xFFFFFFFF000000B4","opcode":"JALR","disassembly":"jalr  a0, 72(a7)"}}
+{"clk":1071,"type":"event","name":"F1","record_id":49,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1072,"type":"event","name":"IS","record_id":45,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1072,"type":"event","name":"RR","record_id":46,"description":"Register Read. Read physical registers from register file"}
+{"clk":1072,"type":"event","name":"DS","record_id":47,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1072,"type":"event","name":"D","record_id":48,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1072,"type":"event","name":"F2","record_id":49,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1073,"type":"event","name":"RR","record_id":45,"description":"Register Read. Read physical registers from register file"}
+{"clk":1073,"type":"event","name":"EX","record_id":46,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1073,"type":"event","name":"RN","record_id":48,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1073,"type":"event","name":"D","record_id":49,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1073,"type":"record","name":"0xFFFFFFFF000000B8-ADD","record_type":"Instruction","id":50,"parent_id":3,"description":"add  a5, s2, s9","data":{"pc":"0xFFFFFFFF000000B8","opcode":"ADD","disassembly":"add  a5, s2, s9"}}
+{"clk":1073,"type":"event","name":"F1","record_id":50,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1074,"type":"event","name":"EX","record_id":45,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1074,"type":"event","name":"DS","record_id":48,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1074,"type":"event","name":"RN","record_id":49,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1074,"type":"event","name":"F2","record_id":50,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1075,"type":"event","name":"WB","record_id":45,"description":"Writeback. Write results back to physical register file"}
+{"clk":1075,"type":"event","name":"M","record_id":46,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1075,"type":"event","name":"IS","record_id":48,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1075,"type":"event","name":"DS","record_id":49,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1075,"type":"event","name":"D","record_id":50,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1075,"type":"record","name":"0xFFFFFFFF000000BC-SW","record_type":"Instruction","id":51,"parent_id":3,"description":"sw  s7, 69(s10)","data":{"pc":"0xFFFFFFFF000000BC","opcode":"SW","disassembly":"sw  s7, 69(s10)"}}
+{"clk":1075,"type":"event","name":"F1","record_id":51,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1076,"type":"event","name":"C","record_id":45,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1076,"type":"record_end","record_id":45}
+{"clk":1076,"type":"event","name":"IS","record_id":47,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1076,"type":"event","name":"RR","record_id":48,"description":"Register Read. Read physical registers from register file"}
+{"clk":1076,"type":"event","name":"IS","record_id":49,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1076,"type":"event","name":"RN","record_id":50,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1076,"type":"event","name":"F2","record_id":51,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1077,"type":"event","name":"WB","record_id":46,"description":"Writeback. Write results back to physical register file"}
+{"clk":1077,"type":"event","name":"RR","record_id":47,"description":"Register Read. Read physical registers from register file"}
+{"clk":1077,"type":"event","name":"EX","record_id":48,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1077,"type":"event","name":"RR","record_id":49,"description":"Register Read. Read physical registers from register file"}
+{"clk":1077,"type":"event","name":"DS","record_id":50,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1077,"type":"event","name":"D","record_id":51,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1077,"type":"record","name":"0xFFFFFFFF000000C0-MV","record_type":"Instruction","id":52,"parent_id":3,"description":"mv  t6, sp","data":{"pc":"0xFFFFFFFF000000C0","opcode":"MV","disassembly":"mv  t6, sp"}}
+{"clk":1077,"type":"event","name":"F1","record_id":52,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1078,"type":"event","name":"C","record_id":46,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1078,"type":"record_end","record_id":46}
+{"clk":1078,"type":"event","name":"EX","record_id":47,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1078,"type":"event","name":"EX","record_id":49,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1078,"type":"event","name":"RN","record_id":51,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1078,"type":"event","name":"F2","record_id":52,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1079,"type":"event","name":"WB","record_id":47,"description":"Writeback. Write results back to physical register file"}
+{"clk":1079,"type":"event","name":"WB","record_id":48,"description":"Writeback. Write results back to physical register file"}
+{"clk":1079,"type":"event","name":"WB","record_id":49,"description":"Writeback. Write results back to physical register file"}
+{"clk":1079,"type":"event","name":"DS","record_id":51,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1079,"type":"event","name":"D","record_id":52,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1079,"type":"record","name":"0xFFFFFFFF000000C4-SRL","record_type":"Instruction","id":53,"parent_id":3,"description":"srl  a3, s8, t2","data":{"pc":"0xFFFFFFFF000000C4","opcode":"SRL","disassembly":"srl  a3, s8, t2"}}
+{"clk":1079,"type":"event","name":"F1","record_id":53,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1080,"type":"event","name":"C","record_id":47,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1080,"type":"record_end","record_id":47}
+{"clk":1080,"type":"event","name":"C","record_id":48,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1080,"type":"record_end","record_id":48}
+{"clk":1080,"type":"event","name":"C","record_id":49,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1080,"type":"record_end","record_id":49}
+{"clk":1080,"type":"event","name":"IS","record_id":50,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1080,"type":"event","name":"IS","record_id":51,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1080,"type":"event","name":"RN","record_id":52,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1080,"type":"event","name":"F2","record_id":53,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1080,"type":"record","name":"0xFFFFFFFF000000C8-SW","record_type":"Instruction","id":54,"parent_id":3,"description":"sw  t5, 60(s5)","data":{"pc":"0xFFFFFFFF000000C8","opcode":"SW","disassembly":"sw  t5, 60(s5)"}}
+{"clk":1080,"type":"event","name":"F1","record_id":54,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1081,"type":"event","name":"RR","record_id":50,"description":"Register Read. Read physical registers from register file"}
+{"clk":1081,"type":"event","name":"RR","record_id":51,"description":"Register Read. Read physical registers from register file"}
+{"clk":1081,"type":"event","name":"DS","record_id":52,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1081,"type":"event","name":"D","record_id":53,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1081,"type":"event","name":"F2","record_id":54,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1082,"type":"event","name":"EX","record_id":50,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1082,"type":"event","name":"EX","record_id":51,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1082,"type":"event","name":"IS","record_id":52,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1082,"type":"event","name":"RN","record_id":53,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1082,"type":"event","name":"D","record_id":54,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1082,"type":"record","name":"0xFFFFFFFF000000CC-BEQ","record_type":"Instruction","id":55,"parent_id":3,"description":"beq  t4, s7, -32","data":{"pc":"0xFFFFFFFF000000CC","opcode":"BEQ","disassembly":"beq  t4, s7, -32"}}
+{"clk":1082,"type":"event","name":"F1","record_id":55,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1083,"type":"event","name":"WB","record_id":50,"description":"Writeback. Write results back to physical register file"}
+{"clk":1083,"type":"event","name":"RR","record_id":52,"description":"Register Read. Read physical registers from register file"}
+{"clk":1083,"type":"event","name":"DS","record_id":53,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1083,"type":"event","name":"RN","record_id":54,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1083,"type":"event","name":"F2","record_id":55,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1084,"type":"event","name":"C","record_id":50,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1084,"type":"record_end","record_id":50}
+{"clk":1084,"type":"event","name":"M","record_id":51,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1084,"type":"event","name":"EX","record_id":52,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1084,"type":"event","name":"IS","record_id":53,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1084,"type":"event","name":"DS","record_id":54,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1084,"type":"event","name":"D","record_id":55,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1084,"type":"record","name":"0xFFFFFFFF000000D0-XOR","record_type":"Instruction","id":56,"parent_id":3,"description":"xor  t0, a6, t6","data":{"pc":"0xFFFFFFFF000000D0","opcode":"XOR","disassembly":"xor  t0, a6, t6"}}
+{"clk":1084,"type":"event","name":"F1","record_id":56,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1085,"type":"event","name":"WB","record_id":52,"description":"Writeback. Write results back to physical register file"}
+{"clk":1085,"type":"event","name":"RR","record_id":53,"description":"Register Read. Read physical registers from register file"}
+{"clk":1085,"type":"event","name":"RN","record_id":55,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1085,"type":"event","name":"F2","record_id":56,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1085,"type":"record","name":"0xFFFFFFFF000000D4-OR","record_type":"Instruction","id":57,"parent_id":3,"description":"or  s6, a3, s8","data":{"pc":"0xFFFFFFFF000000D4","opcode":"OR","disassembly":"or  s6, a3, s8"}}
+{"clk":1085,"type":"event","name":"F1","record_id":57,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1086,"type":"event","name":"C","record_id":52,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1086,"type":"record_end","record_id":52}
+{"clk":1086,"type":"event","name":"EX","record_id":53,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1086,"type":"event","name":"DS","record_id":55,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1086,"type":"event","name":"D","record_id":56,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1086,"type":"event","name":"F2","record_id":57,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1086,"type":"record","name":"0xFFFFFFFF000000D8-JALR","record_type":"Instruction","id":58,"parent_id":3,"description":"jalr  t5, -92(s5)","data":{"pc":"0xFFFFFFFF000000D8","opcode":"JALR","disassembly":"jalr  t5, -92(s5)"}}
+{"clk":1086,"type":"event","name":"F1","record_id":58,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1087,"type":"event","name":"IS","record_id":55,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1087,"type":"event","name":"RN","record_id":56,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1087,"type":"event","name":"D","record_id":57,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1087,"type":"event","name":"F2","record_id":58,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1087,"type":"record","name":"0xFFFFFFFF000000DC-ADDI","record_type":"Instruction","id":59,"parent_id":3,"description":"addi  t1, t4, 84","data":{"pc":"0xFFFFFFFF000000DC","opcode":"ADDI","disassembly":"addi  t1, t4, 84"}}
+{"clk":1087,"type":"event","name":"F1","record_id":59,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1088,"type":"event","name":"WB","record_id":51,"description":"Writeback. Write results back to physical register file"}
+{"clk":1088,"type":"event","name":"WB","record_id":53,"description":"Writeback. Write results back to physical register file"}
+{"clk":1088,"type":"event","name":"IS","record_id":54,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1088,"type":"event","name":"RR","record_id":55,"description":"Register Read. Read physical registers from register file"}
+{"clk":1088,"type":"event","name":"DS","record_id":56,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1088,"type":"event","name":"RN","record_id":57,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1088,"type":"event","name":"D","record_id":58,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1088,"type":"event","name":"F2","record_id":59,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1089,"type":"event","name":"C","record_id":51,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1089,"type":"record_end","record_id":51}
+{"clk":1089,"type":"event","name":"C","record_id":53,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1089,"type":"record_end","record_id":53}
+{"clk":1089,"type":"event","name":"RR","record_id":54,"description":"Register Read. Read physical registers from register file"}
+{"clk":1089,"type":"event","name":"EX","record_id":55,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1089,"type":"event","name":"IS","record_id":56,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1089,"type":"event","name":"DS","record_id":57,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1089,"type":"event","name":"RN","record_id":58,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1089,"type":"event","name":"D","record_id":59,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1089,"type":"record","name":"0xFFFFFFFF000000E0-MV","record_type":"Instruction","id":60,"parent_id":3,"description":"mv  s11, a4","data":{"pc":"0xFFFFFFFF000000E0","opcode":"MV","disassembly":"mv  s11, a4"}}
+{"clk":1089,"type":"event","name":"F1","record_id":60,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1090,"type":"event","name":"EX","record_id":54,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1090,"type":"event","name":"WB","record_id":55,"description":"Writeback. Write results back to physical register file"}
+{"clk":1090,"type":"event","name":"RR","record_id":56,"description":"Register Read. Read physical registers from register file"}
+{"clk":1090,"type":"event","name":"DS","record_id":58,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1090,"type":"event","name":"RN","record_id":59,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1090,"type":"event","name":"F2","record_id":60,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1090,"type":"record","name":"0xFFFFFFFF000000E4-SUB","record_type":"Instruction","id":61,"parent_id":3,"description":"sub  tp, gp, s6","data":{"pc":"0xFFFFFFFF000000E4","opcode":"SUB","disassembly":"sub  tp, gp, s6"}}
+{"clk":1090,"type":"event","name":"F1","record_id":61,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1091,"type":"event","name":"C","record_id":55,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1091,"type":"record_end","record_id":55}
+{"clk":1091,"type":"event","name":"EX","record_id":56,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1091,"type":"event","name":"DS","record_id":59,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1091,"type":"event","name":"D","record_id":60,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1091,"type":"event","name":"F2","record_id":61,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1091,"type":"record","name":"0xFFFFFFFF000000E8-AND","record_type":"Instruction","id":62,"parent_id":3,"description":"and  a2, a1, t5","data":{"pc":"0xFFFFFFFF000000E8","opcode":"AND","disassembly":"and  a2, a1, t5"}}
+{"clk":1091,"type":"event","name":"F1","record_id":62,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1092,"type":"event","name":"M","record_id":54,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1092,"type":"event","name":"IS","record_id":58,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1092,"type":"event","name":"IS","record_id":59,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1092,"type":"event","name":"RN","record_id":60,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1092,"type":"event","name":"D","record_id":61,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1092,"type":"event","name":"F2","record_id":62,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1093,"type":"event","name":"WB","record_id":56,"description":"Writeback. Write results back to physical register file"}
+{"clk":1093,"type":"event","name":"IS","record_id":57,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1093,"type":"event","name":"RR","record_id":58,"description":"Register Read. Read physical registers from register file"}
+{"clk":1093,"type":"event","name":"RR","record_id":59,"description":"Register Read. Read physical registers from register file"}
+{"clk":1093,"type":"event","name":"DS","record_id":60,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1093,"type":"event","name":"RN","record_id":61,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1093,"type":"event","name":"D","record_id":62,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1093,"type":"record","name":"0xFFFFFFFF000000EC-SW","record_type":"Instruction","id":63,"parent_id":3,"description":"sw  s9, 39(s4)","data":{"pc":"0xFFFFFFFF000000EC","opcode":"SW","disassembly":"sw  s9, 39(s4)"}}
+{"clk":1093,"type":"event","name":"F1","record_id":63,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1094,"type":"event","name":"WB","record_id":54,"description":"Writeback. Write results back to physical register file"}
+{"clk":1094,"type":"event","name":"C","record_id":56,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1094,"type":"record_end","record_id":56}
+{"clk":1094,"type":"event","name":"RR","record_id":57,"description":"Register Read. Read physical registers from register file"}
+{"clk":1094,"type":"event","name":"EX","record_id":58,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1094,"type":"event","name":"EX","record_id":59,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1094,"type":"event","name":"DS","record_id":61,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1094,"type":"event","name":"RN","record_id":62,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1094,"type":"event","name":"F2","record_id":63,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1095,"type":"event","name":"C","record_id":54,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1095,"type":"record_end","record_id":54}
+{"clk":1095,"type":"event","name":"EX","record_id":57,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1095,"type":"event","name":"WB","record_id":59,"description":"Writeback. Write results back to physical register file"}
+{"clk":1095,"type":"event","name":"DS","record_id":62,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1095,"type":"event","name":"D","record_id":63,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1095,"type":"record","name":"0xFFFFFFFF000000F0-ADDI","record_type":"Instruction","id":64,"parent_id":3,"description":"addi  ra, t3, 31","data":{"pc":"0xFFFFFFFF000000F0","opcode":"ADDI","disassembly":"addi  ra, t3, 31"}}
+{"clk":1095,"type":"event","name":"F1","record_id":64,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1096,"type":"event","name":"WB","record_id":58,"description":"Writeback. Write results back to physical register file"}
+{"clk":1096,"type":"event","name":"C","record_id":59,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1096,"type":"record_end","record_id":59}
+{"clk":1096,"type":"event","name":"IS","record_id":60,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1096,"type":"event","name":"IS","record_id":62,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1096,"type":"event","name":"RN","record_id":63,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1096,"type":"event","name":"F2","record_id":64,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1096,"type":"record","name":"0xFFFFFFFF000000F4-SUB","record_type":"Instruction","id":65,"parent_id":3,"description":"sub  sp, s1, tp","data":{"pc":"0xFFFFFFFF000000F4","opcode":"SUB","disassembly":"sub  sp, s1, tp"}}
+{"clk":1096,"type":"event","name":"F1","record_id":65,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1097,"type":"event","name":"WB","record_id":57,"description":"Writeback. Write results back to physical register file"}
+{"clk":1097,"type":"event","name":"C","record_id":58,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1097,"type":"record_end","record_id":58}
+{"clk":1097,"type":"event","name":"RR","record_id":60,"description":"Register Read. Read physical registers from register file"}
+{"clk":1097,"type":"event","name":"RR","record_id":62,"description":"Register Read. Read physical registers from register file"}
+{"clk":1097,"type":"event","name":"DS","record_id":63,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1097,"type":"event","name":"D","record_id":64,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1097,"type":"event","name":"F2","record_id":65,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1098,"type":"event","name":"C","record_id":57,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1098,"type":"record_end","record_id":57}
+{"clk":1098,"type":"event","name":"EX","record_id":60,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1098,"type":"event","name":"IS","record_id":61,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1098,"type":"event","name":"EX","record_id":62,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1098,"type":"event","name":"IS","record_id":63,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1098,"type":"event","name":"RN","record_id":64,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1098,"type":"event","name":"D","record_id":65,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1098,"type":"record","name":"0xFFFFFFFF000000F8-BEQ","record_type":"Instruction","id":66,"parent_id":3,"description":"beq  t2, a7, 40","data":{"pc":"0xFFFFFFFF000000F8","opcode":"BEQ","disassembly":"beq  t2, a7, 40"}}
+{"clk":1098,"type":"event","name":"F1","record_id":66,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1099,"type":"event","name":"RR","record_id":61,"description":"Register Read. Read physical registers from register file"}
+{"clk":1099,"type":"event","name":"WB","record_id":62,"description":"Writeback. Write results back to physical register file"}
+{"clk":1099,"type":"event","name":"RR","record_id":63,"description":"Register Read. Read physical registers from register file"}
+{"clk":1099,"type":"event","name":"DS","record_id":64,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1099,"type":"event","name":"RN","record_id":65,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1099,"type":"event","name":"F2","record_id":66,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1100,"type":"event","name":"WB","record_id":60,"description":"Writeback. Write results back to physical register file"}
+{"clk":1100,"type":"event","name":"EX","record_id":61,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1100,"type":"event","name":"C","record_id":62,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1100,"type":"record_end","record_id":62}
+{"clk":1100,"type":"event","name":"EX","record_id":63,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1100,"type":"event","name":"IS","record_id":64,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1100,"type":"event","name":"DS","record_id":65,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1100,"type":"event","name":"D","record_id":66,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1100,"type":"record","name":"0xFFFFFFFF000000FC-SUB","record_type":"Instruction","id":67,"parent_id":3,"description":"sub  a5, s2, s9","data":{"pc":"0xFFFFFFFF000000FC","opcode":"SUB","disassembly":"sub  a5, s2, s9"}}
+{"clk":1100,"type":"event","name":"F1","record_id":67,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1101,"type":"event","name":"C","record_id":60,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1101,"type":"record_end","record_id":60}
+{"clk":1101,"type":"event","name":"RR","record_id":64,"description":"Register Read. Read physical registers from register file"}
+{"clk":1101,"type":"event","name":"IS","record_id":65,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1101,"type":"event","name":"RN","record_id":66,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1101,"type":"event","name":"F2","record_id":67,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1101,"type":"record","name":"0xFFFFFFFF00000100-SW","record_type":"Instruction","id":68,"parent_id":3,"description":"sw  s0, 62(s7)","data":{"pc":"0xFFFFFFFF00000100","opcode":"SW","disassembly":"sw  s0, 62(s7)"}}
+{"clk":1101,"type":"event","name":"F1","record_id":68,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1102,"type":"event","name":"WB","record_id":61,"description":"Writeback. Write results back to physical register file"}
+{"clk":1102,"type":"event","name":"M","record_id":63,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1102,"type":"event","name":"EX","record_id":64,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1102,"type":"event","name":"RR","record_id":65,"description":"Register Read. Read physical registers from register file"}
+{"clk":1102,"type":"event","name":"DS","record_id":66,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1102,"type":"event","name":"D","record_id":67,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1102,"type":"event","name":"F2","record_id":68,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1102,"type":"record","name":"0xFFFFFFFF00000104-ADD","record_type":"Instruction","id":69,"parent_id":3,"description":"add  a6, t6, sp","data":{"pc":"0xFFFFFFFF00000104","opcode":"ADD","disassembly":"add  a6, t6, sp"}}
+{"clk":1102,"type":"event","name":"F1","record_id":69,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1103,"type":"event","name":"C","record_id":61,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1103,"type":"record_end","record_id":61}
+{"clk":1103,"type":"event","name":"EX","record_id":65,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1103,"type":"event","name":"IS","record_id":66,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1103,"type":"event","name":"RN","record_id":67,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1103,"type":"event","name":"D","record_id":68,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1103,"type":"event","name":"F2","record_id":69,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1104,"type":"event","name":"WB","record_id":63,"description":"Writeback. Write results back to physical register file"}
+{"clk":1104,"type":"event","name":"WB","record_id":64,"description":"Writeback. Write results back to physical register file"}
+{"clk":1104,"type":"event","name":"WB","record_id":65,"description":"Writeback. Write results back to physical register file"}
+{"clk":1104,"type":"event","name":"RR","record_id":66,"description":"Register Read. Read physical registers from register file"}
+{"clk":1104,"type":"event","name":"DS","record_id":67,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1104,"type":"event","name":"RN","record_id":68,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1104,"type":"event","name":"D","record_id":69,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1104,"type":"record","name":"0xFFFFFFFF00000108-AND","record_type":"Instruction","id":70,"parent_id":3,"description":"and  a3, s8, t2","data":{"pc":"0xFFFFFFFF00000108","opcode":"AND","disassembly":"and  a3, s8, t2"}}
+{"clk":1104,"type":"event","name":"F1","record_id":70,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1105,"type":"event","name":"C","record_id":63,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1105,"type":"record_end","record_id":63}
+{"clk":1105,"type":"event","name":"C","record_id":64,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1105,"type":"record_end","record_id":64}
+{"clk":1105,"type":"event","name":"C","record_id":65,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1105,"type":"record_end","record_id":65}
+{"clk":1105,"type":"event","name":"EX","record_id":66,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1105,"type":"event","name":"IS","record_id":67,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1105,"type":"event","name":"DS","record_id":68,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1105,"type":"event","name":"RN","record_id":69,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1105,"type":"event","name":"F2","record_id":70,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1105,"type":"record","name":"0xFFFFFFFF0000010C-ADD","record_type":"Instruction","id":71,"parent_id":3,"description":"add  t5, s5, zero","data":{"pc":"0xFFFFFFFF0000010C","opcode":"ADD","disassembly":"add  t5, s5, zero"}}
+{"clk":1105,"type":"event","name":"F1","record_id":71,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1106,"type":"event","name":"WB","record_id":66,"description":"Writeback. Write results back to physical register file"}
+{"clk":1106,"type":"event","name":"RR","record_id":67,"description":"Register Read. Read physical registers from register file"}
+{"clk":1106,"type":"event","name":"IS","record_id":68,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1106,"type":"event","name":"DS","record_id":69,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1106,"type":"event","name":"D","record_id":70,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1106,"type":"event","name":"F2","record_id":71,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1106,"type":"record","name":"0xFFFFFFFF00000110-LI","record_type":"Instruction","id":72,"parent_id":3,"description":"li  t1, 72","data":{"pc":"0xFFFFFFFF00000110","opcode":"LI","disassembly":"li  t1, 72"}}
+{"clk":1106,"type":"event","name":"F1","record_id":72,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1107,"type":"event","name":"C","record_id":66,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1107,"type":"record_end","record_id":66}
+{"clk":1107,"type":"event","name":"EX","record_id":67,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1107,"type":"event","name":"RR","record_id":68,"description":"Register Read. Read physical registers from register file"}
+{"clk":1107,"type":"event","name":"IS","record_id":69,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1107,"type":"event","name":"RN","record_id":70,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1107,"type":"event","name":"D","record_id":71,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1107,"type":"event","name":"F2","record_id":72,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1108,"type":"event","name":"EX","record_id":68,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1108,"type":"event","name":"RR","record_id":69,"description":"Register Read. Read physical registers from register file"}
+{"clk":1108,"type":"event","name":"DS","record_id":70,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1108,"type":"event","name":"RN","record_id":71,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1108,"type":"event","name":"D","record_id":72,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1108,"type":"record","name":"0xFFFFFFFF00000114-LW","record_type":"Instruction","id":73,"parent_id":3,"description":"lw  s11, -95(a4)","data":{"pc":"0xFFFFFFFF00000114","opcode":"LW","disassembly":"lw  s11, -95(a4)"}}
+{"clk":1108,"type":"event","name":"F1","record_id":73,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1109,"type":"event","name":"WB","record_id":67,"description":"Writeback. Write results back to physical register file"}
+{"clk":1109,"type":"event","name":"M","record_id":68,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1109,"type":"event","name":"EX","record_id":69,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1109,"type":"event","name":"IS","record_id":70,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1109,"type":"event","name":"DS","record_id":71,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1109,"type":"event","name":"RN","record_id":72,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1109,"type":"event","name":"F2","record_id":73,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1110,"type":"event","name":"C","record_id":67,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1110,"type":"record_end","record_id":67}
+{"clk":1110,"type":"event","name":"WB","record_id":69,"description":"Writeback. Write results back to physical register file"}
+{"clk":1110,"type":"event","name":"RR","record_id":70,"description":"Register Read. Read physical registers from register file"}
+{"clk":1110,"type":"event","name":"DS","record_id":72,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1110,"type":"event","name":"D","record_id":73,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1110,"type":"record","name":"0xFFFFFFFF00000118-JAL","record_type":"Instruction","id":74,"parent_id":3,"description":"jal  gp, 324","data":{"pc":"0xFFFFFFFF00000118","opcode":"JAL","disassembly":"jal  gp, 324"}}
+{"clk":1110,"type":"event","name":"F1","record_id":74,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1111,"type":"event","name":"C","record_id":69,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1111,"type":"record_end","record_id":69}
+{"clk":1111,"type":"event","name":"EX","record_id":70,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1111,"type":"event","name":"IS","record_id":72,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1111,"type":"event","name":"RN","record_id":73,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1111,"type":"event","name":"F2","record_id":74,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1111,"type":"record","name":"0xFFFFFFFF0000011C-XOR","record_type":"Instruction","id":75,"parent_id":3,"description":"xor  a2, a1, t5","data":{"pc":"0xFFFFFFFF0000011C","opcode":"XOR","disassembly":"xor  a2, a1, t5"}}
+{"clk":1111,"type":"event","name":"F1","record_id":75,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1112,"type":"event","name":"RR","record_id":72,"description":"Register Read. Read physical registers from register file"}
+{"clk":1112,"type":"event","name":"DS","record_id":73,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1112,"type":"event","name":"D","record_id":74,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1112,"type":"event","name":"F2","record_id":75,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1112,"type":"record","name":"0xFFFFFFFF00000120-SRL","record_type":"Instruction","id":76,"parent_id":3,"description":"srl  s4, s3, t1","data":{"pc":"0xFFFFFFFF00000120","opcode":"SRL","disassembly":"srl  s4, s3, t1"}}
+{"clk":1112,"type":"event","name":"F1","record_id":76,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1113,"type":"event","name":"WB","record_id":70,"description":"Writeback. Write results back to physical register file"}
+{"clk":1113,"type":"event","name":"IS","record_id":71,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1113,"type":"event","name":"EX","record_id":72,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1113,"type":"event","name":"IS","record_id":73,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1113,"type":"event","name":"RN","record_id":74,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1113,"type":"event","name":"D","record_id":75,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1113,"type":"event","name":"F2","record_id":76,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1114,"type":"event","name":"WB","record_id":68,"description":"Writeback. Write results back to physical register file"}
+{"clk":1114,"type":"event","name":"C","record_id":70,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1114,"type":"record_end","record_id":70}
+{"clk":1114,"type":"event","name":"RR","record_id":71,"description":"Register Read. Read physical registers from register file"}
+{"clk":1114,"type":"event","name":"WB","record_id":72,"description":"Writeback. Write results back to physical register file"}
+{"clk":1114,"type":"event","name":"RR","record_id":73,"description":"Register Read. Read physical registers from register file"}
+{"clk":1114,"type":"event","name":"DS","record_id":74,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1114,"type":"event","name":"RN","record_id":75,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1114,"type":"event","name":"D","record_id":76,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1114,"type":"record","name":"0xFFFFFFFF00000124-ADDI","record_type":"Instruction","id":77,"parent_id":3,"description":"addi  ra, t3, -33","data":{"pc":"0xFFFFFFFF00000124","opcode":"ADDI","disassembly":"addi  ra, t3, -33"}}
+{"clk":1114,"type":"event","name":"F1","record_id":77,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1115,"type":"event","name":"C","record_id":68,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1115,"type":"record_end","record_id":68}
+{"clk":1115,"type":"event","name":"EX","record_id":71,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1115,"type":"event","name":"C","record_id":72,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1115,"type":"record_end","record_id":72}
+{"clk":1115,"type":"event","name":"EX","record_id":73,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1115,"type":"event","name":"IS","record_id":74,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1115,"type":"event","name":"DS","record_id":75,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1115,"type":"event","name":"RN","record_id":76,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1115,"type":"event","name":"F2","record_id":77,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1115,"type":"record","name":"0xFFFFFFFF00000128-AND","record_type":"Instruction","id":78,"parent_id":3,"description":"and  sp, s1, tp","data":{"pc":"0xFFFFFFFF00000128","opcode":"AND","disassembly":"and  sp, s1, tp"}}
+{"clk":1115,"type":"event","name":"F1","record_id":78,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1116,"type":"event","name":"RR","record_id":74,"description":"Register Read. Read physical registers from register file"}
+{"clk":1116,"type":"event","name":"DS","record_id":76,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1116,"type":"event","name":"D","record_id":77,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1116,"type":"event","name":"F2","record_id":78,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1117,"type":"event","name":"WB","record_id":71,"description":"Writeback. Write results back to physical register file"}
+{"clk":1117,"type":"event","name":"M","record_id":73,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1117,"type":"event","name":"EX","record_id":74,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1117,"type":"event","name":"IS","record_id":76,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1117,"type":"event","name":"RN","record_id":77,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1117,"type":"event","name":"D","record_id":78,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1117,"type":"record","name":"0xFFFFFFFF0000012C-SW","record_type":"Instruction","id":79,"parent_id":3,"description":"sw  t2, -27(a0)","data":{"pc":"0xFFFFFFFF0000012C","opcode":"SW","disassembly":"sw  t2, -27(a0)"}}
+{"clk":1117,"type":"event","name":"F1","record_id":79,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1118,"type":"event","name":"C","record_id":71,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1118,"type":"record_end","record_id":71}
+{"clk":1118,"type":"event","name":"IS","record_id":75,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1118,"type":"event","name":"RR","record_id":76,"description":"Register Read. Read physical registers from register file"}
+{"clk":1118,"type":"event","name":"DS","record_id":77,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1118,"type":"event","name":"RN","record_id":78,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1118,"type":"event","name":"F2","record_id":79,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1118,"type":"record","name":"0xFFFFFFFF00000130-SRL","record_type":"Instruction","id":80,"parent_id":3,"description":"srl  s2, s9, s4","data":{"pc":"0xFFFFFFFF00000130","opcode":"SRL","disassembly":"srl  s2, s9, s4"}}
+{"clk":1118,"type":"event","name":"F1","record_id":80,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1119,"type":"event","name":"WB","record_id":74,"description":"Writeback. Write results back to physical register file"}
+{"clk":1119,"type":"event","name":"RR","record_id":75,"description":"Register Read. Read physical registers from register file"}
+{"clk":1119,"type":"event","name":"EX","record_id":76,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1119,"type":"event","name":"IS","record_id":77,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1119,"type":"event","name":"DS","record_id":78,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1119,"type":"event","name":"D","record_id":79,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1119,"type":"event","name":"F2","record_id":80,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1120,"type":"event","name":"C","record_id":74,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1120,"type":"record_end","record_id":74}
+{"clk":1120,"type":"event","name":"EX","record_id":75,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1120,"type":"event","name":"WB","record_id":76,"description":"Writeback. Write results back to physical register file"}
+{"clk":1120,"type":"event","name":"RR","record_id":77,"description":"Register Read. Read physical registers from register file"}
+{"clk":1120,"type":"event","name":"IS","record_id":78,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1120,"type":"event","name":"RN","record_id":79,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1120,"type":"event","name":"D","record_id":80,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1120,"type":"record","name":"0xFFFFFFFF00000134-SLL","record_type":"Instruction","id":81,"parent_id":3,"description":"sll  s7, s10, ra","data":{"pc":"0xFFFFFFFF00000134","opcode":"SLL","disassembly":"sll  s7, s10, ra"}}
+{"clk":1120,"type":"event","name":"F1","record_id":81,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1121,"type":"event","name":"WB","record_id":73,"description":"Writeback. Write results back to physical register file"}
+{"clk":1121,"type":"event","name":"C","record_id":76,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1121,"type":"record_end","record_id":76}
+{"clk":1121,"type":"event","name":"EX","record_id":77,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1121,"type":"event","name":"RR","record_id":78,"description":"Register Read. Read physical registers from register file"}
+{"clk":1121,"type":"event","name":"DS","record_id":79,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1121,"type":"event","name":"RN","record_id":80,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1121,"type":"event","name":"F2","record_id":81,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1121,"type":"record","name":"0xFFFFFFFF00000138-MV","record_type":"Instruction","id":82,"parent_id":3,"description":"mv  a6, t6","data":{"pc":"0xFFFFFFFF00000138","opcode":"MV","disassembly":"mv  a6, t6"}}
+{"clk":1121,"type":"event","name":"F1","record_id":82,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1122,"type":"event","name":"C","record_id":73,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1122,"type":"record_end","record_id":73}
+{"clk":1122,"type":"event","name":"WB","record_id":75,"description":"Writeback. Write results back to physical register file"}
+{"clk":1122,"type":"event","name":"EX","record_id":78,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1122,"type":"event","name":"DS","record_id":80,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1122,"type":"event","name":"D","record_id":81,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1122,"type":"event","name":"F2","record_id":82,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1122,"type":"record","name":"0xFFFFFFFF0000013C-SRL","record_type":"Instruction","id":83,"parent_id":3,"description":"srl  s6, a3, s8","data":{"pc":"0xFFFFFFFF0000013C","opcode":"SRL","disassembly":"srl  s6, a3, s8"}}
+{"clk":1122,"type":"event","name":"F1","record_id":83,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1123,"type":"event","name":"C","record_id":75,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1123,"type":"record_end","record_id":75}
+{"clk":1123,"type":"event","name":"WB","record_id":77,"description":"Writeback. Write results back to physical register file"}
+{"clk":1123,"type":"event","name":"WB","record_id":78,"description":"Writeback. Write results back to physical register file"}
+{"clk":1123,"type":"event","name":"IS","record_id":80,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1123,"type":"event","name":"RN","record_id":81,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1123,"type":"event","name":"D","record_id":82,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1123,"type":"event","name":"F2","record_id":83,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1124,"type":"event","name":"C","record_id":77,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1124,"type":"record_end","record_id":77}
+{"clk":1124,"type":"event","name":"C","record_id":78,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1124,"type":"record_end","record_id":78}
+{"clk":1124,"type":"event","name":"RR","record_id":80,"description":"Register Read. Read physical registers from register file"}
+{"clk":1124,"type":"event","name":"DS","record_id":81,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1124,"type":"event","name":"RN","record_id":82,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1124,"type":"event","name":"D","record_id":83,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1124,"type":"record","name":"0xFFFFFFFF00000140-AND","record_type":"Instruction","id":84,"parent_id":3,"description":"and  a1, t5, s5","data":{"pc":"0xFFFFFFFF00000140","opcode":"AND","disassembly":"and  a1, t5, s5"}}
+{"clk":1124,"type":"event","name":"F1","record_id":84,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1125,"type":"event","name":"IS","record_id":79,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1125,"type":"event","name":"EX","record_id":80,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1125,"type":"event","name":"IS","record_id":81,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1125,"type":"event","name":"DS","record_id":82,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1125,"type":"event","name":"RN","record_id":83,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1125,"type":"event","name":"F2","record_id":84,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1125,"type":"record","name":"0xFFFFFFFF00000144-LI","record_type":"Instruction","id":85,"parent_id":3,"description":"li  s4, -1658","data":{"pc":"0xFFFFFFFF00000144","opcode":"LI","disassembly":"li  s4, -1658"}}
+{"clk":1125,"type":"event","name":"F1","record_id":85,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1126,"type":"event","name":"RR","record_id":79,"description":"Register Read. Read physical registers from register file"}
+{"clk":1126,"type":"event","name":"WB","record_id":80,"description":"Writeback. Write results back to physical register file"}
+{"clk":1126,"type":"event","name":"RR","record_id":81,"description":"Register Read. Read physical registers from register file"}
+{"clk":1126,"type":"event","name":"IS","record_id":82,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1126,"type":"event","name":"DS","record_id":83,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1126,"type":"event","name":"D","record_id":84,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1126,"type":"event","name":"F2","record_id":85,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1127,"type":"event","name":"EX","record_id":79,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1127,"type":"event","name":"C","record_id":80,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1127,"type":"record_end","record_id":80}
+{"clk":1127,"type":"event","name":"EX","record_id":81,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1127,"type":"event","name":"RR","record_id":82,"description":"Register Read. Read physical registers from register file"}
+{"clk":1127,"type":"event","name":"IS","record_id":83,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1127,"type":"event","name":"RN","record_id":84,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1127,"type":"event","name":"D","record_id":85,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1127,"type":"record","name":"0xFFFFFFFF00000148-SW","record_type":"Instruction","id":86,"parent_id":3,"description":"sw  ra, -65(t3)","data":{"pc":"0xFFFFFFFF00000148","opcode":"SW","disassembly":"sw  ra, -65(t3)"}}
+{"clk":1127,"type":"event","name":"F1","record_id":86,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1128,"type":"event","name":"M","record_id":79,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1128,"type":"event","name":"EX","record_id":82,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1128,"type":"event","name":"RR","record_id":83,"description":"Register Read. Read physical registers from register file"}
+{"clk":1128,"type":"event","name":"DS","record_id":84,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1128,"type":"event","name":"RN","record_id":85,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1128,"type":"event","name":"F2","record_id":86,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1129,"type":"event","name":"WB","record_id":81,"description":"Writeback. Write results back to physical register file"}
+{"clk":1129,"type":"event","name":"EX","record_id":83,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1129,"type":"event","name":"IS","record_id":84,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1129,"type":"event","name":"DS","record_id":85,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1129,"type":"event","name":"D","record_id":86,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1129,"type":"record","name":"0xFFFFFFFF0000014C-ADD","record_type":"Instruction","id":87,"parent_id":3,"description":"add  s1, tp, gp","data":{"pc":"0xFFFFFFFF0000014C","opcode":"ADD","disassembly":"add  s1, tp, gp"}}
+{"clk":1129,"type":"event","name":"F1","record_id":87,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1130,"type":"event","name":"C","record_id":81,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1130,"type":"record_end","record_id":81}
+{"clk":1130,"type":"event","name":"WB","record_id":82,"description":"Writeback. Write results back to physical register file"}
+{"clk":1130,"type":"event","name":"WB","record_id":83,"description":"Writeback. Write results back to physical register file"}
+{"clk":1130,"type":"event","name":"RR","record_id":84,"description":"Register Read. Read physical registers from register file"}
+{"clk":1130,"type":"event","name":"IS","record_id":85,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1130,"type":"event","name":"RN","record_id":86,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1130,"type":"event","name":"F2","record_id":87,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1130,"type":"record","name":"0xFFFFFFFF00000150-XOR","record_type":"Instruction","id":88,"parent_id":3,"description":"xor  a0, a7, a2","data":{"pc":"0xFFFFFFFF00000150","opcode":"XOR","disassembly":"xor  a0, a7, a2"}}
+{"clk":1130,"type":"event","name":"F1","record_id":88,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1131,"type":"event","name":"WB","record_id":79,"description":"Writeback. Write results back to physical register file"}
+{"clk":1131,"type":"event","name":"C","record_id":82,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1131,"type":"record_end","record_id":82}
+{"clk":1131,"type":"event","name":"C","record_id":83,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1131,"type":"record_end","record_id":83}
+{"clk":1131,"type":"event","name":"EX","record_id":84,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1131,"type":"event","name":"RR","record_id":85,"description":"Register Read. Read physical registers from register file"}
+{"clk":1131,"type":"event","name":"DS","record_id":86,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1131,"type":"event","name":"D","record_id":87,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1131,"type":"event","name":"F2","record_id":88,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1132,"type":"event","name":"C","record_id":79,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1132,"type":"record_end","record_id":79}
+{"clk":1132,"type":"event","name":"EX","record_id":85,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1132,"type":"event","name":"IS","record_id":86,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1132,"type":"event","name":"RN","record_id":87,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1132,"type":"event","name":"D","record_id":88,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1132,"type":"record","name":"0xFFFFFFFF00000154-LW","record_type":"Instruction","id":89,"parent_id":3,"description":"lw  a5, 85(s2)","data":{"pc":"0xFFFFFFFF00000154","opcode":"LW","disassembly":"lw  a5, 85(s2)"}}
+{"clk":1132,"type":"event","name":"F1","record_id":89,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1133,"type":"event","name":"WB","record_id":84,"description":"Writeback. Write results back to physical register file"}
+{"clk":1133,"type":"event","name":"WB","record_id":85,"description":"Writeback. Write results back to physical register file"}
+{"clk":1133,"type":"event","name":"RR","record_id":86,"description":"Register Read. Read physical registers from register file"}
+{"clk":1133,"type":"event","name":"DS","record_id":87,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1133,"type":"event","name":"RN","record_id":88,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1133,"type":"event","name":"F2","record_id":89,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1134,"type":"event","name":"C","record_id":84,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1134,"type":"record_end","record_id":84}
+{"clk":1134,"type":"event","name":"C","record_id":85,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1134,"type":"record_end","record_id":85}
+{"clk":1134,"type":"event","name":"EX","record_id":86,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1134,"type":"event","name":"IS","record_id":87,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1134,"type":"event","name":"DS","record_id":88,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1134,"type":"event","name":"D","record_id":89,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1134,"type":"record","name":"0xFFFFFFFF00000158-XOR","record_type":"Instruction","id":90,"parent_id":3,"description":"xor  s7, s10, ra","data":{"pc":"0xFFFFFFFF00000158","opcode":"XOR","disassembly":"xor  s7, s10, ra"}}
+{"clk":1134,"type":"event","name":"F1","record_id":90,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1135,"type":"event","name":"RR","record_id":87,"description":"Register Read. Read physical registers from register file"}
+{"clk":1135,"type":"event","name":"IS","record_id":88,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1135,"type":"event","name":"RN","record_id":89,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1135,"type":"event","name":"F2","record_id":90,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1135,"type":"record","name":"0xFFFFFFFF0000015C-SUB","record_type":"Instruction","id":91,"parent_id":3,"description":"sub  a6, t6, sp","data":{"pc":"0xFFFFFFFF0000015C","opcode":"SUB","disassembly":"sub  a6, t6, sp"}}
+{"clk":1135,"type":"event","name":"F1","record_id":91,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1136,"type":"event","name":"M","record_id":86,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1136,"type":"event","name":"EX","record_id":87,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1136,"type":"event","name":"RR","record_id":88,"description":"Register Read. Read physical registers from register file"}
+{"clk":1136,"type":"event","name":"DS","record_id":89,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1136,"type":"event","name":"D","record_id":90,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1136,"type":"event","name":"F2","record_id":91,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1137,"type":"event","name":"EX","record_id":88,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1137,"type":"event","name":"IS","record_id":89,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1137,"type":"event","name":"RN","record_id":90,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1137,"type":"event","name":"D","record_id":91,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1137,"type":"record","name":"0xFFFFFFFF00000160-BEQ","record_type":"Instruction","id":92,"parent_id":3,"description":"beq  a3, t2, -160","data":{"pc":"0xFFFFFFFF00000160","opcode":"BEQ","disassembly":"beq  a3, t2, -160"}}
+{"clk":1137,"type":"event","name":"F1","record_id":92,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1138,"type":"event","name":"WB","record_id":86,"description":"Writeback. Write results back to physical register file"}
+{"clk":1138,"type":"event","name":"WB","record_id":87,"description":"Writeback. Write results back to physical register file"}
+{"clk":1138,"type":"event","name":"WB","record_id":88,"description":"Writeback. Write results back to physical register file"}
+{"clk":1138,"type":"event","name":"RR","record_id":89,"description":"Register Read. Read physical registers from register file"}
+{"clk":1138,"type":"event","name":"DS","record_id":90,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1138,"type":"event","name":"RN","record_id":91,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1138,"type":"event","name":"F2","record_id":92,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1139,"type":"event","name":"C","record_id":86,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1139,"type":"record_end","record_id":86}
+{"clk":1139,"type":"event","name":"C","record_id":87,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1139,"type":"record_end","record_id":87}
+{"clk":1139,"type":"event","name":"C","record_id":88,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1139,"type":"record_end","record_id":88}
+{"clk":1139,"type":"event","name":"EX","record_id":89,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1139,"type":"event","name":"IS","record_id":90,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1139,"type":"event","name":"DS","record_id":91,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1139,"type":"event","name":"D","record_id":92,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1139,"type":"record","name":"0xFFFFFFFF00000164-ADD","record_type":"Instruction","id":93,"parent_id":3,"description":"add  s5, zero, a5","data":{"pc":"0xFFFFFFFF00000164","opcode":"ADD","disassembly":"add  s5, zero, a5"}}
+{"clk":1139,"type":"event","name":"F1","record_id":93,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1140,"type":"event","name":"RR","record_id":90,"description":"Register Read. Read physical registers from register file"}
+{"clk":1140,"type":"event","name":"IS","record_id":91,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1140,"type":"event","name":"RN","record_id":92,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1140,"type":"event","name":"F2","record_id":93,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1140,"type":"record","name":"0xFFFFFFFF00000168-SUB","record_type":"Instruction","id":94,"parent_id":3,"description":"sub  t1, t4, s0","data":{"pc":"0xFFFFFFFF00000168","opcode":"SUB","disassembly":"sub  t1, t4, s0"}}
+{"clk":1140,"type":"event","name":"F1","record_id":94,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1141,"type":"event","name":"M","record_id":89,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1141,"type":"event","name":"EX","record_id":90,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1141,"type":"event","name":"RR","record_id":91,"description":"Register Read. Read physical registers from register file"}
+{"clk":1141,"type":"event","name":"DS","record_id":92,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1141,"type":"event","name":"D","record_id":93,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1141,"type":"event","name":"F2","record_id":94,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1142,"type":"event","name":"EX","record_id":91,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1142,"type":"event","name":"IS","record_id":92,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1142,"type":"event","name":"RN","record_id":93,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1142,"type":"event","name":"D","record_id":94,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1142,"type":"record","name":"0xFFFFFFFF0000016C-LI","record_type":"Instruction","id":95,"parent_id":3,"description":"li  s11, 357","data":{"pc":"0xFFFFFFFF0000016C","opcode":"LI","disassembly":"li  s11, 357"}}
+{"clk":1142,"type":"event","name":"F1","record_id":95,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1143,"type":"event","name":"WB","record_id":90,"description":"Writeback. Write results back to physical register file"}
+{"clk":1143,"type":"event","name":"WB","record_id":91,"description":"Writeback. Write results back to physical register file"}
+{"clk":1143,"type":"event","name":"RR","record_id":92,"description":"Register Read. Read physical registers from register file"}
+{"clk":1143,"type":"event","name":"DS","record_id":93,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1143,"type":"event","name":"RN","record_id":94,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1143,"type":"event","name":"F2","record_id":95,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1144,"type":"event","name":"C","record_id":90,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1144,"type":"record_end","record_id":90}
+{"clk":1144,"type":"event","name":"C","record_id":91,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1144,"type":"record_end","record_id":91}
+{"clk":1144,"type":"event","name":"EX","record_id":92,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1144,"type":"event","name":"IS","record_id":93,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1144,"type":"event","name":"DS","record_id":94,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1144,"type":"event","name":"D","record_id":95,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1144,"type":"record","name":"0xFFFFFFFF00000170-JALR","record_type":"Instruction","id":96,"parent_id":3,"description":"jalr  gp, 81(s6)","data":{"pc":"0xFFFFFFFF00000170","opcode":"JALR","disassembly":"jalr  gp, 81(s6)"}}
+{"clk":1144,"type":"event","name":"F1","record_id":96,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1145,"type":"event","name":"WB","record_id":89,"description":"Writeback. Write results back to physical register file"}
+{"clk":1145,"type":"event","name":"WB","record_id":92,"description":"Writeback. Write results back to physical register file"}
+{"clk":1145,"type":"event","name":"RR","record_id":93,"description":"Register Read. Read physical registers from register file"}
+{"clk":1145,"type":"event","name":"IS","record_id":94,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1145,"type":"event","name":"RN","record_id":95,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1145,"type":"event","name":"F2","record_id":96,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1145,"type":"record","name":"0xFFFFFFFF00000174-OR","record_type":"Instruction","id":97,"parent_id":3,"description":"or  a2, a1, t5","data":{"pc":"0xFFFFFFFF00000174","opcode":"OR","disassembly":"or  a2, a1, t5"}}
+{"clk":1145,"type":"event","name":"F1","record_id":97,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1146,"type":"event","name":"C","record_id":89,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1146,"type":"record_end","record_id":89}
+{"clk":1146,"type":"event","name":"C","record_id":92,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1146,"type":"record_end","record_id":92}
+{"clk":1146,"type":"event","name":"EX","record_id":93,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1146,"type":"event","name":"RR","record_id":94,"description":"Register Read. Read physical registers from register file"}
+{"clk":1146,"type":"event","name":"DS","record_id":95,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1146,"type":"event","name":"D","record_id":96,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1146,"type":"event","name":"F2","record_id":97,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1147,"type":"event","name":"EX","record_id":94,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1147,"type":"event","name":"RN","record_id":96,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1147,"type":"event","name":"D","record_id":97,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1147,"type":"record","name":"0xFFFFFFFF00000178-LI","record_type":"Instruction","id":98,"parent_id":3,"description":"li  s9, 1491","data":{"pc":"0xFFFFFFFF00000178","opcode":"LI","disassembly":"li  s9, 1491"}}
+{"clk":1147,"type":"event","name":"F1","record_id":98,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1148,"type":"event","name":"WB","record_id":93,"description":"Writeback. Write results back to physical register file"}
+{"clk":1148,"type":"event","name":"WB","record_id":94,"description":"Writeback. Write results back to physical register file"}
+{"clk":1148,"type":"event","name":"DS","record_id":96,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1148,"type":"event","name":"RN","record_id":97,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1148,"type":"event","name":"F2","record_id":98,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1149,"type":"event","name":"C","record_id":93,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1149,"type":"record_end","record_id":93}
+{"clk":1149,"type":"event","name":"C","record_id":94,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1149,"type":"record_end","record_id":94}
+{"clk":1149,"type":"event","name":"IS","record_id":96,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1149,"type":"event","name":"DS","record_id":97,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1149,"type":"event","name":"D","record_id":98,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1149,"type":"record","name":"0xFFFFFFFF0000017C-LW","record_type":"Instruction","id":99,"parent_id":3,"description":"lw  ra, -81(t3)","data":{"pc":"0xFFFFFFFF0000017C","opcode":"LW","disassembly":"lw  ra, -81(t3)"}}
+{"clk":1149,"type":"event","name":"F1","record_id":99,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1150,"type":"event","name":"IS","record_id":95,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1150,"type":"event","name":"RR","record_id":96,"description":"Register Read. Read physical registers from register file"}
+{"clk":1150,"type":"event","name":"IS","record_id":97,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1150,"type":"event","name":"RN","record_id":98,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1150,"type":"event","name":"F2","record_id":99,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1151,"type":"event","name":"RR","record_id":95,"description":"Register Read. Read physical registers from register file"}
+{"clk":1151,"type":"event","name":"EX","record_id":96,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1151,"type":"event","name":"RR","record_id":97,"description":"Register Read. Read physical registers from register file"}
+{"clk":1151,"type":"event","name":"DS","record_id":98,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1151,"type":"event","name":"D","record_id":99,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1151,"type":"record","name":"0xFFFFFFFF00000180-MV","record_type":"Instruction","id":100,"parent_id":3,"description":"mv  s1, tp","data":{"pc":"0xFFFFFFFF00000180","opcode":"MV","disassembly":"mv  s1, tp"}}
+{"clk":1151,"type":"event","name":"F1","record_id":100,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1152,"type":"event","name":"EX","record_id":95,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1152,"type":"event","name":"EX","record_id":97,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1152,"type":"event","name":"RN","record_id":99,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1152,"type":"event","name":"F2","record_id":100,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1153,"type":"event","name":"WB","record_id":95,"description":"Writeback. Write results back to physical register file"}
+{"clk":1153,"type":"event","name":"WB","record_id":96,"description":"Writeback. Write results back to physical register file"}
+{"clk":1153,"type":"event","name":"WB","record_id":97,"description":"Writeback. Write results back to physical register file"}
+{"clk":1153,"type":"event","name":"IS","record_id":98,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1153,"type":"event","name":"DS","record_id":99,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1153,"type":"event","name":"D","record_id":100,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1153,"type":"record","name":"0xFFFFFFFF00000184-ADDI","record_type":"Instruction","id":101,"parent_id":3,"description":"addi  t2, a0, 13","data":{"pc":"0xFFFFFFFF00000184","opcode":"ADDI","disassembly":"addi  t2, a0, 13"}}
+{"clk":1153,"type":"event","name":"F1","record_id":101,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1154,"type":"event","name":"C","record_id":95,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1154,"type":"record_end","record_id":95}
+{"clk":1154,"type":"event","name":"C","record_id":96,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1154,"type":"record_end","record_id":96}
+{"clk":1154,"type":"event","name":"C","record_id":97,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1154,"type":"record_end","record_id":97}
+{"clk":1154,"type":"event","name":"RR","record_id":98,"description":"Register Read. Read physical registers from register file"}
+{"clk":1154,"type":"event","name":"IS","record_id":99,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1154,"type":"event","name":"RN","record_id":100,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1154,"type":"event","name":"F2","record_id":101,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1154,"type":"record","name":"0xFFFFFFFF00000188-JAL","record_type":"Instruction","id":102,"parent_id":3,"description":"jal  zero, 88","data":{"pc":"0xFFFFFFFF00000188","opcode":"JAL","disassembly":"jal  zero, 88"}}
+{"clk":1154,"type":"event","name":"F1","record_id":102,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1155,"type":"event","name":"EX","record_id":98,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1155,"type":"event","name":"RR","record_id":99,"description":"Register Read. Read physical registers from register file"}
+{"clk":1155,"type":"event","name":"DS","record_id":100,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1155,"type":"event","name":"D","record_id":101,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1155,"type":"event","name":"F2","record_id":102,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1155,"type":"record","name":"0xFFFFFFFF0000018C-BEQ","record_type":"Instruction","id":103,"parent_id":3,"description":"beq  s0, s10, -116","data":{"pc":"0xFFFFFFFF0000018C","opcode":"BEQ","disassembly":"beq  s0, s10, -116"}}
+{"clk":1155,"type":"event","name":"F1","record_id":103,"description":"Fetch 1. Instruction fetch request, PC generation"}
+{"clk":1156,"type":"event","name":"WB","record_id":98,"description":"Writeback. Write results back to physical register file"}
+{"clk":1156,"type":"event","name":"EX","record_id":99,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1156,"type":"event","name":"IS","record_id":100,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1156,"type":"event","name":"RN","record_id":101,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1156,"type":"event","name":"D","record_id":102,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1156,"type":"event","name":"F2","record_id":103,"description":"Fetch 2. Instruction cache access and retrieval"}
+{"clk":1157,"type":"event","name":"C","record_id":98,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1157,"type":"record_end","record_id":98}
+{"clk":1157,"type":"event","name":"RR","record_id":100,"description":"Register Read. Read physical registers from register file"}
+{"clk":1157,"type":"event","name":"DS","record_id":101,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1157,"type":"event","name":"RN","record_id":102,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1157,"type":"event","name":"D","record_id":103,"description":"Decode. Instruction decode and branch prediction"}
+{"clk":1158,"type":"event","name":"M","record_id":99,"description":"Memory. Memory access for load/store instructions"}
+{"clk":1158,"type":"event","name":"EX","record_id":100,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1158,"type":"event","name":"IS","record_id":101,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1158,"type":"event","name":"DS","record_id":102,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1158,"type":"event","name":"RN","record_id":103,"description":"Rename. Register renaming to eliminate false dependencies"}
+{"clk":1159,"type":"event","name":"WB","record_id":100,"description":"Writeback. Write results back to physical register file"}
+{"clk":1159,"type":"event","name":"RR","record_id":101,"description":"Register Read. Read physical registers from register file"}
+{"clk":1159,"type":"event","name":"DS","record_id":103,"description":"Dispatch. Dispatch instructions to reservation stations/issue queues"}
+{"clk":1160,"type":"event","name":"WB","record_id":99,"description":"Writeback. Write results back to physical register file"}
+{"clk":1160,"type":"event","name":"C","record_id":100,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1160,"type":"record_end","record_id":100}
+{"clk":1160,"type":"event","name":"EX","record_id":101,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1160,"type":"event","name":"IS","record_id":102,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1160,"type":"event","name":"IS","record_id":103,"description":"Issue. Issue instructions to execution units when operands are ready"}
+{"clk":1161,"type":"event","name":"C","record_id":99,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1161,"type":"record_end","record_id":99}
+{"clk":1161,"type":"event","name":"RR","record_id":102,"description":"Register Read. Read physical registers from register file"}
+{"clk":1161,"type":"event","name":"RR","record_id":103,"description":"Register Read. Read physical registers from register file"}
+{"clk":1162,"type":"event","name":"WB","record_id":101,"description":"Writeback. Write results back to physical register file"}
+{"clk":1162,"type":"event","name":"EX","record_id":102,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1162,"type":"event","name":"EX","record_id":103,"description":"Execute. Execute operation in ALU/FPU/other functional units"}
+{"clk":1163,"type":"event","name":"C","record_id":101,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1163,"type":"record_end","record_id":101}
+{"clk":1164,"type":"event","name":"WB","record_id":102,"description":"Writeback. Write results back to physical register file"}
+{"clk":1164,"type":"event","name":"WB","record_id":103,"description":"Writeback. Write results back to physical register file"}
+{"clk":1165,"type":"event","name":"C","record_id":102,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1165,"type":"record_end","record_id":102}
+{"clk":1165,"type":"event","name":"C","record_id":103,"description":"Commit/Retire. Commit instructions in program order and update architectural state"}
+{"clk":1165,"type":"record_end","record_id":103}
+{"clk":1166,"type":"record_end","record_id":3}
+{"clk":1166,"type":"record_end","record_id":2}
+{"clk":1166,"type":"record_end","record_id":1}
+{"type":"footer","capture_end_clk":1166,"total_records":103,"total_annotations":0,"total_events":1014}

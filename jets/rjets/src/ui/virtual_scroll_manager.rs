@@ -38,13 +38,32 @@ impl VirtualScrollManager {
         viewport_scroll_offset: f32,
         viewport_height: f32,
     ) -> Vec<VisibleNode> {
-        virtual_scrolling::collect_visible_nodes(
+        // Use the new strategy-based traversal system
+        let all_nodes = crate::domain::tree_operations::collect_unfiltered_visible_nodes_strategy(
             trace,
             expanded_nodes,
-            cache,
-            viewport_scroll_offset,
-            viewport_height,
-        )
+        );
+
+        // Apply vertical scroll culling with buffer
+        let row_height = virtual_scrolling::ROW_HEIGHT;
+        let first_visible_row = (viewport_scroll_offset / row_height).floor() as usize;
+        let last_visible_row = first_visible_row + (viewport_height / row_height).ceil() as usize;
+
+        // Add buffer
+        let first_visible_row = first_visible_row.saturating_sub(virtual_scrolling::VIEWPORT_BUFFER_ROWS);
+        let last_visible_row = last_visible_row + virtual_scrolling::VIEWPORT_BUFFER_ROWS;
+
+        all_nodes
+            .into_iter()
+            .filter(|node| {
+                node.row_index >= first_visible_row && node.row_index <= last_visible_row
+            })
+            .map(|node| VisibleNode {
+                record_id: node.record_id,
+                row_index: node.row_index,
+                depth: node.depth,
+            })
+            .collect()
     }
 
     /// Calculates the expand column width based on tree depth.
@@ -92,16 +111,18 @@ impl VirtualScrollManager {
         viewport_start_clk: i64,
         viewport_end_clk: i64,
     ) -> Vec<VisibleNode> {
-        // Get filtered nodes (all nodes that pass temporal filter)
-        let filtered_nodes = crate::domain::tree_operations::collect_filtered_visible_nodes(
+        // Use the new strategy-based traversal system with viewport filter
+        let filtered_nodes = crate::domain::tree_operations::collect_viewport_filtered_nodes_strategy(
             trace,
             expanded_nodes,
-            cache,
             viewport_start_clk,
             viewport_end_clk,
         );
 
-        // Convert FilteredVisibleNode to VisibleNode and apply vertical scroll culling
+        // Update cache with filtered node count
+        cache.filtered_node_count = Some(filtered_nodes.len());
+
+        // Apply vertical scroll culling
         let row_height = virtual_scrolling::ROW_HEIGHT;
         let first_visible_row = (viewport_scroll_offset / row_height).floor() as usize;
         let last_visible_row = first_visible_row + (viewport_height / row_height).ceil() as usize + 1;

@@ -9,6 +9,7 @@
 //! independent testing and clearer separation of domain logic.
 
 use crate::cache::TreeCache;
+use crate::domain::visibility::{self, VisibilityStrategy};
 use rjets::TraceData;
 use std::collections::HashSet;
 
@@ -190,42 +191,10 @@ pub fn are_all_children_collapsed_cached(
     result
 }
 
-// ===== Viewport Filtering Functions =====
-
-/// Binary search to find the first child with clk >= target_clk.
+/// A visible node with its row index and depth.
 ///
-/// # Arguments
-/// * `children` - Sorted slice of child records
-/// * `target_clk` - Target clock value to search for
-///
-/// # Returns
-/// Index of first child with clk >= target_clk, or children.len() if none found
-fn binary_search_first_gte(children: &[&dyn rjets::TraceRecord], target_clk: i64) -> usize {
-    children.partition_point(|child| child.clk() < target_clk)
-}
-
-/// Binary search to find the last child with clk <= target_clk.
-///
-/// # Arguments
-/// * `children` - Sorted slice of child records
-/// * `target_clk` - Target clock value to search for
-///
-/// # Returns
-/// Index of last child with clk <= target_clk, or None if none found
-fn binary_search_last_lte(children: &[&dyn rjets::TraceRecord], target_clk: i64) -> Option<usize> {
-    if children.is_empty() {
-        return None;
-    }
-
-    let idx = children.partition_point(|child| child.clk() <= target_clk);
-    if idx == 0 {
-        None
-    } else {
-        Some(idx - 1)
-    }
-}
-
-/// A visible node with its row index and depth (for filtered trees).
+/// Used by the visibility strategy system to return flattened tree nodes
+/// with their positions and depths for rendering.
 #[derive(Clone)]
 pub struct FilteredVisibleNode {
     pub record_id: u64,
@@ -233,183 +202,333 @@ pub struct FilteredVisibleNode {
     pub depth: usize,
 }
 
-/// Recursively collects filtered nodes that should be visible.
+// ===== Visibility Strategy Adapter Functions =====
+
+/// Expansion-aware visibility strategy wrapper.
 ///
-/// # Arguments
-/// * `record_id` - ID of current record to process
-/// * `depth` - Current depth in tree
-/// * `current_row` - Mutable counter for row indices
-/// * `trace` - Trace data
-/// * `expanded_nodes` - Set of expanded node IDs
-/// * `viewport_start_clk` - Start of viewport range
-/// * `viewport_end_clk` - End of viewport range
-/// * `result` - Output vector to append visible nodes to
-/// * `cache` - Tree cache for subtree depth lookups
-fn collect_filtered_nodes_recursive(
-    record_id: u64,
-    depth: usize,
-    current_row: &mut usize,
-    trace: &dyn TraceData,
-    expanded_nodes: &HashSet<u64>,
-    viewport_start_clk: i64,
-    viewport_end_clk: i64,
-    result: &mut Vec<FilteredVisibleNode>,
-    cache: &mut TreeCache,
-) {
-    // Get record from trace
-    let Some(record) = trace.get_record(record_id) else {
-        return;
-    };
+/// This adapter wraps a base visibility strategy and adds expansion state checking.
+/// It only descends into nodes that are expanded, combining expansion state with
+/// the base strategy's visibility rules.
+struct ExpansionAwareStrategy<'a, S: VisibilityStrategy> {
+    base_strategy: &'a S,
+    expanded_nodes: &'a HashSet<u64>,
+}
 
-    // Get or calculate subtree depth (cached)
-    let subtree_depth = if let Some(&depth) = cache.subtree_depths.get(&record_id) {
-        depth
-    } else {
-        let depth = record.subtree_depth();
-        cache.subtree_depths.insert(record_id, depth);
-        depth
-    };
-
-    // Check if record is leaf (no children)
-    if subtree_depth == 0 {
-        // Leaf node: check temporal bounds
-        let record_clk = record.clk();
-        if record_clk >= viewport_start_clk && record_clk <= viewport_end_clk {
-            // This leaf matches the viewport filter
-            result.push(FilteredVisibleNode {
-                record_id,
-                row_index: *current_row,
-                depth,
-            });
-            *current_row += 1;
-        }
-        return;
+impl<'a, S: VisibilityStrategy> VisibilityStrategy for ExpansionAwareStrategy<'a, S> {
+    fn include_parent(&self, parent: &dyn rjets::TraceRecord, depth: usize) -> bool {
+        self.base_strategy.include_parent(parent, depth)
     }
 
-    // Record is parent (has children): ALWAYS add to result (structural anchor)
-    result.push(FilteredVisibleNode {
-        record_id,
-        row_index: *current_row,
-        depth,
-    });
-    *current_row += 1;
-
-    // Early subtree skip: if parent starts after viewport, all children also start after
-    if record.clk() > viewport_end_clk {
-        return;
+    fn include_leaf(&self, leaf: &dyn rjets::TraceRecord, depth: usize) -> bool {
+        self.base_strategy.include_leaf(leaf, depth)
     }
 
-    // Check if node is expanded
-    if !expanded_nodes.contains(&record_id) {
-        return; // Collapsed, don't process children
+    fn descend_into(&self, parent: &dyn rjets::TraceRecord, depth: usize) -> bool {
+        // Only descend if BOTH the node is expanded AND the base strategy allows it
+        self.expanded_nodes.contains(&parent.id()) && self.base_strategy.descend_into(parent, depth)
     }
 
-    // Process children
-    let children = record.children();
-    if children.is_empty() {
-        return;
-    }
-
-    // Check if all children are leaves by checking the first child's subtree depth
-    // (all siblings at the same level have the same depth characteristic)
-    let first_child = children[0];
-    let first_child_subtree_depth = if let Some(&depth) = cache.subtree_depths.get(&first_child.id()) {
-        depth
-    } else {
-        let depth = first_child.subtree_depth();
-        cache.subtree_depths.insert(first_child.id(), depth);
-        depth
-    };
-
-    // Only apply binary search optimization if children are leaves
-    // For intermediate parent nodes, we must recurse into all children
-    // because they might have leaf descendants in the viewport range
-    if first_child_subtree_depth == 0 {
-        // Children are leaves: use binary search optimization
-        let first_idx = binary_search_first_gte(&children, viewport_start_clk);
-        let last_idx = binary_search_last_lte(&children, viewport_end_clk);
-
-        if let Some(last) = last_idx {
-            if first_idx <= last {
-                for child in &children[first_idx..=last] {
-                    collect_filtered_nodes_recursive(
-                        child.id(),
-                        depth + 1,
-                        current_row,
-                        trace,
-                        expanded_nodes,
-                        viewport_start_clk,
-                        viewport_end_clk,
-                        result,
-                        cache,
-                    );
-                }
-            }
-        }
-    } else {
-        // Children are intermediate parents: recurse into all of them
-        // They might have leaf descendants that start in the viewport range
-        for child in children {
-            collect_filtered_nodes_recursive(
-                child.id(),
-                depth + 1,
-                current_row,
-                trace,
-                expanded_nodes,
-                viewport_start_clk,
-                viewport_end_clk,
-                result,
-                cache,
-            );
-        }
+    fn child_window_hint(
+        &self,
+        parent: &dyn rjets::TraceRecord,
+        depth: usize,
+    ) -> Option<(usize, usize)> {
+        self.base_strategy.child_window_hint(parent, depth)
     }
 }
 
-/// Collects all nodes that pass the viewport filter.
+/// Collects visible nodes using a visibility strategy, handling expansion state.
+///
+/// This is a unified function that replaces the separate filtered/unfiltered traversal
+/// paths. It uses the visibility strategy pattern to determine which nodes to include.
 ///
 /// # Arguments
 /// * `trace` - The trace data
 /// * `expanded_nodes` - Set of expanded node IDs
-/// * `cache` - Tree cache for optimization
+/// * `strategy` - The visibility strategy to apply
+///
+/// # Returns
+/// Vector of filtered visible nodes with row indices and depths
+pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
+    trace: &dyn TraceData,
+    expanded_nodes: &HashSet<u64>,
+    strategy: &S,
+) -> Vec<FilteredVisibleNode> {
+    // Wrap the strategy with expansion-aware logic
+    let expansion_strategy = ExpansionAwareStrategy {
+        base_strategy: strategy,
+        expanded_nodes,
+    };
+
+    // Get roots as trait objects
+    let roots: Vec<&dyn rjets::TraceRecord> = trace
+        .root_ids()
+        .iter()
+        .filter_map(|&id| trace.get_record(id))
+        .collect();
+
+    // Traverse using the strategy and assign row indices
+    visibility::traverse_visible(roots, &expansion_strategy)
+        .enumerate()
+        .map(|(row_index, node)| FilteredVisibleNode {
+            record_id: node.record.id(),
+            row_index,
+            depth: node.depth,
+        })
+        .collect()
+}
+
+/// Collects unfiltered visible nodes using the unified strategy system.
+///
+/// This replaces the manual traversal in `collect_nodes_in_range` by using
+/// the UnfilteredStrategy with the visibility system.
+///
+/// # Arguments
+/// * `trace` - The trace data
+/// * `expanded_nodes` - Set of expanded node IDs
+///
+/// # Returns
+/// Vector of all visible nodes (expansion-filtered only)
+pub fn collect_unfiltered_visible_nodes_strategy(
+    trace: &dyn TraceData,
+    expanded_nodes: &HashSet<u64>,
+) -> Vec<FilteredVisibleNode> {
+    let strategy = visibility::UnfilteredStrategy;
+    collect_visible_nodes_with_strategy(trace, expanded_nodes, &strategy)
+}
+
+/// Collects viewport-filtered visible nodes using the unified strategy system.
+///
+/// This replaces `collect_filtered_visible_nodes` by using the ViewportFilterStrategy
+/// with the visibility system.
+///
+/// # Arguments
+/// * `trace` - The trace data
+/// * `expanded_nodes` - Set of expanded node IDs
 /// * `viewport_start_clk` - Start of viewport time range
 /// * `viewport_end_clk` - End of viewport time range
 ///
 /// # Returns
-/// Vector of filtered visible nodes with row indices and depths
-pub fn collect_filtered_visible_nodes(
+/// Vector of viewport-filtered visible nodes
+pub fn collect_viewport_filtered_nodes_strategy(
     trace: &dyn TraceData,
     expanded_nodes: &HashSet<u64>,
-    cache: &mut TreeCache,
     viewport_start_clk: i64,
     viewport_end_clk: i64,
 ) -> Vec<FilteredVisibleNode> {
-    // Check if cache is valid
-    if cache.is_filtered_cache_valid(viewport_start_clk, viewport_end_clk) {
-        // Note: We don't actually cache the full node list, just the count
-        // This is because caching the full list would use too much memory
-        // Instead we rely on the fast binary search to rebuild quickly
+    let strategy = visibility::ViewportFilterStrategy {
+        start: viewport_start_clk,
+        end: viewport_end_clk,
+    };
+    collect_visible_nodes_with_strategy(trace, expanded_nodes, &strategy)
+}
+
+#[cfg(test)]
+mod strategy_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    // Mock implementations for testing using Arc for shared ownership
+    struct MockTrace {
+        records: HashMap<u64, Arc<MockRecord>>,
+        roots: Vec<u64>,
     }
 
-    let mut result = Vec::new();
-    let mut current_row = 0;
-
-    for root_id in trace.root_ids() {
-        collect_filtered_nodes_recursive(
-            root_id,
-            0,
-            &mut current_row,
-            trace,
-            expanded_nodes,
-            viewport_start_clk,
-            viewport_end_clk,
-            &mut result,
-            cache,
-        );
+    struct MockRecord {
+        id: u64,
+        clk: i64,
+        children: Vec<Arc<MockRecord>>,
     }
 
-    // Update cache with new viewport range and node count
-    cache.filtered_viewport_range = Some((viewport_start_clk, viewport_end_clk));
-    cache.filtered_node_count = Some(result.len());
+    // Implement Send manually since Arc<T> is Send when T is Send+Sync
+    unsafe impl Send for MockTrace {}
 
-    result
+    impl rjets::TraceData for MockTrace {
+        fn metadata(&self) -> &dyn rjets::TraceMetadata {
+            unimplemented!()
+        }
+
+        fn root_ids(&self) -> Vec<u64> {
+            self.roots.clone()
+        }
+
+        fn get_record(&self, id: u64) -> Option<&dyn rjets::TraceRecord> {
+            self.records.get(&id).map(|r| r.as_ref() as &dyn rjets::TraceRecord)
+        }
+    }
+
+    impl rjets::TraceRecord for MockRecord {
+        fn clk(&self) -> i64 {
+            self.clk
+        }
+        fn end_clk(&self) -> Option<i64> {
+            None
+        }
+        fn duration(&self) -> Option<i64> {
+            None
+        }
+        fn name(&self) -> &str {
+            "test"
+        }
+        fn id(&self) -> u64 {
+            self.id
+        }
+        fn parent_id(&self) -> Option<u64> {
+            None
+        }
+        fn description(&self) -> &str {
+            ""
+        }
+        fn data(&self) -> HashMap<String, serde_json::Value> {
+            HashMap::new()
+        }
+        fn children(&self) -> Vec<&dyn rjets::TraceRecord> {
+            self.children
+                .iter()
+                .map(|c| c.as_ref() as &dyn rjets::TraceRecord)
+                .collect()
+        }
+        fn events(&self) -> Vec<&dyn rjets::TraceEvent> {
+            vec![]
+        }
+        fn subtree_depth(&self) -> usize {
+            if self.children.is_empty() {
+                0
+            } else {
+                1
+            }
+        }
+    }
+
+    #[test]
+    fn test_unfiltered_strategy_adapter() {
+        // Create simple trace: root(1) -> child(2), child(3)
+        let child2 = Arc::new(MockRecord {
+            id: 2,
+            clk: 10,
+            children: vec![],
+        });
+        let child3 = Arc::new(MockRecord {
+            id: 3,
+            clk: 20,
+            children: vec![],
+        });
+        let root = Arc::new(MockRecord {
+            id: 1,
+            clk: 0,
+            children: vec![child2.clone(), child3.clone()],
+        });
+
+        let mut records = HashMap::new();
+        records.insert(1, root);
+        records.insert(2, child2);
+        records.insert(3, child3);
+
+        let trace = MockTrace {
+            records,
+            roots: vec![1],
+        };
+
+        // Test with node 1 expanded
+        let mut expanded = HashSet::new();
+        expanded.insert(1);
+
+        let nodes = collect_unfiltered_visible_nodes_strategy(&trace, &expanded);
+
+        // Should get all 3 nodes with row indices
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(nodes[0].record_id, 1);
+        assert_eq!(nodes[0].row_index, 0);
+        assert_eq!(nodes[0].depth, 0);
+        assert_eq!(nodes[1].record_id, 2);
+        assert_eq!(nodes[1].row_index, 1);
+        assert_eq!(nodes[2].record_id, 3);
+        assert_eq!(nodes[2].row_index, 2);
+    }
+
+    #[test]
+    fn test_viewport_filter_strategy_adapter() {
+        // Create trace with leaves at different times
+        let child2 = Arc::new(MockRecord {
+            id: 2,
+            clk: 50,
+            children: vec![],
+        });
+        let child3 = Arc::new(MockRecord {
+            id: 3,
+            clk: 150,
+            children: vec![],
+        });
+        let child4 = Arc::new(MockRecord {
+            id: 4,
+            clk: 250,
+            children: vec![],
+        });
+        let root = Arc::new(MockRecord {
+            id: 1,
+            clk: 0,
+            children: vec![child2.clone(), child3.clone(), child4.clone()],
+        });
+
+        let mut records = HashMap::new();
+        records.insert(1, root);
+        records.insert(2, child2);
+        records.insert(3, child3);
+        records.insert(4, child4);
+
+        let trace = MockTrace {
+            records,
+            roots: vec![1],
+        };
+
+        let mut expanded = HashSet::new();
+        expanded.insert(1);
+
+        // Filter to [100, 200] - should only get parent and child at 150
+        let nodes = collect_viewport_filtered_nodes_strategy(&trace, &expanded, 100, 200);
+
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].record_id, 1); // Parent always included
+        assert_eq!(nodes[1].record_id, 3); // Leaf at clk 150
+    }
+
+    #[test]
+    fn test_expansion_state_respected() {
+        // Create simple trace
+        let child2 = Arc::new(MockRecord {
+            id: 2,
+            clk: 10,
+            children: vec![],
+        });
+        let child3 = Arc::new(MockRecord {
+            id: 3,
+            clk: 20,
+            children: vec![],
+        });
+        let root = Arc::new(MockRecord {
+            id: 1,
+            clk: 0,
+            children: vec![child2.clone(), child3.clone()],
+        });
+
+        let mut records = HashMap::new();
+        records.insert(1, root);
+        records.insert(2, child2);
+        records.insert(3, child3);
+
+        let trace = MockTrace {
+            records,
+            roots: vec![1],
+        };
+
+        // Test with node 1 NOT expanded
+        let expanded = HashSet::new();
+
+        let nodes = collect_unfiltered_visible_nodes_strategy(&trace, &expanded);
+
+        // Should only get root, not children
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].record_id, 1);
+    }
 }
