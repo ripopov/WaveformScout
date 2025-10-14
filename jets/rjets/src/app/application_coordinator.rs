@@ -97,14 +97,31 @@ impl ApplicationCoordinator {
         was_already_selected: bool,
         first_event_clk: Option<i64>,
     ) {
-        // Use the intent-revealing selection API
-        if !was_already_selected {
+        Self::update_record_selection(state, record_id, was_already_selected, first_event_clk);
+    }
+
+    /// Updates record selection with consistent auto-selection logic.
+    ///
+    /// If the record was not already selected, auto-selects the first event if available.
+    /// If already selected, updates the record selection without changing the event.
+    fn update_record_selection(
+        state: &mut AppState,
+        record_id: u64,
+        was_already_selected: bool,
+        first_event_clk: Option<i64>,
+    ) {
+        let event_to_select = if !was_already_selected {
             // New selection: auto-select first event if available
-            state.selection.select_record(record_id, first_event_clk);
+            if let Some(clk) = first_event_clk {
+                println!("DEBUG: Auto-selected first event at clk {}", clk);
+            }
+            first_event_clk
         } else {
             // Already selected: just update record selection without changing event
-            state.selection.select_record(record_id, None);
-        }
+            None
+        };
+
+        state.selection.select_record(record_id, event_to_select);
     }
 
     /// Handles tree node expand/collapse interaction.
@@ -127,7 +144,7 @@ impl ApplicationCoordinator {
         state: &mut AppState,
         record_id: u64,
         was_already_selected: bool,
-        first_event_clk: Option<i64>
+        first_event_clk: Option<i64>,
     ) {
         // Use the intent-revealing selection API
         if !was_already_selected {
@@ -138,7 +155,6 @@ impl ApplicationCoordinator {
             state.selection.select_record(record_id, None);
         }
     }
-
     /// Handles timeline event click interaction.
     ///
     /// Updates event selection and record selection.
