@@ -9,6 +9,7 @@
 /// - Managing panel split ratios
 /// - Tracking column widths
 /// - Providing layout configuration queries
+/// - Managing viewport boundary text input state
 #[derive(Debug, Clone)]
 pub struct LayoutState {
     /// Split ratio between details panel and main view (0.0 to 1.0)
@@ -17,6 +18,10 @@ pub struct LayoutState {
     timeline_split_ratio: f32,
     /// Column widths for tree view [Name, Description, Start Clock, End Clock, ID]
     column_widths: [f32; 5],
+    /// Text buffer for viewport start boundary input
+    viewport_start_text: String,
+    /// Text buffer for viewport end boundary input
+    viewport_end_text: String,
 }
 
 impl Default for LayoutState {
@@ -33,6 +38,8 @@ impl LayoutState {
             timeline_split_ratio: 0.3,
             // Default widths ordered as [Name, Description, Start Clock, End Clock, ID]
             column_widths: [250.0, 300.0, 120.0, 120.0, 80.0],
+            viewport_start_text: String::new(),
+            viewport_end_text: String::new(),
         }
     }
 
@@ -60,5 +67,23 @@ impl LayoutState {
     /// Returns a mutable reference to the column widths array (for UI handlers).
     pub(crate) fn column_widths_mut(&mut self) -> &mut [f32; 5] {
         &mut self.column_widths
+    }
+
+    // ===== Viewport Text Input Accessors =====
+
+    /// Returns a mutable reference to the viewport start text buffer.
+    pub fn viewport_start_text_mut(&mut self) -> &mut String {
+        &mut self.viewport_start_text
+    }
+
+    /// Returns a mutable reference to the viewport end text buffer.
+    pub fn viewport_end_text_mut(&mut self) -> &mut String {
+        &mut self.viewport_end_text
+    }
+
+    /// Updates the viewport text buffers from current viewport values.
+    pub fn sync_viewport_text(&mut self, start_clk: i64, end_clk: i64) {
+        self.viewport_start_text = start_clk.to_string();
+        self.viewport_end_text = end_clk.to_string();
     }
 }

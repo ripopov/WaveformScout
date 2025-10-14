@@ -45,9 +45,7 @@ impl ViewportState {
     /// * `min_clk` - Minimum clock value in trace
     /// * `max_clk` - Maximum clock value in trace
     pub fn fit_to_trace(&mut self, min_clk: i64, max_clk: i64) {
-        self.viewport_start_clk = min_clk;
-        self.viewport_end_clk = max_clk;
-        self.zoom_level = 1.0;
+        self.set_range(min_clk, max_clk, min_clk, max_clk);
         self.shared_scroll_y = 0.0;
     }
 
@@ -88,22 +86,25 @@ impl ViewportState {
 
     // ===== Viewport Mutations =====
 
-    /// Sets the zoom level.
-    ///
-    /// # Arguments
-    /// * `zoom` - New zoom level (clamped to >= 1.0)
-    pub fn set_zoom(&mut self, zoom: f32) {
-        self.zoom_level = zoom.max(1.0);
-    }
-
-    /// Sets the visible viewport range.
+    /// Sets the visible viewport range and automatically calculates zoom level.
     ///
     /// # Arguments
     /// * `start_clk` - Start of viewport in clock units
     /// * `end_clk` - End of viewport in clock units
-    pub fn set_range(&mut self, start_clk: i64, end_clk: i64) {
+    /// * `trace_min_clk` - Minimum clock value in trace (for zoom calculation)
+    /// * `trace_max_clk` - Maximum clock value in trace (for zoom calculation)
+    pub fn set_range(&mut self, start_clk: i64, end_clk: i64, trace_min_clk: i64, trace_max_clk: i64) {
         self.viewport_start_clk = start_clk;
         self.viewport_end_clk = end_clk;
+
+        // Calculate zoom level based on trace extent vs viewport extent
+        let trace_extent = (trace_max_clk - trace_min_clk) as f32;
+        let viewport_extent = (end_clk - start_clk) as f32;
+        self.zoom_level = if viewport_extent > 0.0 {
+            trace_extent / viewport_extent
+        } else {
+            1.0
+        };
     }
 
     /// Zooms in/out around a specific clock point.

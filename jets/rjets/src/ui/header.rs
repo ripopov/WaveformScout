@@ -61,11 +61,86 @@ pub fn render_header(ui: &mut egui::Ui, state: &mut AppState) -> Option<HeaderIn
             }
 
             if ui.button("⛶ Fit").clicked() {
-                state.viewport.set_zoom(1.0);
-                state.viewport.set_range(state.trace.min_clk(), state.trace.max_clk());
+                state.viewport.set_range(
+                    state.trace.min_clk(),
+                    state.trace.max_clk(),
+                    state.trace.min_clk(),
+                    state.trace.max_clk()
+                );
             }
 
             ui.label(format!("Zoom: {:.1}x", state.viewport.zoom_level()));
+
+            ui.separator();
+
+            // Viewport boundary controls
+            ui.label("Viewport:");
+
+            // Sync text buffers with current viewport values if they're empty
+            if state.layout.viewport_start_text_mut().is_empty() {
+                state.layout.sync_viewport_text(
+                    state.viewport.viewport_start_clk(),
+                    state.viewport.viewport_end_clk()
+                );
+            }
+
+            // Start boundary text field
+            let start_response = egui::TextEdit::singleline(state.layout.viewport_start_text_mut())
+                .desired_width(80.0)
+                .show(ui);
+
+            ui.label("-");
+
+            // End boundary text field
+            let end_response = egui::TextEdit::singleline(state.layout.viewport_end_text_mut())
+                .desired_width(80.0)
+                .show(ui);
+
+            // Check if user pressed Enter on either field
+            let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if (start_response.response.lost_focus() || end_response.response.lost_focus()) && enter_pressed {
+                // Try to parse both text fields
+                let start_result = state.layout.viewport_start_text_mut().parse::<i64>();
+                let end_result = state.layout.viewport_end_text_mut().parse::<i64>();
+
+                match (start_result, end_result) {
+                    (Ok(mut new_start), Ok(mut new_end)) => {
+                        // Swap if start > end
+                        if new_start > new_end {
+                            std::mem::swap(&mut new_start, &mut new_end);
+                        }
+
+                        // Apply the new range (zoom is calculated automatically)
+                        state.viewport.set_range(
+                            new_start,
+                            new_end,
+                            state.trace.min_clk(),
+                            state.trace.max_clk()
+                        );
+
+                        // Sync text to potentially swapped values
+                        state.layout.sync_viewport_text(new_start, new_end);
+                    }
+                    _ => {
+                        // Reset to current values if either parse fails
+                        state.layout.sync_viewport_text(
+                            state.viewport.viewport_start_clk(),
+                            state.viewport.viewport_end_clk()
+                        );
+                    }
+                }
+            }
+
+            // Update text fields when viewport changes (e.g., from zoom buttons)
+            let current_start = state.viewport.viewport_start_clk();
+            let current_end = state.viewport.viewport_end_clk();
+            if state.layout.viewport_start_text_mut().parse::<i64>().unwrap_or(0) != current_start
+                || state.layout.viewport_end_text_mut().parse::<i64>().unwrap_or(0) != current_end {
+                // Only update if neither field has focus
+                if !start_response.response.has_focus() && !end_response.response.has_focus() {
+                    state.layout.sync_viewport_text(current_start, current_end);
+                }
+            }
         }
 
         // Push theme selector to the right
