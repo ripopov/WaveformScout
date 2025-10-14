@@ -53,6 +53,17 @@ pub fn render_status_bar(ui: &mut egui::Ui, state: &AppState) {
                     gpu_model, clock_freq, time_range, total_records, total_events
                 )).strong());
             }
+
+            // Show filtered count if viewport filter is enabled
+            if state.viewport.viewport_filter_enabled() {
+                let filtered_count = state.tree_cache.filtered_node_count.unwrap_or(0);
+                let total_count = metadata.total_records().unwrap_or(0);
+                ui.label(RichText::new("|").strong());
+                ui.label(RichText::new(format!(
+                    "Filtered: {} / {} records",
+                    filtered_count, total_count
+                )).strong().color(egui::Color32::YELLOW));
+            }
         } else {
             ui.label(RichText::new("| No trace loaded").strong());
         }

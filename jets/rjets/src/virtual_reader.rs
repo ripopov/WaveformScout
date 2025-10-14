@@ -285,6 +285,21 @@ impl TraceRecord for VirtualTraceRecord {
             .map(|e| e as &dyn TraceEvent)
             .collect()
     }
+
+    fn subtree_depth(&self) -> usize {
+        // Leaf node (no children)
+        if self.children.is_empty() {
+            return 0;
+        }
+
+        // Calculate max depth of children + 1
+        let max_child_depth = self.children.iter()
+            .map(|child| child.subtree_depth())
+            .max()
+            .unwrap_or(0);
+
+        max_child_depth + 1
+    }
 }
 
 #[derive(Clone)]

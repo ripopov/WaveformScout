@@ -141,6 +141,24 @@ pub fn render_header(ui: &mut egui::Ui, state: &mut AppState) -> Option<HeaderIn
                     state.layout.sync_viewport_text(current_start, current_end);
                 }
             }
+
+            ui.separator();
+
+            // Viewport filter checkbox
+            let mut filter_enabled = state.viewport.viewport_filter_enabled();
+            let filter_response = ui.checkbox(&mut filter_enabled, "⏱ Viewport Filter");
+
+            if filter_response.changed() {
+                state.viewport.set_viewport_filter_enabled(filter_enabled);
+                // Invalidate filtered cache when toggling
+                state.tree_cache.invalidate_filtered_cache();
+            }
+
+            if filter_response.hovered() {
+                filter_response.on_hover_text(
+                    "Show only leaf records that start within the viewport time range"
+                );
+            }
         }
 
         // Push theme selector to the right

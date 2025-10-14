@@ -527,6 +527,32 @@ impl TraceRecord for JetsTraceRecord {
             .map(|e| e as &dyn TraceEvent)
             .collect()
     }
+
+    fn subtree_depth(&self) -> usize {
+        // Leaf node (no children)
+        if self.child_indices.is_empty() {
+            return 0;
+        }
+
+        // Get arena reference
+        let arena = match self.arena.get() {
+            Some(a) => a,
+            None => return 1, // Conservative: assume depth 1 if arena not initialized
+        };
+
+        // Calculate max depth of children + 1
+        let max_child_depth = self.child_indices.iter()
+            .filter_map(|&idx| arena.get(idx))
+            .map(|child| {
+                // Ensure child has arena reference
+                let _ = child.arena.get_or_init(|| Arc::clone(arena));
+                child.subtree_depth()
+            })
+            .max()
+            .unwrap_or(0);
+
+        max_child_depth + 1
+    }
 }
 
 impl TraceEvent for JetsTraceEvent {

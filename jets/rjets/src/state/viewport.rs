@@ -20,6 +20,8 @@ pub struct ViewportState {
     viewport_end_clk: i64,
     /// Shared vertical scroll position between tree and timeline
     shared_scroll_y: f32,
+    /// Whether viewport filter is enabled (filters tree to show only records within viewport time range)
+    viewport_filter_enabled: bool,
 }
 
 impl Default for ViewportState {
@@ -36,6 +38,7 @@ impl ViewportState {
             viewport_start_clk: 0,
             viewport_end_clk: 0,
             shared_scroll_y: 0.0,
+            viewport_filter_enabled: false,
         }
     }
 
@@ -82,6 +85,11 @@ impl ViewportState {
     /// Returns the shared vertical scroll position.
     pub fn scroll_y(&self) -> f32 {
         self.shared_scroll_y
+    }
+
+    /// Returns whether viewport filter is enabled.
+    pub fn viewport_filter_enabled(&self) -> bool {
+        self.viewport_filter_enabled
     }
 
     // ===== Viewport Mutations =====
@@ -148,6 +156,19 @@ impl ViewportState {
     /// * `y` - New vertical scroll position in pixels
     pub fn set_scroll_y(&mut self, y: f32) {
         self.shared_scroll_y = y.max(0.0);
+    }
+
+    /// Sets whether viewport filter is enabled.
+    ///
+    /// # Arguments
+    /// * `enabled` - Whether to enable viewport filtering
+    pub fn set_viewport_filter_enabled(&mut self, enabled: bool) {
+        self.viewport_filter_enabled = enabled;
+    }
+
+    /// Toggles viewport filter on/off.
+    pub fn toggle_viewport_filter(&mut self) {
+        self.viewport_filter_enabled = !self.viewport_filter_enabled;
     }
 
     // ===== Low-Level Accessors (for input handlers) =====

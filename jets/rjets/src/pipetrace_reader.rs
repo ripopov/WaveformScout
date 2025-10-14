@@ -62,6 +62,7 @@ impl TraceRecord for PipetraceRecord {
     fn data(&self) -> HashMap<String, serde_json::Value> { HashMap::new() }
     fn children(&self) -> Vec<&dyn TraceRecord> { Vec::new() }
     fn events(&self) -> Vec<&dyn TraceEvent> { Vec::new() }
+    fn subtree_depth(&self) -> usize { 0 }
 }
 
 #[derive(Clone)]

@@ -77,6 +77,16 @@ pub trait TraceRecord {
 
     /// Returns the events associated with this record as trait objects
     fn events(&self) -> Vec<&dyn TraceEvent>;
+
+    /// Returns the depth of the subtree rooted at this record.
+    ///
+    /// - Returns 0 for leaf records (no children)
+    /// - Returns 1 for records with only leaf children
+    /// - Returns max(child.subtree_depth()) + 1 for deeper trees
+    ///
+    /// This method is used by the viewport filter to determine if a record
+    /// is a leaf (and should be filtered by clock) or a parent (always shown).
+    fn subtree_depth(&self) -> usize;
 }
 
 /// Trait for accessing trace event

@@ -65,25 +65,41 @@ pub fn render_tree_panel(
             let viewport_height = ui.available_height();
             let scroll_offset = state.viewport.scroll_y();
 
-            // Collect only visible nodes
-            let visible_nodes = VirtualScrollManager::collect_visible_nodes(
-                trace,
-                state.tree.expanded_nodes_set(),
-                &mut state.tree_cache,
-                scroll_offset,
-                viewport_height,
-            );
+            // Collect visible nodes (filtered or unfiltered based on viewport filter state)
+            let visible_nodes = if state.viewport.viewport_filter_enabled() {
+                VirtualScrollManager::collect_filtered_visible_nodes(
+                    trace,
+                    state.tree.expanded_nodes_set(),
+                    &mut state.tree_cache,
+                    scroll_offset,
+                    viewport_height,
+                    state.viewport.viewport_start_clk(),
+                    state.viewport.viewport_end_clk(),
+                )
+            } else {
+                VirtualScrollManager::collect_visible_nodes(
+                    trace,
+                    state.tree.expanded_nodes_set(),
+                    &mut state.tree_cache,
+                    scroll_offset,
+                    viewport_height,
+                )
+            };
 
             if visible_nodes.is_empty() {
                 return;
             }
 
-            // Calculate padding
-            let total_visible_nodes = VirtualScrollManager::get_total_visible_nodes(
-                trace,
-                state.tree.expanded_nodes_set(),
-                &mut state.tree_cache,
-            );
+            // Calculate padding (use filtered count if filter is enabled)
+            let total_visible_nodes = if state.viewport.viewport_filter_enabled() {
+                state.tree_cache.filtered_node_count.unwrap_or(0)
+            } else {
+                VirtualScrollManager::get_total_visible_nodes(
+                    trace,
+                    state.tree.expanded_nodes_set(),
+                    &mut state.tree_cache,
+                )
+            };
 
             // Add top padding for skipped rows
             let top_padding = VirtualScrollManager::calculate_top_padding(&visible_nodes);

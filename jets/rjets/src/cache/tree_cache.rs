@@ -25,6 +25,17 @@ pub struct TreeCache {
     /// Sequence number for cache invalidation.
     /// Incremented whenever expanded_nodes changes or trace reloads.
     pub expansion_seq: u64,
+
+    /// Cached viewport range for filtered tree (start_clk, end_clk).
+    /// Used to determine if filtered cache is still valid.
+    pub filtered_viewport_range: Option<(i64, i64)>,
+
+    /// Cached total filtered node count for current viewport.
+    pub filtered_node_count: Option<usize>,
+
+    /// Cached subtree depths for records (record_id -> depth).
+    /// Depth 0 = leaf, depth > 0 = parent with children.
+    pub subtree_depths: HashMap<u64, usize>,
 }
 
 impl TreeCache {
@@ -36,6 +47,9 @@ impl TreeCache {
             total_visible_nodes: None,
             max_visible_depth: None,
             expansion_seq: 0,
+            filtered_viewport_range: None,
+            filtered_node_count: None,
+            subtree_depths: HashMap::new(),
         }
     }
 
@@ -51,6 +65,35 @@ impl TreeCache {
         self.total_visible_nodes = None;
         self.max_visible_depth = None;
         self.expansion_seq += 1;
+        // Also invalidate filtered cache
+        self.invalidate_filtered_cache();
+    }
+
+    /// Checks if filtered cache is valid for given viewport range.
+    ///
+    /// # Arguments
+    /// * `start_clk` - Start of viewport range
+    /// * `end_clk` - End of viewport range
+    ///
+    /// # Returns
+    /// `true` if cached filtered tree matches the given range, `false` otherwise
+    pub fn is_filtered_cache_valid(&self, start_clk: i64, end_clk: i64) -> bool {
+        match self.filtered_viewport_range {
+            Some((cached_start, cached_end)) => {
+                cached_start == start_clk && cached_end == end_clk
+            }
+            None => false,
+        }
+    }
+
+    /// Invalidates only the filtered tree cache (preserves unfiltered cache).
+    ///
+    /// This should be called when:
+    /// - Viewport range changes (start_clk or end_clk)
+    /// - Filter is toggled on/off
+    pub fn invalidate_filtered_cache(&mut self) {
+        self.filtered_viewport_range = None;
+        self.filtered_node_count = None;
     }
 }
 
