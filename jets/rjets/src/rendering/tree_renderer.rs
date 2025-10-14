@@ -140,15 +140,15 @@ pub fn render_tree_node(
     );
     x_offset += column_widths[0];
 
-    // Column 1: ID
-    let id_rect = egui::Rect::from_min_size(
+    // Column 1: Description
+    let desc_rect = egui::Rect::from_min_size(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[1], ROW_HEIGHT),
     );
     ui.painter().text(
-        id_rect.left_center() + egui::vec2(4.0, 0.0),
+        desc_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &record_id.to_string(),
+        &description,
         egui::FontId::proportional(13.0),
         ui.visuals().text_color(),
     );
@@ -186,15 +186,15 @@ pub fn render_tree_node(
     );
     x_offset += column_widths[3];
 
-    // Column 4: Description
-    let desc_rect = egui::Rect::from_min_size(
+    // Column 4: ID
+    let id_rect = egui::Rect::from_min_size(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[4], ROW_HEIGHT),
     );
     ui.painter().text(
-        desc_rect.left_center() + egui::vec2(4.0, 0.0),
+        id_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &description,
+        &record_id.to_string(),
         egui::FontId::proportional(13.0),
         ui.visuals().text_color(),
     );

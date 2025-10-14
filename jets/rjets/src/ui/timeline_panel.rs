@@ -40,7 +40,7 @@ pub fn render_timeline_panel(
 ) -> Option<TimelinePanelInteraction> {
     // Check if loading is in progress
     if loader.is_loading() {
-        render_loading_indicator(ui, theme_colors);
+        render_loading_indicator(ui, theme_colors, loader);
         return None;
     }
 
@@ -203,18 +203,37 @@ fn render_timeline_header(ui: &mut egui::Ui, state: &AppState) {
 }
 
 /// Renders a loading indicator when trace is being loaded.
-fn render_loading_indicator(ui: &mut egui::Ui, theme_colors: &ThemeColors) {
+fn render_loading_indicator(ui: &mut egui::Ui, theme_colors: &ThemeColors, loader: &AsyncLoader) {
     let canvas_rect = ui.available_rect_before_wrap();
     let center_pos = canvas_rect.center();
 
     let font = egui::FontId::proportional(48.0);
+    let memory_font = egui::FontId::proportional(24.0);
     let color = theme_colors.text_dim;
 
+    // Display "Loading..." text
     ui.painter().text(
         center_pos,
         egui::Align2::CENTER_CENTER,
         "Loading...",
         font,
+        color,
+    );
+
+    // Display memory usage below
+    let memory_mb = loader.current_memory_mb();
+    let memory_text = if memory_mb > 1024.0 {
+        format!("Memory: {:.2} GB", memory_mb / 1024.0)
+    } else {
+        format!("Memory: {:.1} MB", memory_mb)
+    };
+    
+    let memory_pos = egui::pos2(center_pos.x, center_pos.y + 60.0);
+    ui.painter().text(
+        memory_pos,
+        egui::Align2::CENTER_CENTER,
+        memory_text,
+        memory_font,
         color,
     );
 }

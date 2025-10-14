@@ -29,7 +29,9 @@ pub fn render_header(ui: &mut egui::Ui, state: &mut AppState) -> Option<HeaderIn
     ui.horizontal(|ui| {
         if ui.button("📁 Open Trace").clicked() {
             let mut dialog = rfd::FileDialog::new()
-                .add_filter("JETS Traces", &["jets", "jsonl", "br"]);
+                .add_filter("All Trace Files", &["jets", "jsonl", "br", "pt", "gz"])
+                .add_filter("JETS Traces", &["jets", "jsonl", "br"])
+                .add_filter("PipeTrace Files", &["pt", "gz"]);
 
             if let Ok(cwd) = std::env::current_dir() {
                 dialog = dialog.set_directory(cwd);
@@ -84,7 +86,6 @@ pub fn render_header(ui: &mut egui::Ui, state: &mut AppState) -> Option<HeaderIn
 
             // Save theme preference if it changed
             if old_theme != current_theme {
-                eprintln!("DEBUG [render_header]: Theme changed from '{}' to '{}'", old_theme, current_theme);
                 state.theme.set_theme(current_theme);
                 // Mark that we need to save on next frame (we'll handle this in update with frame.storage_mut)
                 ui.ctx().request_repaint();

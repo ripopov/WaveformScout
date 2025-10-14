@@ -73,22 +73,21 @@ pub fn handle_timeline_input(
                 *is_selecting_region = true;
                 if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
                     *region_start_pos = Some(pos);
-                    println!("DEBUG: Region selection started at: {:?}", pos);
                 }
             } else {
-                println!("DEBUG: Region selection in progress");
+                // region selection in progress (debug print removed)
             }
         } else {
             // Normal drag: Panning
             let drag_delta = canvas_response.drag_delta();
 
-            if !*is_dragging {
+                if !*is_dragging {
                 // Starting drag
                 *is_dragging = true;
                 if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
                     *drag_start_clk = viewport_operations::x_to_clk(pos.x, *viewport_start_clk, *viewport_end_clk, canvas_rect);
                 }
-                println!("DEBUG: Drag started at clk: {}", drag_start_clk);
+                    // drag started (debug print removed)
             }
 
             // Calculate how much clock time the drag represents
@@ -96,7 +95,7 @@ pub fn handle_timeline_input(
             let pixels_to_clk_ratio = viewport_range / canvas_rect.width();
             let clk_delta = (-drag_delta.x * pixels_to_clk_ratio) as i64;
 
-            println!("DEBUG: Dragging - delta.x: {}, clk_delta: {}", drag_delta.x, clk_delta);
+            // dragging (debug print removed)
 
             // Apply the pan
             *viewport_start_clk += clk_delta;
@@ -114,7 +113,7 @@ pub fn handle_timeline_input(
                 *viewport_start_clk -= diff;
             }
 
-            println!("DEBUG: Viewport after drag: {}..{}", viewport_start_clk, viewport_end_clk);
+            // viewport after drag (debug print removed)
             result = TimelineInputResult::ViewportUpdated;
         }
     } else {
@@ -146,21 +145,20 @@ pub fn handle_timeline_input(
                     let full_range = (trace_max_clk - trace_min_clk) as f32;
                     *zoom_level = full_range / new_range;
 
-                    println!("DEBUG: Zoomed to region: {}..{}, zoom level: {:.2}x",
-                        viewport_start_clk, viewport_end_clk, zoom_level);
+                    // zoomed to region (debug print removed)
                     result = TimelineInputResult::ViewportUpdated;
                 } else {
-                    println!("DEBUG: Region selection too small ({:.1}px), ignoring zoom", pixel_distance);
+                    // region selection too small (debug print removed)
                 }
             }
 
             *is_selecting_region = false;
             *region_start_pos = None;
-            println!("DEBUG: Region selection ended");
+            // region selection ended (debug print removed)
         } else if *is_dragging {
             // Drag ended
             *is_dragging = false;
-            println!("DEBUG: Drag ended");
+            // drag ended (debug print removed)
         }
     }
 
@@ -186,8 +184,7 @@ pub fn handle_timeline_input(
         ctx.input(|i| {
             // DEBUG: Print all scroll-related inputs
             if i.raw_scroll_delta != egui::Vec2::ZERO || i.smooth_scroll_delta != egui::Vec2::ZERO {
-                println!("DEBUG: raw_scroll_delta: {:?}, smooth_scroll_delta: {:?}, modifiers.ctrl: {}",
-                    i.raw_scroll_delta, i.smooth_scroll_delta, i.modifiers.ctrl);
+                // scroll delta changed (debug print removed)
             }
 
             // Handle zoom (Ctrl + Mouse Wheel)
@@ -199,13 +196,13 @@ pub fn handle_timeline_input(
             };
 
             if i.modifiers.ctrl && scroll_y != 0.0 {
-                println!("DEBUG: Zoom triggered! scroll_y: {}, current zoom_level: {}", scroll_y, zoom_level);
+                // zoom triggered (debug print removed)
 
                 let zoom_factor = 1.0 + scroll_y * 0.002;
                 let mouse_pos = i.pointer.hover_pos().unwrap_or(canvas_rect.center());
                 let mouse_clk = viewport_operations::x_to_clk(mouse_pos.x, *viewport_start_clk, *viewport_end_clk, canvas_rect);
 
-                println!("DEBUG: zoom_factor: {}, mouse_clk: {}", zoom_factor, mouse_clk);
+                // zoom factor computed (debug print removed)
 
                 *zoom_level = (*zoom_level * zoom_factor).clamp(1.0, 10000.0);
 
@@ -222,8 +219,7 @@ pub fn handle_timeline_input(
                 *viewport_start_clk = (*viewport_start_clk).max(trace_min_clk);
                 *viewport_end_clk = (*viewport_end_clk).min(trace_max_clk);
 
-                println!("DEBUG: New zoom_level: {}, viewport: {}..{}",
-                    zoom_level, viewport_start_clk, viewport_end_clk);
+                // new zoom level applied (debug print removed)
                 result = TimelineInputResult::ViewportUpdated;
             }
 
@@ -236,7 +232,7 @@ pub fn handle_timeline_input(
             };
 
             if !i.modifiers.ctrl && scroll_y_for_pan != 0.0 {
-                println!("DEBUG: Pan triggered! scroll_y_for_pan: {}", scroll_y_for_pan);
+                // pan triggered (debug print removed)
 
                 // Negative scroll_y means scroll down/right, positive means scroll up/left
                 // Invert the sign so scrolling down moves the timeline left (showing later times)
@@ -258,7 +254,7 @@ pub fn handle_timeline_input(
                     pan_amount
                 };
 
-                println!("DEBUG: viewport_range: {}, pan_amount: {}, pan_clk: {}", viewport_range, pan_amount, pan_clk);
+                // pan calculation (debug print removed)
 
                 *viewport_start_clk += pan_clk as i64;
                 *viewport_end_clk += pan_clk as i64;
@@ -275,7 +271,7 @@ pub fn handle_timeline_input(
                     *viewport_start_clk -= diff;
                 }
 
-                println!("DEBUG: New viewport after pan: {}..{}", viewport_start_clk, viewport_end_clk);
+                // new viewport after pan (debug print removed)
                 result = TimelineInputResult::ViewportUpdated;
             }
         });

@@ -15,7 +15,7 @@ pub struct LayoutState {
     split_ratio: f32,
     /// Split ratio between tree and timeline panels (0.0 to 1.0)
     timeline_split_ratio: f32,
-    /// Column widths for tree view [Name, ID, Start Clock, End Clock, Description]
+    /// Column widths for tree view [Name, Description, Start Clock, End Clock, ID]
     column_widths: [f32; 5],
 }
 
@@ -31,7 +31,8 @@ impl LayoutState {
         Self {
             split_ratio: 0.7,
             timeline_split_ratio: 0.3,
-            column_widths: [250.0, 80.0, 120.0, 120.0, 300.0],
+            // Default widths ordered as [Name, Description, Start Clock, End Clock, ID]
+            column_widths: [250.0, 300.0, 120.0, 120.0, 80.0],
         }
     }
 

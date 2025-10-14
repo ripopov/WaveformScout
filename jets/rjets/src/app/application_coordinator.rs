@@ -101,9 +101,6 @@ impl ApplicationCoordinator {
         if !was_already_selected {
             // New selection: auto-select first event if available
             state.selection.select_record(record_id, first_event_clk);
-            if first_event_clk.is_some() {
-                println!("DEBUG: Auto-selected first event at clk {}", first_event_clk.unwrap());
-            }
         } else {
             // Already selected: just update record selection without changing event
             state.selection.select_record(record_id, None);
@@ -130,17 +127,12 @@ impl ApplicationCoordinator {
         state: &mut AppState,
         record_id: u64,
         was_already_selected: bool,
-        first_event_clk: Option<i64>,
+        first_event_clk: Option<i64>
     ) {
-        println!("DEBUG: Selected record {}", record_id);
-
         // Use the intent-revealing selection API
         if !was_already_selected {
             // New selection: auto-select first event if available
             state.selection.select_record(record_id, first_event_clk);
-            if first_event_clk.is_some() {
-                println!("DEBUG: Auto-selected first event at clk {}", first_event_clk.unwrap());
-            }
         } else {
             // Already selected: just update record selection without changing event
             state.selection.select_record(record_id, None);
@@ -152,9 +144,5 @@ impl ApplicationCoordinator {
     /// Updates event selection and record selection.
     pub fn handle_timeline_event_click(state: &mut AppState, record_id: u64, event_clk: i64) {
         state.selection.select_event(record_id, event_clk);
-        println!(
-            "DEBUG: Selected event at clk {} for record {}",
-            event_clk, record_id
-        );
     }
 }

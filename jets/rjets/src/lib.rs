@@ -2,6 +2,7 @@ pub mod traits;
 pub mod parser;
 pub mod writer;
 pub mod virtual_reader;
+pub mod pipetrace_reader;
 pub mod theme;
 
 // Export traits
@@ -20,6 +21,12 @@ pub use parser::{
 pub use virtual_reader::{
     VirtualTraceReader, VirtualTraceData,
     VirtualTraceRecord, VirtualTraceEvent
+};
+
+// Export pipetrace implementation
+pub use pipetrace_reader::{
+    PipetraceReader, PipetraceData, PipetraceMetadata,
+    PipetraceRecord, PipetraceEvent
 };
 
 // Export writer (unchanged)

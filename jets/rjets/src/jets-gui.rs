@@ -4,6 +4,8 @@
 //! The viewer features:
 //! - Hierarchical tree view of trace records with virtual scrolling for performance
 //! - Timeline visualization with zoom, pan, and event markers
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! - Asynchronous file loading with loading indicators
 //! - Multiple theme support with persistent preferences
 //! - Details panel for viewing record annotations and events
@@ -138,15 +140,6 @@ impl JetsViewerApp {
                 );
             }
         }
-    }
-}
-
-impl Drop for JetsViewerApp {
-    fn drop(&mut self) {
-        eprintln!(
-            "DEBUG [drop]: Application shutting down with theme: '{}'",
-            self.state.theme.current_theme_name()
-        );
     }
 }
 

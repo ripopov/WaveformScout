@@ -12,7 +12,7 @@ use egui::Color32;
 /// * `expand_width` - Width reserved for expand/collapse controls
 /// * `column_widths` - Mutable array of widths for each column (will be updated on resize)
 pub fn render_table_header(ui: &mut egui::Ui, expand_width: f32, column_widths: &mut [f32; 5]) {
-    let column_names = ["Name", "ID", "Start Clock", "End Clock", "Description"];
+    let column_names = ["Name", "Description", "Start Clock", "End Clock", "ID"];
 
     let mut x_offset = 0.0;
     let header_height = 24.0;
