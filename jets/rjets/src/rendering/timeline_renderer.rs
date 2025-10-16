@@ -95,10 +95,15 @@ where
         }
 
         // Handle click on bar for selection (only when not dragging)
+        // Use hover sense to allow drag gestures to pass through to canvas layer
         let bar_id = ui.id().with(format!("bar_select_{}", record_id));
-        let bar_response = ui.interact(bar_rect, bar_id, egui::Sense::click());
+        let bar_response = ui.interact(bar_rect, bar_id, egui::Sense::hover());
 
-        if bar_response.clicked() && !is_dragging {
+        // Manually detect clicks: pointer is over bar AND was clicked (not dragging)
+        let pointer_over_bar = bar_response.hovered();
+        let pointer_clicked = ui.input(|i| i.pointer.primary_clicked());
+
+        if pointer_over_bar && pointer_clicked && !is_dragging {
             let was_already_selected = selected_record_id == Some(record_id);
             let events = record.events();
             let first_event_clk = if !events.is_empty() {
@@ -164,10 +169,13 @@ where
             );
 
             let marker_id = ui.id().with(format!("event_marker_{}_{}", record_id, event_clk));
-            let marker_response = ui.interact(marker_rect, marker_id, egui::Sense::click());
+            let marker_response = ui.interact(marker_rect, marker_id, egui::Sense::hover());
 
-            // Handle click to select event (only when not dragging)
-            if marker_response.clicked() && !is_dragging {
+            // Manually detect clicks: pointer is over marker AND was clicked (not dragging)
+            let pointer_over_marker = marker_response.hovered();
+            let pointer_clicked = ui.input(|i| i.pointer.primary_clicked());
+
+            if pointer_over_marker && pointer_clicked && !is_dragging {
                 interaction = Some(TimelineRowInteraction::EventClicked {
                     record_id,
                     event_clk,
