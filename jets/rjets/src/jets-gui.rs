@@ -39,6 +39,7 @@ use io::AsyncLoader;
 use ui::panel_manager::PanelManager;
 
 const COLUMN_WIDTHS_KEY: &str = "column_widths";
+const EXPAND_WIDTH_KEY: &str = "expand_width";
 
 /// Main application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
@@ -101,8 +102,16 @@ impl JetsViewerApp {
             default_widths
         );
 
+        // Load expand width with proper default
+        let default_expand_width = 100.0;
+        let expand_width: f32 = SettingsCoordinator::load_setting_or(
+            cc.storage,
+            EXPAND_WIDTH_KEY,
+            default_expand_width
+        );
+
         Self {
-            state: AppState::with_theme_and_layout(current_theme_name, column_widths),
+            state: AppState::with_theme_and_layout(current_theme_name, column_widths, expand_width),
             loader: AsyncLoader::new(),
             pending_file_load: initial_file,
         }
@@ -170,6 +179,7 @@ impl eframe::App for JetsViewerApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         ThemeCoordinator::save_theme_to_storage(storage, self.state.theme.current_theme_name());
         SettingsCoordinator::save_setting(storage, COLUMN_WIDTHS_KEY, self.state.layout.column_widths());
+        SettingsCoordinator::save_setting(storage, EXPAND_WIDTH_KEY, &self.state.layout.expand_width());
     }
 
     /// Main update loop that renders all UI panels and handles application state.
@@ -191,6 +201,7 @@ impl eframe::App for JetsViewerApp {
         if let Some(storage) = frame.storage_mut() {
             storage.set_string("theme_preference", self.state.theme.current_theme_name().to_string());
             SettingsCoordinator::save_setting(storage, COLUMN_WIDTHS_KEY, self.state.layout.column_widths());
+            SettingsCoordinator::save_setting(storage, EXPAND_WIDTH_KEY, &self.state.layout.expand_width());
         }
 
         // Load initial file if specified via command line (only on first frame)

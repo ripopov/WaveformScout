@@ -42,17 +42,13 @@ pub fn render_tree_panel(
         }
     };
 
-    // Calculate dynamic expand column width based on max visible depth
-    let max_depth = VirtualScrollManager::get_max_visible_depth(
-        trace,
-        state.tree.expanded_nodes_set(),
-        &mut state.tree_cache,
-    );
-    let expand_width = VirtualScrollManager::calculate_expand_width(max_depth);
-
-    // Render table header
-    table_header::render_table_header(ui, expand_width, state.layout.column_widths_mut());
+    // Render table header with resizable expand column
+    // (Users can now resize it, and it will be saved)
+    table_header::render_table_header(ui, &mut state.layout);
     ui.separator();
+
+    // Get expand_width after header rendering (may have been resized)
+    let expand_width = state.layout.expand_width();
 
     // Track interactions to return
     let mut interaction: Option<TreePanelInteraction> = None;

@@ -18,6 +18,8 @@ pub struct LayoutState {
     split_ratio: f32,
     /// Split ratio between tree and timeline panels (0.0 to 1.0)
     timeline_split_ratio: f32,
+    /// Width of the expand/collapse column (tree branch visualization area)
+    expand_width: f32,
     /// Column widths for tree view [Name, Description, Start Clock, End Clock, ID]
     column_widths: [f32; 5],
     /// Text buffer for viewport start boundary input
@@ -38,6 +40,7 @@ impl LayoutState {
         Self {
             split_ratio: 0.7,
             timeline_split_ratio: 0.3,
+            expand_width: 100.0, // Default width for expand/collapse column
             // Default widths ordered as [Name, Description, Start Clock, End Clock, ID]
             column_widths: [250.0, 300.0, 120.0, 120.0, 80.0],
             viewport_start_text: String::new(),
@@ -50,6 +53,7 @@ impl LayoutState {
         Self {
             split_ratio: 0.7,
             timeline_split_ratio: 0.3,
+            expand_width: 100.0,
             column_widths,
             viewport_start_text: String::new(),
             viewport_end_text: String::new(),
@@ -73,6 +77,11 @@ impl LayoutState {
         &self.column_widths
     }
 
+    /// Returns the expand column width.
+    pub fn expand_width(&self) -> f32 {
+        self.expand_width
+    }
+
     // ===== Low-Level Accessors (for UI handlers) =====
     // These methods provide direct mutable access to internal state
     // for UI rendering code that needs fine-grained control.
@@ -80,6 +89,11 @@ impl LayoutState {
     /// Returns a mutable reference to the column widths array (for UI handlers).
     pub(crate) fn column_widths_mut(&mut self) -> &mut [f32; 5] {
         &mut self.column_widths
+    }
+
+    /// Returns a mutable reference to the expand column width (for UI handlers).
+    pub(crate) fn expand_width_mut(&mut self) -> &mut f32 {
+        &mut self.expand_width
     }
 
     // ===== Viewport Text Input Accessors =====
