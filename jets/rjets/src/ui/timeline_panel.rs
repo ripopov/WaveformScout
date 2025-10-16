@@ -42,6 +42,7 @@ pub fn render_timeline_panel(
     // Check if loading is in progress
     if loader.is_loading() {
         render_loading_indicator(ui, theme_colors, loader);
+        ctx.request_repaint_after(std::time::Duration::from_secs_f32(0.1));
         return None;
     }
 
