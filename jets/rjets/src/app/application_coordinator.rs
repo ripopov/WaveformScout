@@ -111,10 +111,6 @@ impl ApplicationCoordinator {
         first_event_clk: Option<i64>,
     ) {
         let event_to_select = if !was_already_selected {
-            // New selection: auto-select first event if available
-            if let Some(clk) = first_event_clk {
-                println!("DEBUG: Auto-selected first event at clk {}", clk);
-            }
             first_event_clk
         } else {
             // Already selected: just update record selection without changing event
