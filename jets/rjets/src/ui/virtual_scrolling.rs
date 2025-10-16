@@ -25,4 +25,12 @@ pub struct VisibleNode {
 
     /// The row index in the flattened view
     pub row_index: usize,
+
+    /// Tree branch context: For each depth level (0 to depth-1), indicates
+    /// whether there are more siblings below this node at that level.
+    /// Used to draw tree branch lines (│ for continuing branches, space for none).
+    pub branch_context: Vec<bool>,
+
+    /// Whether this is the last child of its parent
+    pub is_last_child: bool,
 }

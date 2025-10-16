@@ -62,6 +62,8 @@ impl VirtualScrollManager {
                 record_id: node.record_id,
                 row_index: node.row_index,
                 depth: node.depth,
+                branch_context: node.branch_context,
+                is_last_child: node.is_last_child,
             })
             .collect()
     }
@@ -136,6 +138,8 @@ impl VirtualScrollManager {
                 record_id: node.record_id,
                 row_index: node.row_index,
                 depth: node.depth,
+                branch_context: node.branch_context,
+                is_last_child: node.is_last_child,
             })
             .collect()
     }

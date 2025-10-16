@@ -24,6 +24,8 @@ use crate::rendering::text_utils::truncate_text_to_fit;
 /// * `selected_record_id` - Currently selected record ID (if any)
 /// * `theme_colors` - Color palette for the current theme
 /// * `tree_cache` - Cache for tree computations
+/// * `branch_context` - For each depth level, whether there are more siblings below
+/// * `is_last_child` - Whether this node is the last child of its parent
 ///
 /// # Returns
 /// * `Option<TreeNodeInteraction>` - User interaction result (expand/collapse, selection)
@@ -38,6 +40,8 @@ pub fn render_tree_node(
     selected_record_id: Option<u64>,
     theme_colors: &ThemeColors,
     _tree_cache: &mut TreeCache,
+    branch_context: &[bool],
+    is_last_child: bool,
 ) -> Option<TreeNodeInteraction> {
     // Extract all needed data from the record first to avoid borrow checker issues
     let record = match trace.get_record(record_id) {
@@ -88,6 +92,48 @@ pub fn render_tree_node(
             row_rect,
             0.0,
             theme_colors.selection,
+        );
+    }
+
+    // Draw tree branch lines
+    let branch_color = ui.visuals().text_color().gamma_multiply(0.5); // Dimmed text color
+    for (level, &has_continuation) in branch_context.iter().enumerate() {
+        let x = start_pos.x + (level as f32 * 20.0) + 10.0; // Center of the indent space
+
+        if has_continuation {
+            // Draw vertical line │
+            let top = start_pos.y;
+            let bottom = start_pos.y + ROW_HEIGHT;
+            ui.painter().line_segment(
+                [egui::pos2(x, top), egui::pos2(x, bottom)],
+                egui::Stroke::new(1.0, branch_color),
+            );
+        }
+    }
+
+    // Draw connector for this node
+    if depth > 0 {
+        let x = start_pos.x + ((depth - 1) as f32 * 20.0) + 10.0;
+        let y = start_pos.y + ROW_HEIGHT / 2.0;
+
+        // Vertical line from top to middle
+        if !is_last_child || depth == 0 {
+            ui.painter().line_segment(
+                [egui::pos2(x, start_pos.y), egui::pos2(x, y)],
+                egui::Stroke::new(1.0, branch_color),
+            );
+        } else {
+            // For last child, draw from top to middle
+            ui.painter().line_segment(
+                [egui::pos2(x, start_pos.y), egui::pos2(x, y)],
+                egui::Stroke::new(1.0, branch_color),
+            );
+        }
+
+        // Horizontal line from middle to right
+        ui.painter().line_segment(
+            [egui::pos2(x, y), egui::pos2(x + 10.0, y)],
+            egui::Stroke::new(1.0, branch_color),
         );
     }
 

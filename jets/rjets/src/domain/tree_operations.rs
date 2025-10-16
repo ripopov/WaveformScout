@@ -200,6 +200,11 @@ pub struct FilteredVisibleNode {
     pub record_id: u64,
     pub row_index: usize,
     pub depth: usize,
+    /// Tree branch context: For each depth level (0 to depth-1), indicates
+    /// whether there are more siblings below this node at that level.
+    pub branch_context: Vec<bool>,
+    /// Whether this is the last child of its parent
+    pub is_last_child: bool,
 }
 
 // ===== Visibility Strategy Adapter Functions =====
@@ -274,6 +279,8 @@ pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
             record_id: node.record.id(),
             row_index,
             depth: node.depth,
+            branch_context: node.branch_context,
+            is_last_child: node.is_last_child,
         })
         .collect()
 }

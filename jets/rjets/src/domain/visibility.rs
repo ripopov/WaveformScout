@@ -31,6 +31,11 @@ pub struct VisibleNode<'a> {
     pub depth: usize,
     /// Whether this is a parent or leaf node
     pub kind: NodeKind,
+    /// Tree branch context: For each depth level (0 to depth-1), indicates
+    /// whether there are more siblings below this node at that level.
+    pub branch_context: Vec<bool>,
+    /// Whether this is the last child of its parent
+    pub is_last_child: bool,
 }
 
 /// Strategy for determining node visibility during tree traversal.
@@ -189,12 +194,17 @@ impl VisibilityStrategy for ViewportFilterStrategy {
 }
 
 /// Stack frame for iterative depth-first traversal.
+#[derive(Clone)]
 struct TraversalFrame<'a> {
     record: &'a dyn TraceRecord,
     depth: usize,
     /// If Some, we've already yielded this parent and are processing children
     /// at the given index. If None, we haven't processed this node yet.
     child_index: Option<usize>,
+    /// For each ancestor level, whether there are more siblings below
+    branch_context: Vec<bool>,
+    /// Whether this node is the last child of its parent
+    is_last_child: bool,
 }
 
 /// Iterator that yields visible nodes according to a visibility strategy.
@@ -212,13 +222,20 @@ impl<'a, S: VisibilityStrategy> TraversalIter<'a, S> {
     where
         I: IntoIterator<Item = &'a dyn TraceRecord>,
     {
+        // Collect roots into a vec to determine which are last
+        let roots_vec: Vec<_> = roots.into_iter().collect();
+        let num_roots = roots_vec.len();
+
         // Collect into Vec first, then reverse for correct LIFO stack order
-        let mut stack: Vec<TraversalFrame<'a>> = roots
+        let mut stack: Vec<TraversalFrame<'a>> = roots_vec
             .into_iter()
-            .map(|record| TraversalFrame {
+            .enumerate()
+            .map(|(i, record)| TraversalFrame {
                 record,
                 depth: 0,
                 child_index: None,
+                branch_context: Vec::new(),
+                is_last_child: i == num_roots - 1,
             })
             .collect();
 
@@ -248,6 +265,10 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                     // Check if we should descend into children
                     let should_descend = self.strategy.descend_into(record, depth);
 
+                    // Clone frame data before modification
+                    let parent_branch_context = frame.branch_context.clone();
+                    let parent_is_last_child = frame.is_last_child;
+
                     if should_descend {
                         // Push frame back for processing children
                         frame.child_index = Some(0);
@@ -263,12 +284,22 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                         };
 
                         // Push children onto stack in reverse order (for correct DFS order)
-                        for i in child_range.rev() {
+                        for (child_idx, i) in child_range.rev().enumerate() {
                             if let Some(&child) = children.get(i) {
+                                // Compute branch context for this child
+                                let mut child_branch_context = parent_branch_context.clone();
+                                // Add this level's continuation status
+                                child_branch_context.push(!parent_is_last_child);
+
+                                // This child is last if it's the first in reversed iteration
+                                let is_last = child_idx == 0;
+
                                 self.stack.push(TraversalFrame {
                                     record: child,
                                     depth: depth + 1,
                                     child_index: None,
+                                    branch_context: child_branch_context,
+                                    is_last_child: is_last,
                                 });
                             }
                         }
@@ -280,6 +311,8 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                             record,
                             depth,
                             kind: NodeKind::Parent,
+                            branch_context: parent_branch_context,
+                            is_last_child: parent_is_last_child,
                         });
                     }
                 } else {
@@ -295,6 +328,8 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                         record,
                         depth,
                         kind: NodeKind::Leaf,
+                        branch_context: frame.branch_context.clone(),
+                        is_last_child: frame.is_last_child,
                     });
                 }
             }

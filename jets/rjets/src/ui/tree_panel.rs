@@ -120,6 +120,8 @@ pub fn render_tree_panel(
                     state.selection.selected_record_id(),
                     theme_colors,
                     &mut state.tree_cache,
+                    &node.branch_context,
+                    node.is_last_child,
                 ) {
                     interaction = Some(node_interaction);
                 }
@@ -153,6 +155,8 @@ fn render_tree_node(
     selected_record_id: Option<u64>,
     theme_colors: &ThemeColors,
     tree_cache: &mut crate::cache::TreeCache,
+    branch_context: &[bool],
+    is_last_child: bool,
 ) -> Option<TreePanelInteraction> {
     tree_renderer::render_tree_node(
         ui,
@@ -165,6 +169,8 @@ fn render_tree_node(
         selected_record_id,
         theme_colors,
         tree_cache,
+        branch_context,
+        is_last_child,
     )
     .map(|tree_interaction| match tree_interaction {
         tree_renderer::TreeNodeInteraction::Selected {
