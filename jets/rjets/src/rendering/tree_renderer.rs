@@ -9,6 +9,7 @@ use std::collections::HashSet;
 
 use crate::ui::virtual_scrolling::ROW_HEIGHT;
 use crate::cache::TreeCache;
+use crate::rendering::text_utils::truncate_text_to_fit;
 
 /// Renders a single tree node row with expand/collapse controls and column data
 ///
@@ -126,16 +127,20 @@ pub fn render_tree_node(
 
     x_offset += expand_width;
 
+    let font_id = egui::FontId::proportional(13.0);
+    let painter = ui.painter();
+
     // Column 0: Name
     let name_rect = egui::Rect::from_min_size(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[0], ROW_HEIGHT),
     );
-    ui.painter().text(
+    let truncated_name = truncate_text_to_fit(&name, column_widths[0], &font_id, painter);
+    painter.text(
         name_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &name,
-        egui::FontId::proportional(13.0),
+        &truncated_name,
+        font_id.clone(),
         ui.visuals().text_color(),
     );
     x_offset += column_widths[0];
@@ -145,11 +150,12 @@ pub fn render_tree_node(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[1], ROW_HEIGHT),
     );
-    ui.painter().text(
+    let truncated_description = truncate_text_to_fit(&description, column_widths[1], &font_id, painter);
+    painter.text(
         desc_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &description,
-        egui::FontId::proportional(13.0),
+        &truncated_description,
+        font_id.clone(),
         ui.visuals().text_color(),
     );
     x_offset += column_widths[1];
@@ -159,11 +165,13 @@ pub fn render_tree_node(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[2], ROW_HEIGHT),
     );
-    ui.painter().text(
+    let clk_str = clk.to_string();
+    let truncated_clk = truncate_text_to_fit(&clk_str, column_widths[2], &font_id, painter);
+    painter.text(
         start_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &clk.to_string(),
-        egui::FontId::proportional(13.0),
+        &truncated_clk,
+        font_id.clone(),
         ui.visuals().text_color(),
     );
     x_offset += column_widths[2];
@@ -177,11 +185,12 @@ pub fn render_tree_node(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[3], ROW_HEIGHT),
     );
-    ui.painter().text(
+    let truncated_end = truncate_text_to_fit(&end_str, column_widths[3], &font_id, painter);
+    painter.text(
         end_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &end_str,
-        egui::FontId::proportional(13.0),
+        &truncated_end,
+        font_id.clone(),
         ui.visuals().text_color(),
     );
     x_offset += column_widths[3];
@@ -191,11 +200,13 @@ pub fn render_tree_node(
         egui::pos2(start_pos.x + x_offset, start_pos.y),
         egui::vec2(column_widths[4], ROW_HEIGHT),
     );
-    ui.painter().text(
+    let id_str = record_id.to_string();
+    let truncated_id = truncate_text_to_fit(&id_str, column_widths[4], &font_id, painter);
+    painter.text(
         id_rect.left_center() + egui::vec2(4.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        &record_id.to_string(),
-        egui::FontId::proportional(13.0),
+        &truncated_id,
+        font_id,
         ui.visuals().text_color(),
     );
 

@@ -4,6 +4,7 @@
 
 use eframe::egui;
 use egui::Color32;
+use crate::rendering::text_utils::truncate_text_to_fit;
 
 /// Renders the resizable column headers for the tree view table
 ///
@@ -27,6 +28,9 @@ pub fn render_table_header(ui: &mut egui::Ui, expand_width: f32, column_widths: 
     // Space for expand/collapse buttons (dynamic based on max visible depth)
     x_offset += expand_width;
 
+    let font_id = egui::FontId::proportional(14.0);
+    let painter = ui.painter();
+
     for (i, name) in column_names.iter().enumerate() {
         let width = column_widths[i];
 
@@ -36,11 +40,12 @@ pub fn render_table_header(ui: &mut egui::Ui, expand_width: f32, column_widths: 
             egui::vec2(width, header_height),
         );
 
-        ui.painter().text(
+        let truncated_name = truncate_text_to_fit(name, width, &font_id, painter);
+        painter.text(
             label_rect.left_center() + egui::vec2(4.0, 0.0),
             egui::Align2::LEFT_CENTER,
-            name,
-            egui::FontId::proportional(14.0),
+            &truncated_name,
+            font_id.clone(),
             ui.visuals().strong_text_color(),
         );
 
