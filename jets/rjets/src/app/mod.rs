@@ -5,7 +5,9 @@
 mod app_state;
 mod application_coordinator;
 mod theme_coordinator;
+mod settings_coordinator;
 
 pub use app_state::AppState;
 pub use application_coordinator::ApplicationCoordinator;
 pub use theme_coordinator::ThemeCoordinator;
+pub use settings_coordinator::SettingsCoordinator;

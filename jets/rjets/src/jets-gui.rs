@@ -34,9 +34,11 @@ mod rendering;
 mod ui;
 mod state;
 
-use app::{AppState, ApplicationCoordinator, ThemeCoordinator};
+use app::{AppState, ApplicationCoordinator, ThemeCoordinator, SettingsCoordinator};
 use io::AsyncLoader;
 use ui::panel_manager::PanelManager;
+
+const COLUMN_WIDTHS_KEY: &str = "column_widths";
 
 /// Main application entry point that initializes and launches the JETS trace viewer GUI.
 fn main() -> eframe::Result {
@@ -85,13 +87,22 @@ impl Default for JetsViewerApp {
 }
 
 impl JetsViewerApp {
-    /// Creates a new viewer instance with theme loaded from persistent storage.
+    /// Creates a new viewer instance with theme and layout settings loaded from persistent storage.
     /// Optionally accepts an initial file path to load on startup.
     fn new(cc: &eframe::CreationContext, initial_file: Option<PathBuf>) -> Self {
         let current_theme_name = ThemeCoordinator::load_theme_from_storage(cc.storage);
 
+        // Load column widths with proper defaults (not [0.0, 0.0, 0.0, 0.0, 0.0])
+        // Default widths: [Name, Description, Start Clock, End Clock, ID]
+        let default_widths = [100.0, 300.0, 120.0, 120.0, 80.0];
+        let column_widths: [f32; 5] = SettingsCoordinator::load_setting_or(
+            cc.storage,
+            COLUMN_WIDTHS_KEY,
+            default_widths
+        );
+
         Self {
-            state: AppState::with_theme(current_theme_name),
+            state: AppState::with_theme_and_layout(current_theme_name, column_widths),
             loader: AsyncLoader::new(),
             pending_file_load: initial_file,
         }
@@ -158,6 +169,7 @@ impl eframe::App for JetsViewerApp {
     /// Called when the app is being shut down - ensures preferences are saved.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         ThemeCoordinator::save_theme_to_storage(storage, self.state.theme.current_theme_name());
+        SettingsCoordinator::save_setting(storage, COLUMN_WIDTHS_KEY, self.state.layout.column_widths());
     }
 
     /// Main update loop that renders all UI panels and handles application state.
@@ -175,9 +187,10 @@ impl eframe::App for JetsViewerApp {
         // Apply current theme
         ThemeCoordinator::apply_current_theme(ctx, &self.state);
 
-        // Persist theme preference during frame (for crash resilience)
+        // Persist preferences during frame (for crash resilience)
         if let Some(storage) = frame.storage_mut() {
             storage.set_string("theme_preference", self.state.theme.current_theme_name().to_string());
+            SettingsCoordinator::save_setting(storage, COLUMN_WIDTHS_KEY, self.state.layout.column_widths());
         }
 
         // Load initial file if specified via command line (only on first frame)

@@ -88,6 +88,21 @@ impl AppState {
         }
     }
 
+    /// Creates a new AppState with theme and layout settings loaded from storage.
+    pub fn with_theme_and_layout(theme_name: String, column_widths: [f32; 5]) -> Self {
+        Self {
+            trace: TraceState::new(),
+            viewport: ViewportState::new(),
+            selection: SelectionState::new(),
+            tree: TreeState::new(),
+            interaction: InteractionState::new(),
+            theme: ThemeState::with_theme(theme_name),
+            layout: LayoutState::with_column_widths(column_widths),
+            error_message: None,
+            tree_cache: TreeCache::new(),
+        }
+    }
+
     // ===== High-Level Coordination Methods =====
 
     /// Resets the trace-related state when loading a new trace.

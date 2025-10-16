@@ -3,6 +3,8 @@
 //! This module encapsulates all state related to UI layout,
 //! including panel split ratios and column widths.
 
+use serde::{Deserialize, Serialize};
+
 /// State related to UI layout and sizing.
 ///
 /// Responsibilities:
@@ -10,7 +12,7 @@
 /// - Tracking column widths
 /// - Providing layout configuration queries
 /// - Managing viewport boundary text input state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutState {
     /// Split ratio between details panel and main view (0.0 to 1.0)
     split_ratio: f32,
@@ -38,6 +40,17 @@ impl LayoutState {
             timeline_split_ratio: 0.3,
             // Default widths ordered as [Name, Description, Start Clock, End Clock, ID]
             column_widths: [250.0, 300.0, 120.0, 120.0, 80.0],
+            viewport_start_text: String::new(),
+            viewport_end_text: String::new(),
+        }
+    }
+
+    /// Creates a new layout state with custom column widths.
+    pub fn with_column_widths(column_widths: [f32; 5]) -> Self {
+        Self {
+            split_ratio: 0.7,
+            timeline_split_ratio: 0.3,
+            column_widths,
             viewport_start_text: String::new(),
             viewport_end_text: String::new(),
         }
