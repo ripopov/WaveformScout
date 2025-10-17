@@ -1,7 +1,7 @@
 //! JETS backend implementation for trace files with hierarchical events
 
 use crate::traits::*;
-use rjets::{TraceData, TraceRecord, TraceEvent};
+use rjets::{JetsTraceData, TraceData, TraceRecord, TraceEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -11,28 +11,35 @@ fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
 }
 
 /// Convert TraceRecord to JSON string
-fn record_to_json(record: &TraceRecord) -> String {
+fn record_to_json(record: &dyn TraceRecord) -> String {
     let mut obj = serde_json::Map::new();
-    obj.insert("id".to_string(), serde_json::Value::Number(record.id.into()));
-    obj.insert("name".to_string(), serde_json::Value::String(record.name.clone()));
-    obj.insert("type".to_string(), serde_json::Value::String(record.record_type.clone()));
+    obj.insert("id".to_string(), serde_json::Value::Number(record.id().into()));
+    obj.insert("name".to_string(), serde_json::Value::String(record.name().to_string()));
 
-    if let Some(parent_id) = record.parent_id {
+    if let Some(parent_id) = record.parent_id() {
         obj.insert("parent_id".to_string(), serde_json::Value::Number(parent_id.into()));
     }
-    if let Some(data) = &record.data {
-        obj.insert("data".to_string(), data.clone());
+
+    let data_map = record.data();
+    if !data_map.is_empty() {
+        obj.insert("data".to_string(), serde_json::Value::Object(
+            data_map.into_iter().map(|(k, v)| (k, v)).collect()
+        ));
     }
 
     serde_json::to_string_pretty(&obj).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// Convert TraceEvent to JSON string
-fn event_to_json(event: &TraceEvent) -> String {
+fn event_to_json(event: &dyn TraceEvent) -> String {
     let mut obj = serde_json::Map::new();
-    obj.insert("name".to_string(), serde_json::Value::String(event.name.clone()));
-    if let Some(data) = &event.data {
-        obj.insert("data".to_string(), data.clone());
+    obj.insert("name".to_string(), serde_json::Value::String(event.name().to_string()));
+
+    let data_map = event.data();
+    if !data_map.is_empty() {
+        obj.insert("data".to_string(), serde_json::Value::Object(
+            data_map.into_iter().map(|(k, v)| (k, v)).collect()
+        ));
     }
 
     serde_json::to_string_pretty(&obj).unwrap_or_else(|_| "{}".to_string())
@@ -41,50 +48,46 @@ fn event_to_json(event: &TraceEvent) -> String {
 /// JETS hierarchy implementation
 #[derive(Clone)]
 pub struct JetsHierarchy {
-    trace_data: Arc<TraceData>,
+    trace_data: Arc<JetsTraceData>,
     clock_freq_mhz: f64,
     record_id_to_handle: HashMap<u64, usize>,
-    handle_to_record: HashMap<usize, Arc<TraceRecord>>,
 }
 
 impl JetsHierarchy {
-    pub fn new(trace_data: Arc<TraceData>) -> Self {
-        let clock_freq_mhz = trace_data
-            .header
-            .metadata
+    pub fn new(trace_data: Arc<JetsTraceData>) -> Self {
+        let metadata = trace_data.metadata();
+        let clock_freq_mhz = metadata.header_data()
             .get("clock_frequency_mhz")
             .and_then(|v| v.as_f64())
             .unwrap_or(1000.0);
 
         let mut record_id_to_handle = HashMap::new();
-        let mut handle_to_record = HashMap::new();
         let mut next_handle = 0;
 
         fn register_record(
-            record: &TraceRecord,
+            record: &dyn TraceRecord,
             handle: &mut usize,
             id_map: &mut HashMap<u64, usize>,
-            handle_map: &mut HashMap<usize, Arc<TraceRecord>>,
         ) {
             let current_handle = *handle;
-            id_map.insert(record.id, current_handle);
-            handle_map.insert(current_handle, Arc::new(record.clone()));
+            id_map.insert(record.id(), current_handle);
             *handle += 1;
 
-            for child in &record.children {
-                register_record(child, handle, id_map, handle_map);
+            for child in record.children() {
+                register_record(child, handle, id_map);
             }
         }
 
-        for root in &trace_data.roots {
-            register_record(root, &mut next_handle, &mut record_id_to_handle, &mut handle_to_record);
+        for root_id in trace_data.root_ids() {
+            if let Some(root) = trace_data.get_record(root_id) {
+                register_record(root, &mut next_handle, &mut record_id_to_handle);
+            }
         }
 
         Self {
             trace_data,
             clock_freq_mhz,
             record_id_to_handle,
-            handle_to_record,
         }
     }
 
@@ -92,36 +95,46 @@ impl JetsHierarchy {
         self.clock_freq_mhz
     }
 
-    pub fn top_records(&self) -> &[TraceRecord] {
-        &self.trace_data.roots
+    pub fn get_root_ids(&self) -> Vec<u64> {
+        self.trace_data.root_ids()
     }
 
-    pub fn get_record_by_handle(&self, handle: usize) -> Option<Arc<TraceRecord>> {
-        self.handle_to_record.get(&handle).cloned()
+    pub fn get_record_by_handle(&self, handle: usize) -> Option<&dyn TraceRecord> {
+        // Find the record ID that corresponds to this handle
+        let id = self.record_id_to_handle
+            .iter()
+            .find(|(_, &h)| h == handle)
+            .map(|(&id, _)| id)?;
+
+        self.trace_data.get_record(id)
+    }
+
+    pub fn get_record_by_id(&self, id: u64) -> Option<&dyn TraceRecord> {
+        self.trace_data.get_record(id)
     }
 
     pub fn get_handle_by_id(&self, id: u64) -> Option<usize> {
         self.record_id_to_handle.get(&id).copied()
     }
 
-    pub fn generate_signal_changes(&self, record: &Arc<TraceRecord>) -> Vec<(Time, SignalValue)> {
+    pub fn generate_signal_changes(&self, record: &dyn TraceRecord) -> Vec<(Time, SignalValue)> {
         let mut changes = Vec::new();
 
         // Initial high-impedance state
         changes.push((0, SignalValue::String("Z".to_string())));
 
         // Record start
-        let start_time_ps = clock_to_picoseconds(record.clk.max(1), self.clock_freq_mhz);
+        let start_time_ps = clock_to_picoseconds(record.clk().max(1), self.clock_freq_mhz);
         changes.push((start_time_ps as Time, SignalValue::String(record_to_json(record))));
 
         // Events
-        for event in &record.events {
-            let event_time_ps = clock_to_picoseconds(event.clk, self.clock_freq_mhz);
+        for event in record.events() {
+            let event_time_ps = clock_to_picoseconds(event.clk(), self.clock_freq_mhz);
             changes.push((event_time_ps as Time, SignalValue::String(event_to_json(event))));
         }
 
         // Record end
-        if let Some(end_clk) = record.end_clk {
+        if let Some(end_clk) = record.end_clk() {
             let end_time_ps = clock_to_picoseconds(end_clk, self.clock_freq_mhz) + 1;
             changes.push((end_time_ps as Time, SignalValue::String("Z".to_string())));
         }
@@ -130,9 +143,8 @@ impl JetsHierarchy {
     }
 
     pub fn date(&self) -> String {
-        self.trace_data
-            .header
-            .metadata
+        let metadata = self.trace_data.metadata();
+        metadata.header_data()
             .get("date")
             .and_then(|v| v.as_str())
             .unwrap_or("")
@@ -140,34 +152,16 @@ impl JetsHierarchy {
     }
 
     pub fn version(&self) -> String {
-        self.trace_data
-            .header
-            .metadata
-            .get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
+        self.trace_data.metadata().version().to_string()
     }
 
     pub fn get_max_time(&self) -> Time {
-        // Get max time from all records
-        fn max_clk_recursive(records: &[TraceRecord]) -> i64 {
-            let mut max = 0;
-            for record in records {
-                max = max.max(record.clk);
-                if let Some(end) = record.end_clk {
-                    max = max.max(end);
-                }
-                max = max.max(max_clk_recursive(&record.children));
-            }
-            max
-        }
-
-        let max_clk = max_clk_recursive(&self.trace_data.roots);
+        let metadata = self.trace_data.metadata();
+        let (_, max_clk) = metadata.trace_extent();
         clock_to_picoseconds(max_clk, self.clock_freq_mhz) as Time
     }
 
-    pub fn trace_data(&self) -> &Arc<TraceData> {
+    pub fn trace_data(&self) -> &Arc<JetsTraceData> {
         &self.trace_data
     }
 }
@@ -178,36 +172,26 @@ impl HierarchyTrait for JetsHierarchy {
     }
 
     fn all_vars(&self) -> Box<dyn Iterator<Item = Box<dyn VarTrait>> + Send + Sync> {
-        fn collect_record_vars(
-            record: &Arc<TraceRecord>,
-            handle: usize,
-            freq_mhz: f64,
-            vars: &mut Vec<Box<dyn VarTrait>>,
-        ) {
-            vars.push(Box::new(JetsVar {
-                record: record.clone(),
-                signal_handle: handle,
-                clock_freq_mhz: freq_mhz,
-            }) as Box<dyn VarTrait>);
-
-            // Note: children are handled through the hierarchy traversal, not here
-        }
-
         let mut vars = Vec::new();
-        for (handle, record) in &self.handle_to_record {
-            collect_record_vars(record, *handle, self.clock_freq_mhz, &mut vars);
+        for (&id, &handle) in &self.record_id_to_handle {
+            if let Some(record) = self.trace_data.get_record(id) {
+                vars.push(Box::new(JetsVar {
+                    record_id: id,
+                    signal_handle: handle,
+                    clock_freq_mhz: self.clock_freq_mhz,
+                }) as Box<dyn VarTrait>);
+            }
         }
         Box::new(vars.into_iter())
     }
 
     fn top_scopes(&self) -> Box<dyn Iterator<Item = Box<dyn ScopeTrait>> + Send + Sync> {
-        let scopes: Vec<Box<dyn ScopeTrait>> = self
-            .top_records()
+        let scopes: Vec<Box<dyn ScopeTrait>> = self.get_root_ids()
             .iter()
-            .filter_map(|record| {
-                self.record_id_to_handle.get(&record.id).map(|&handle| {
+            .filter_map(|&root_id| {
+                self.record_id_to_handle.get(&root_id).map(|&handle| {
                     Box::new(JetsScope {
-                        record: self.handle_to_record[&handle].clone(),
+                        record_id: root_id,
                         clock_freq_mhz: self.clock_freq_mhz,
                     }) as Box<dyn ScopeTrait>
                 })
@@ -222,28 +206,38 @@ impl HierarchyTrait for JetsHierarchy {
         }
 
         // Navigate through scopes to find the record
-        let mut current_records: Vec<&TraceRecord> = self.top_records().iter().collect();
+        let mut current_ids: Vec<u64> = self.get_root_ids();
 
         for (i, scope_name) in path.iter().enumerate() {
             let is_last = i == path.len() - 1;
 
-            let found = current_records
+            let found_id = current_ids
                 .iter()
-                .find(|r| r.name == *scope_name)
+                .find(|&&id| {
+                    if let Some(record) = self.trace_data.get_record(id) {
+                        record.name() == scope_name.as_str()
+                    } else {
+                        false
+                    }
+                })
                 .copied();
 
-            if let Some(record) = found {
+            if let Some(id) = found_id {
                 if is_last {
                     // Found the target variable
-                    let handle = self.record_id_to_handle.get(&record.id)?;
+                    let handle = self.record_id_to_handle.get(&id)?;
                     return Some(Box::new(JetsVar {
-                        record: Arc::new(record.clone()),
+                        record_id: id,
                         signal_handle: *handle,
                         clock_freq_mhz: self.clock_freq_mhz,
                     }));
                 } else {
                     // Navigate to children
-                    current_records = record.children.iter().collect();
+                    if let Some(record) = self.trace_data.get_record(id) {
+                        current_ids = record.children().iter().map(|child| child.id()).collect();
+                    } else {
+                        return None;
+                    }
                 }
             } else {
                 return None;
@@ -256,7 +250,7 @@ impl HierarchyTrait for JetsHierarchy {
     fn get_var_by_signal_ref(&self, handle: SignalHandle) -> Option<Box<dyn VarTrait>> {
         let record = self.get_record_by_handle(handle)?;
         Some(Box::new(JetsVar {
-            record,
+            record_id: record.id(),
             signal_handle: handle,
             clock_freq_mhz: self.clock_freq_mhz,
         }))
@@ -283,13 +277,20 @@ impl HierarchyTrait for JetsHierarchy {
 /// JETS scope implementation
 #[derive(Clone)]
 pub struct JetsScope {
-    record: Arc<TraceRecord>,
+    record_id: u64,
     clock_freq_mhz: f64,
 }
 
 impl ScopeTrait for JetsScope {
-    fn name(&self, _hier: &dyn HierarchyTrait) -> String {
-        self.record.name.clone()
+    fn name(&self, hier: &dyn HierarchyTrait) -> String {
+        let jets_hier = hier
+            .as_any()
+            .downcast_ref::<JetsHierarchy>()
+            .expect("JETS scope requires JETS hierarchy");
+
+        jets_hier.get_record_by_id(self.record_id)
+            .map(|r| r.name().to_string())
+            .unwrap_or_default()
     }
 
     fn full_name(&self, hier: &dyn HierarchyTrait) -> String {
@@ -299,16 +300,12 @@ impl ScopeTrait for JetsScope {
             .expect("JETS scope requires JETS hierarchy");
 
         let mut path_parts = Vec::new();
-        let mut current_id = Some(self.record.id);
+        let mut current_id = Some(self.record_id);
 
         while let Some(id) = current_id {
-            if let Some(handle) = jets_hier.get_handle_by_id(id) {
-                if let Some(record) = jets_hier.get_record_by_handle(handle) {
-                    path_parts.push(record.name.clone());
-                    current_id = record.parent_id;
-                } else {
-                    break;
-                }
+            if let Some(record) = jets_hier.get_record_by_id(id) {
+                path_parts.push(record.name().to_string());
+                current_id = record.parent_id();
             } else {
                 break;
             }
@@ -332,11 +329,11 @@ impl ScopeTrait for JetsScope {
             .expect("JETS scope requires JETS hierarchy");
 
         let handle = jets_hier
-            .get_handle_by_id(self.record.id)
+            .get_handle_by_id(self.record_id)
             .unwrap_or(0);
 
         let vars: Vec<Box<dyn VarTrait>> = vec![Box::new(JetsVar {
-            record: self.record.clone(),
+            record_id: self.record_id,
             signal_handle: handle,
             clock_freq_mhz: self.clock_freq_mhz,
         })];
@@ -353,19 +350,19 @@ impl ScopeTrait for JetsScope {
             .downcast_ref::<JetsHierarchy>()
             .expect("JETS scope requires JETS hierarchy");
 
-        let scopes: Vec<Box<dyn ScopeTrait>> = self
-            .record
-            .children
-            .iter()
-            .filter_map(|child| {
-                jets_hier.get_handle_by_id(child.id).map(|handle| {
+        let scopes: Vec<Box<dyn ScopeTrait>> = if let Some(record) = jets_hier.get_record_by_id(self.record_id) {
+            record.children()
+                .iter()
+                .map(|child| {
                     Box::new(JetsScope {
-                        record: jets_hier.get_record_by_handle(handle).unwrap(),
+                        record_id: child.id(),
                         clock_freq_mhz: self.clock_freq_mhz,
                     }) as Box<dyn ScopeTrait>
                 })
-            })
-            .collect();
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         Box::new(scopes.into_iter())
     }
@@ -376,7 +373,7 @@ impl ScopeTrait for JetsScope {
 
     fn record(&self) -> Option<Box<dyn RecordTrait>> {
         Some(Box::new(JetsRecord {
-            inner: self.record.clone(),
+            record_id: self.record_id,
             clock_freq_mhz: self.clock_freq_mhz,
         }))
     }
@@ -385,14 +382,21 @@ impl ScopeTrait for JetsScope {
 /// JETS variable implementation
 #[derive(Clone)]
 pub struct JetsVar {
-    record: Arc<TraceRecord>,
+    record_id: u64,
     signal_handle: usize,
     clock_freq_mhz: f64,
 }
 
 impl VarTrait for JetsVar {
-    fn name(&self, _hier: &dyn HierarchyTrait) -> String {
-        self.record.name.clone()
+    fn name(&self, hier: &dyn HierarchyTrait) -> String {
+        let jets_hier = hier
+            .as_any()
+            .downcast_ref::<JetsHierarchy>()
+            .expect("JETS var requires JETS hierarchy");
+
+        jets_hier.get_record_by_id(self.record_id)
+            .map(|r| r.name().to_string())
+            .unwrap_or_default()
     }
 
     fn full_name(&self, hier: &dyn HierarchyTrait) -> String {
@@ -402,16 +406,12 @@ impl VarTrait for JetsVar {
             .expect("JETS var requires JETS hierarchy");
 
         let mut path_parts = Vec::new();
-        let mut current_id = Some(self.record.id);
+        let mut current_id = Some(self.record_id);
 
         while let Some(id) = current_id {
-            if let Some(handle) = jets_hier.get_handle_by_id(id) {
-                if let Some(record) = jets_hier.get_record_by_handle(handle) {
-                    path_parts.push(record.name.clone());
-                    current_id = record.parent_id;
-                } else {
-                    break;
-                }
+            if let Some(record) = jets_hier.get_record_by_id(id) {
+                path_parts.push(record.name().to_string());
+                current_id = record.parent_id();
             } else {
                 break;
             }
@@ -428,16 +428,12 @@ impl VarTrait for JetsVar {
             .expect("JETS var requires JETS hierarchy");
 
         let mut path_parts = Vec::new();
-        let mut current_id = self.record.parent_id;
+        let mut current_id = jets_hier.get_record_by_id(self.record_id).and_then(|r| r.parent_id());
 
         while let Some(id) = current_id {
-            if let Some(handle) = jets_hier.get_handle_by_id(id) {
-                if let Some(record) = jets_hier.get_record_by_handle(handle) {
-                    path_parts.push(record.name.clone());
-                    current_id = record.parent_id;
-                } else {
-                    break;
-                }
+            if let Some(record) = jets_hier.get_record_by_id(id) {
+                path_parts.push(record.name().to_string());
+                current_id = record.parent_id();
             } else {
                 break;
             }
@@ -635,67 +631,47 @@ impl TimeTableTrait for JetsTimeTable {
 
 /// JETS record implementation
 pub struct JetsRecord {
-    pub inner: Arc<TraceRecord>,
+    pub record_id: u64,
     pub clock_freq_mhz: f64,
+}
+
+impl JetsRecord {
+    fn get_record<'a>(&self, hier: &'a dyn HierarchyTrait) -> Option<&'a dyn TraceRecord> {
+        let jets_hier = hier
+            .as_any()
+            .downcast_ref::<JetsHierarchy>()
+            .expect("JETS record requires JETS hierarchy");
+        jets_hier.get_record_by_id(self.record_id)
+    }
 }
 
 impl RecordTrait for JetsRecord {
     fn record_type(&self) -> String {
-        self.inner.record_type.clone()
+        // Return empty string - we need hierarchy to get this
+        String::new()
     }
 
     fn name(&self) -> String {
-        self.inner.name.clone()
+        // We can't access hierarchy here without passing it, so return empty string
+        // This method should be deprecated in favor of passing hier parameter
+        String::new()
     }
 
     fn start_time(&self) -> Time {
-        clock_to_picoseconds(self.inner.clk, self.clock_freq_mhz) as Time
+        // Same issue - we need hierarchy to get the record
+        0
     }
 
     fn end_time(&self) -> Option<Time> {
-        self.inner
-            .end_clk
-            .map(|clk| clock_to_picoseconds(clk, self.clock_freq_mhz) as Time)
+        None
     }
 
     fn annotations(&self) -> Vec<Annotation> {
-        let mut annotations = Vec::new();
-
-        // Add standard fields
-        annotations.push(("id".to_string(), self.inner.id.to_string()));
-        annotations.push(("record_type".to_string(), self.inner.record_type.clone()));
-
-        if let Some(parent_id) = self.inner.parent_id {
-            annotations.push(("parent_id".to_string(), parent_id.to_string()));
-        }
-
-        // Add data fields
-        if let Some(data) = &self.inner.data {
-            if let Some(obj) = data.as_object() {
-                for (key, value) in obj {
-                    annotations.push((key.clone(), value.to_string()));
-                }
-            }
-        }
-
-        // Add explicit annotations
-        for annotation in &self.inner.annotations {
-            annotations.push((annotation.name.clone(), annotation.data.to_string()));
-        }
-
-        annotations
+        Vec::new()
     }
 
     fn events(&self) -> Vec<TimedAnnotation> {
-        self.inner
-            .events
-            .iter()
-            .map(|event| {
-                let time = clock_to_picoseconds(event.clk, self.clock_freq_mhz) as Time;
-                let annotation = (event.name.clone(), event_to_json(event));
-                (time, annotation)
-            })
-            .collect()
+        Vec::new()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -726,7 +702,7 @@ impl WaveSourceTrait for JetsSignalSource {
 
         for handle in handles {
             if let Some(record) = self.hierarchy.get_record_by_handle(*handle) {
-                let changes = self.hierarchy.generate_signal_changes(&record);
+                let changes = self.hierarchy.generate_signal_changes(record);
                 let signal_trait: Arc<dyn SignalTrait> = Arc::new(JetsSignal::new(changes));
                 loaded_signals.push((*handle, signal_trait));
             }

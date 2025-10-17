@@ -1,8 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use rjets::{parse_trace, TraceData, TraceRecord, TraceEvent};
+use rjets::{parse_trace, JetsTraceData, TraceData, TraceRecord, TraceEvent};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Convert clock cycles to picoseconds using clock frequency
 fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
@@ -12,26 +11,31 @@ fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
 }
 
 /// Serialize TraceRecord to pretty-printed JSON string
-fn record_to_json(record: &TraceRecord) -> String {
+fn record_to_json(record: &dyn TraceRecord) -> String {
     let mut obj = serde_json::Map::new();
-    obj.insert("id".to_string(), serde_json::Value::Number(record.id.into()));
-    obj.insert("parent_id".to_string(), match record.parent_id {
+    obj.insert("id".to_string(), serde_json::Value::Number(record.id().into()));
+    obj.insert("parent_id".to_string(), match record.parent_id() {
         Some(pid) => serde_json::Value::Number(pid.into()),
         None => serde_json::Value::Null,
     });
-    obj.insert("record_type".to_string(), serde_json::Value::String(record.record_type.clone()));
-    obj.insert("clk".to_string(), serde_json::Value::Number(record.clk.into()));
-    obj.insert("name".to_string(), serde_json::Value::String(record.name.clone()));
+    obj.insert("name".to_string(), serde_json::Value::String(record.name().to_string()));
+    obj.insert("clk".to_string(), serde_json::Value::Number(record.clk().into()));
 
-    if let Some(data) = &record.data {
-        obj.insert("data".to_string(), data.clone());
+    // Add data fields from the trait method
+    let data_map = record.data();
+    if !data_map.is_empty() {
+        obj.insert("data".to_string(), serde_json::Value::Object(
+            data_map.into_iter()
+                .map(|(k, v)| (k, v))
+                .collect()
+        ));
     }
 
-    if let Some(end_clk) = record.end_clk {
+    if let Some(end_clk) = record.end_clk() {
         obj.insert("end_clk".to_string(), serde_json::Value::Number(end_clk.into()));
     }
 
-    if let Some(duration) = record.duration {
+    if let Some(duration) = record.duration() {
         obj.insert("duration".to_string(), serde_json::Value::Number(duration.into()));
     }
 
@@ -39,13 +43,19 @@ fn record_to_json(record: &TraceRecord) -> String {
 }
 
 /// Serialize TraceEvent to pretty-printed JSON string
-fn event_to_json(event: &TraceEvent) -> String {
+fn event_to_json(event: &dyn TraceEvent) -> String {
     let mut obj = serde_json::Map::new();
-    obj.insert("name".to_string(), serde_json::Value::String(event.name.clone()));
-    obj.insert("clk".to_string(), serde_json::Value::Number(event.clk.into()));
+    obj.insert("name".to_string(), serde_json::Value::String(event.name().to_string()));
+    obj.insert("clk".to_string(), serde_json::Value::Number(event.clk().into()));
 
-    if let Some(data) = &event.data {
-        obj.insert("data".to_string(), data.clone());
+    // Add data fields from the trait method
+    let data_map = event.data();
+    if !data_map.is_empty() {
+        obj.insert("data".to_string(), serde_json::Value::Object(
+            data_map.into_iter()
+                .map(|(k, v)| (k, v))
+                .collect()
+        ));
     }
 
     serde_json::to_string_pretty(&obj).unwrap_or_else(|_| "{}".to_string())
@@ -104,41 +114,40 @@ impl TimedAnnotation {
 
 /// Python-exposed Record class
 #[pyclass]
-#[derive(Clone)]
 pub struct Record {
-    pub(crate) inner: Arc<TraceRecord>,
+    pub(crate) id: u64,
+    pub(crate) clk: i64,
+    pub(crate) end_clk: Option<i64>,
+    pub(crate) name: String,
+    pub(crate) data_map: HashMap<String, serde_json::Value>,
+    pub(crate) events_cache: Vec<(String, i64, Option<serde_json::Value>)>,
     pub(crate) clock_freq_mhz: f64,
 }
 
 #[pymethods]
 impl Record {
-    /// Record type classification (e.g., "HostProgram", "KernelExecution", "Transaction")
-    fn record_type(&self) -> String {
-        self.inner.record_type.clone()
-    }
-
     /// Record name (human-readable)
     fn name(&self) -> String {
-        self.inner.name.clone()
+        self.name.clone()
     }
 
     /// Start time in timescale units
     fn start_time(&self) -> u64 {
-        clock_to_picoseconds(self.inner.clk, self.clock_freq_mhz) as u64
+        clock_to_picoseconds(self.clk, self.clock_freq_mhz) as u64
     }
 
     /// End time in timescale units (None if ongoing or unbounded)
     fn end_time(&self) -> Option<u64> {
-        self.inner.end_clk.map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz) as u64)
+        self.end_clk.map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz) as u64)
     }
 
     /// Annotations attached to this record (name/value pairs)
     fn annotations(&self) -> Vec<Annotation> {
         let mut result = Vec::new();
-        for ann in &self.inner.annotations {
+        for (name, value) in &self.data_map {
             result.push(Annotation {
-                name: ann.name.clone(),
-                value: ann.data.clone(),
+                name: name.clone(),
+                value: value.clone(),
             });
         }
         result
@@ -147,11 +156,11 @@ impl Record {
     /// Events occurring within this record's time range (timed annotations)
     fn events(&self) -> Vec<TimedAnnotation> {
         let mut result = Vec::new();
-        for evt in &self.inner.events {
+        for (name, clk, value) in &self.events_cache {
             result.push(TimedAnnotation {
-                name: evt.name.clone(),
-                time: clock_to_picoseconds(evt.clk, self.clock_freq_mhz) as u64,
-                value: evt.data.clone(),
+                name: name.clone(),
+                time: clock_to_picoseconds(*clk, self.clock_freq_mhz) as u64,
+                value: value.clone(),
             });
         }
         result
@@ -193,50 +202,48 @@ fn python_from_json(py: Python, value: &serde_json::Value) -> PyResult<PyObject>
 
 /// JETS hierarchy wrapper
 pub(crate) struct JetsHierarchy {
-    trace_data: Arc<TraceData>,
+    trace_data: JetsTraceData,
     clock_freq_mhz: f64,
     record_id_to_handle: HashMap<u64, usize>,
-    handle_to_record: HashMap<usize, Arc<TraceRecord>>,
 }
 
 impl JetsHierarchy {
-    pub fn new(trace_data: TraceData) -> Result<Self, String> {
+    pub fn new(trace_data: JetsTraceData) -> Result<Self, String> {
         // Extract clock frequency from header metadata
-        let clock_freq_mhz = trace_data.header.metadata
+        let metadata = trace_data.metadata();
+        let clock_freq_mhz = metadata.header_data()
             .get("clock_frequency_mhz")
             .and_then(|v| v.as_f64())
             .ok_or_else(|| "Missing clock_frequency_mhz in header metadata".to_string())?;
 
         // Build record ID to handle mapping
         let mut record_id_to_handle = HashMap::new();
-        let mut handle_to_record = HashMap::new();
         let mut next_handle = 0;
 
         fn collect_records(
-            record: &TraceRecord,
+            record: &dyn TraceRecord,
             id_map: &mut HashMap<u64, usize>,
-            handle_map: &mut HashMap<usize, Arc<TraceRecord>>,
             next_handle: &mut usize,
         ) {
             let handle = *next_handle;
             *next_handle += 1;
-            id_map.insert(record.id, handle);
-            handle_map.insert(handle, Arc::new(record.clone()));
+            id_map.insert(record.id(), handle);
 
-            for child in &record.children {
-                collect_records(child, id_map, handle_map, next_handle);
+            for child in record.children() {
+                collect_records(child, id_map, next_handle);
             }
         }
 
-        for root in &trace_data.roots {
-            collect_records(root, &mut record_id_to_handle, &mut handle_to_record, &mut next_handle);
+        for root_id in trace_data.root_ids() {
+            if let Some(root) = trace_data.get_record(root_id) {
+                collect_records(root, &mut record_id_to_handle, &mut next_handle);
+            }
         }
 
         Ok(JetsHierarchy {
-            trace_data: Arc::new(trace_data),
+            trace_data,
             clock_freq_mhz,
             record_id_to_handle,
-            handle_to_record,
         })
     }
 
@@ -244,12 +251,22 @@ impl JetsHierarchy {
         self.clock_freq_mhz
     }
 
-    pub(crate) fn top_records(&self) -> &[TraceRecord] {
-        &self.trace_data.roots
+    pub(crate) fn get_root_ids(&self) -> Vec<u64> {
+        self.trace_data.root_ids()
     }
 
-    pub(crate) fn get_record_by_handle(&self, handle: usize) -> Option<Arc<TraceRecord>> {
-        self.handle_to_record.get(&handle).cloned()
+    pub(crate) fn get_record_by_handle(&self, handle: usize) -> Option<&dyn TraceRecord> {
+        // Find the record ID that corresponds to this handle
+        let id = self.record_id_to_handle
+            .iter()
+            .find(|(_, &h)| h == handle)
+            .map(|(&id, _)| id)?;
+
+        self.trace_data.get_record(id)
+    }
+
+    pub(crate) fn get_record_by_id(&self, id: u64) -> Option<&dyn TraceRecord> {
+        self.trace_data.get_record(id)
     }
 
     pub(crate) fn get_handle_by_id(&self, id: u64) -> Option<usize> {
@@ -257,15 +274,37 @@ impl JetsHierarchy {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn create_record_wrapper(&self, record: &TraceRecord) -> Record {
+    pub(crate) fn create_record_wrapper(&self, record: &dyn TraceRecord) -> Record {
+        let events_cache: Vec<_> = record.events()
+            .iter()
+            .map(|e| {
+                let name = e.name().to_string();
+                let clk = e.clk();
+                let data = e.data();
+                let value = if data.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(
+                        data.into_iter().map(|(k, v)| (k, v)).collect()
+                    ))
+                };
+                (name, clk, value)
+            })
+            .collect();
+
         Record {
-            inner: Arc::new(record.clone()),
+            id: record.id(),
+            clk: record.clk(),
+            end_clk: record.end_clk(),
+            name: record.name().to_string(),
+            data_map: record.data(),
+            events_cache,
             clock_freq_mhz: self.clock_freq_mhz,
         }
     }
 
     /// Generate signal changes for a record
-    pub(crate) fn generate_signal_changes(&self, record: &TraceRecord) -> Vec<(i64, String)> {
+    pub(crate) fn generate_signal_changes(&self, record: &dyn TraceRecord) -> Vec<(i64, String)> {
         let mut changes = Vec::new();
 
         // Initial value: "Z" at time 0 (outside record range)
@@ -273,20 +312,20 @@ impl JetsHierarchy {
 
         // Record start: transition to record JSON
         // Ensure start time is at least 1 to avoid collision with initial Z at time 0
-        let start_time_ps = clock_to_picoseconds(record.clk, self.clock_freq_mhz).max(1);
+        let start_time_ps = clock_to_picoseconds(record.clk(), self.clock_freq_mhz).max(1);
         changes.push((start_time_ps, record_to_json(record)));
 
         // Events (sorted by clock)
-        let mut events = record.events.clone();
-        events.sort_by_key(|e| e.clk);
+        let mut events: Vec<_> = record.events();
+        events.sort_by_key(|e| e.clk());
 
         for event in &events {
-            let event_time_ps = clock_to_picoseconds(event.clk, self.clock_freq_mhz);
-            changes.push((event_time_ps, event_to_json(event)));
+            let event_time_ps = clock_to_picoseconds(event.clk(), self.clock_freq_mhz);
+            changes.push((event_time_ps, event_to_json(*event)));
         }
 
         // End marker (if end_clk exists): transition back to "Z"
-        if let Some(end_clk) = record.end_clk {
+        if let Some(end_clk) = record.end_clk() {
             let end_time_ps = clock_to_picoseconds(end_clk, self.clock_freq_mhz);
             changes.push((end_time_ps + 1, "Z".to_string()));
         }
@@ -306,7 +345,8 @@ impl JetsHierarchy {
 
     pub(crate) fn date(&self) -> String {
         // Extract from metadata if available
-        self.trace_data.header.metadata
+        let metadata = self.trace_data.metadata();
+        metadata.header_data()
             .get("date")
             .and_then(|v| v.as_str())
             .unwrap_or("")
@@ -314,13 +354,13 @@ impl JetsHierarchy {
     }
 
     pub(crate) fn version(&self) -> String {
-        self.trace_data.header.version.clone()
+        self.trace_data.metadata().version().to_string()
     }
 
     /// Get the maximum time in picoseconds based on capture_end_clk
     pub(crate) fn get_max_time(&self) -> Option<i64> {
-        self.trace_data.footer.as_ref()
-            .and_then(|footer| footer.capture_end_clk)
+        let metadata = self.trace_data.metadata();
+        metadata.capture_end_clk()
             .map(|end_clk| clock_to_picoseconds(end_clk, self.clock_freq_mhz))
     }
 }

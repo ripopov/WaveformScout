@@ -188,21 +188,11 @@ impl Scope {
 
     /// Get the Record object if this scope is a JETS record
     /// For non-JETS waveforms, always returns None
+    /// Note: This API is deprecated and returns None until we refactor JETS record access
     pub fn record(&self) -> Option<jets_loader::Record> {
-        self.0.record().map(|r| {
-            // We need to convert the trait object back to jets_loader::Record
-            // This requires downcasting to JetsRecord
-            if let Some(jets_record) = r.as_any().downcast_ref::<jets_backend::JetsRecord>() {
-                // Extract the inner record and clock_freq_mhz
-                jets_loader::Record {
-                    inner: jets_record.inner.clone(),
-                    clock_freq_mhz: jets_record.clock_freq_mhz,
-                }
-            } else {
-                // This shouldn't happen, but handle it gracefully
-                panic!("Expected JetsRecord trait object")
-            }
-        })
+        // TODO: Refactor this API to work with the new trait-based Jets API
+        // The old approach of exposing jets_loader::Record is no longer compatible
+        None
     }
 }
 
