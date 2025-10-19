@@ -218,38 +218,47 @@ pub struct FilteredVisibleNode {
 /// This adapter wraps a base visibility strategy and adds expansion state checking.
 /// It only descends into nodes that are expanded, combining expansion state with
 /// the base strategy's visibility rules.
-struct ExpansionAwareStrategy<'a, S: VisibilityStrategy> {
-    base_strategy: &'a S,
-    expanded_nodes: &'a HashSet<u64>,
+struct ExpansionAwareStrategy<'s, S, R> {
+    base_strategy: &'s S,
+    expanded_nodes: &'s HashSet<u64>,
+    _phantom: std::marker::PhantomData<R>,
 }
 
-impl<'a, S: VisibilityStrategy> VisibilityStrategy for ExpansionAwareStrategy<'a, S> {
-    fn include_parent(&self, parent: &DynTraceRecord<'_>, depth: usize) -> bool {
+impl<'a, 's, S, R> VisibilityStrategy<'a, R> for ExpansionAwareStrategy<'s, S, R>
+where
+    S: VisibilityStrategy<'a, R>,
+    R: rjets::TraceRecord<'a>,
+{
+    fn include_parent(&self, parent: &R, depth: usize) -> bool {
         self.base_strategy.include_parent(parent, depth)
     }
 
-    fn include_leaf(&self, leaf: &DynTraceRecord<'_>, depth: usize) -> bool {
+    fn include_leaf(&self, leaf: &R, depth: usize) -> bool {
         self.base_strategy.include_leaf(leaf, depth)
     }
 
-    fn descend_into(&self, parent: &DynTraceRecord<'_>, depth: usize) -> bool {
+    fn descend_into(&self, parent: &R, depth: usize) -> bool {
         // Only descend if BOTH the node is expanded AND the base strategy allows it
         self.expanded_nodes.contains(&parent.id()) && self.base_strategy.descend_into(parent, depth)
     }
 
     fn child_window_hint(
         &self,
-        parent: &DynTraceRecord<'_>,
+        parent: &R,
         depth: usize,
     ) -> Option<(usize, usize)> {
         self.base_strategy.child_window_hint(parent, depth)
     }
 }
 
-/// Collects visible nodes using a visibility strategy, handling expansion state.
+/// Generic core function for collecting visible nodes with a strategy.
 ///
 /// This is a unified function that replaces the separate filtered/unfiltered traversal
 /// paths. It uses the visibility strategy pattern to determine which nodes to include.
+///
+/// # Type Parameters
+/// * `T` - The trace data type
+/// * `S` - The visibility strategy type
 ///
 /// # Arguments
 /// * `trace` - The trace data
@@ -258,26 +267,32 @@ impl<'a, S: VisibilityStrategy> VisibilityStrategy for ExpansionAwareStrategy<'a
 ///
 /// # Returns
 /// Vector of filtered visible nodes with row indices and depths
-pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
-    trace: &DynTraceData,
+fn collect_visible_nodes_with_strategy_generic<T, S>(
+    trace: &T,
     expanded_nodes: &HashSet<u64>,
     strategy: &S,
-) -> Vec<FilteredVisibleNode> {
+) -> Vec<FilteredVisibleNode>
+where
+    T: rjets::TraceData,
+    for<'a> S: VisibilityStrategy<'a, T::Record<'a>>,
+    for<'a> T::Record<'a>: rjets::TraceRecord<'a>,
+{
     // Wrap the strategy with expansion-aware logic
-    let expansion_strategy = ExpansionAwareStrategy {
+    let expansion_strategy: ExpansionAwareStrategy<'_, S, T::Record<'_>> = ExpansionAwareStrategy {
         base_strategy: strategy,
         expanded_nodes,
+        _phantom: std::marker::PhantomData,
     };
 
     // Get roots as owned records
-    let roots: Vec<DynTraceRecord> = trace
+    let roots: Vec<T::Record<'_>> = trace
         .root_ids()
         .iter()
         .filter_map(|&id| trace.get_record(id))
         .collect();
 
-    // Traverse using the strategy and assign row indices (passing references)
-    visibility::traverse_visible(roots.iter(), &expansion_strategy)
+    // Traverse using the strategy and assign row indices
+    visibility::traverse_visible(roots, &expansion_strategy)
         .enumerate()
         .map(|(row_index, node)| FilteredVisibleNode {
             record_id: node.record.id(),
@@ -287,6 +302,28 @@ pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
             is_last_child: node.is_last_child,
         })
         .collect()
+}
+
+/// Collects visible nodes using a visibility strategy, handling expansion state.
+///
+/// Public API function that works with DynTraceData.
+///
+/// # Arguments
+/// * `trace` - The trace data
+/// * `expanded_nodes` - Set of expanded node IDs
+/// * `strategy` - The visibility strategy to apply
+///
+/// # Returns
+/// Vector of filtered visible nodes with row indices and depths
+pub fn collect_visible_nodes_with_strategy<S>(
+    trace: &DynTraceData,
+    expanded_nodes: &HashSet<u64>,
+    strategy: &S,
+) -> Vec<FilteredVisibleNode>
+where
+    for<'a> S: VisibilityStrategy<'a, DynTraceRecord<'a>>,
+{
+    collect_visible_nodes_with_strategy_generic(trace, expanded_nodes, strategy)
 }
 
 /// Collects unfiltered visible nodes using the unified strategy system.
@@ -339,6 +376,37 @@ mod strategy_tests {
     use super::*;
     use std::collections::HashMap;
     use std::sync::Arc;
+
+    /// Test-only generic helper for unfiltered collection
+    fn collect_unfiltered_test<T>(
+        trace: &T,
+        expanded_nodes: &HashSet<u64>,
+    ) -> Vec<FilteredVisibleNode>
+    where
+        T: rjets::TraceData,
+        for<'a> T::Record<'a>: rjets::TraceRecord<'a>,
+    {
+        let strategy = visibility::UnfilteredStrategy;
+        collect_visible_nodes_with_strategy_generic(trace, expanded_nodes, &strategy)
+    }
+
+    /// Test-only generic helper for viewport filtering
+    fn collect_viewport_filtered_test<T>(
+        trace: &T,
+        expanded_nodes: &HashSet<u64>,
+        viewport_start_clk: i64,
+        viewport_end_clk: i64,
+    ) -> Vec<FilteredVisibleNode>
+    where
+        T: rjets::TraceData,
+        for<'a> T::Record<'a>: rjets::TraceRecord<'a>,
+    {
+        let strategy = visibility::ViewportFilterStrategy {
+            start: viewport_start_clk,
+            end: viewport_end_clk,
+        };
+        collect_visible_nodes_with_strategy_generic(trace, expanded_nodes, &strategy)
+    }
 
     // Mock implementations for testing using Arc for shared ownership
     struct MockTrace {
@@ -480,7 +548,7 @@ mod strategy_tests {
         let mut expanded = HashSet::new();
         expanded.insert(1);
 
-        let nodes = collect_unfiltered_visible_nodes_strategy(&trace, &expanded);
+        let nodes = collect_unfiltered_test(&trace, &expanded);
 
         // Should get all 3 nodes with row indices
         assert_eq!(nodes.len(), 3);
@@ -532,7 +600,7 @@ mod strategy_tests {
         expanded.insert(1);
 
         // Filter to [100, 200] - should only get parent and child at 150
-        let nodes = collect_viewport_filtered_nodes_strategy(&trace, &expanded, 100, 200);
+        let nodes = collect_viewport_filtered_test(&trace, &expanded, 100, 200);
 
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].record_id, 1); // Parent always included
@@ -571,7 +639,7 @@ mod strategy_tests {
         // Test with node 1 NOT expanded
         let expanded = HashSet::new();
 
-        let nodes = collect_unfiltered_visible_nodes_strategy(&trace, &expanded);
+        let nodes = collect_unfiltered_test(&trace, &expanded);
 
         // Should only get root, not children
         assert_eq!(nodes.len(), 1);

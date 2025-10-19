@@ -8,7 +8,8 @@
 //! visibility policy (implemented per strategy), making it easy to add new
 //! filtering modes without duplicating traversal logic.
 
-use rjets::{TraceRecord, DynTraceRecord, TraceEvent};
+use rjets::TraceRecord;
+use std::marker::PhantomData;
 
 /// Kind of tree node (parent or leaf).
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -24,9 +25,9 @@ pub enum NodeKind {
 /// This is the output type of the visibility-aware traversal.
 /// It includes the record, depth, and node kind.
 #[derive(Clone)]
-pub struct VisibleNode<'a> {
-    /// The trace record (owned enum containing a reference)
-    pub record: DynTraceRecord<'a>,
+pub struct VisibleNode<'a, R: TraceRecord<'a>> {
+    /// The trace record
+    pub record: R,
     /// Depth in the tree hierarchy (0 for root)
     pub depth: usize,
     /// Whether this is a parent or leaf node
@@ -36,6 +37,8 @@ pub struct VisibleNode<'a> {
     pub branch_context: Vec<bool>,
     /// Whether this is the last child of its parent
     pub is_last_child: bool,
+    /// Phantom data to mark the lifetime
+    _phantom: PhantomData<&'a ()>,
 }
 
 /// Strategy for determining node visibility during tree traversal.
@@ -45,7 +48,7 @@ pub struct VisibleNode<'a> {
 /// - Which leaf nodes to include in output
 /// - Whether to descend into a parent's children
 /// - Optional hints for optimizing wide-node traversal
-pub trait VisibilityStrategy {
+pub trait VisibilityStrategy<'a, R: TraceRecord<'a>> {
     /// Should the parent node be included in the output at the given depth?
     ///
     /// # Arguments
@@ -54,7 +57,7 @@ pub trait VisibilityStrategy {
     ///
     /// # Returns
     /// `true` if this parent should be yielded, `false` otherwise
-    fn include_parent(&self, parent: &DynTraceRecord<'_>, depth: usize) -> bool;
+    fn include_parent(&self, parent: &R, depth: usize) -> bool;
 
     /// Should the leaf node be included in the output at the given depth?
     ///
@@ -64,7 +67,7 @@ pub trait VisibilityStrategy {
     ///
     /// # Returns
     /// `true` if this leaf should be yielded, `false` otherwise
-    fn include_leaf(&self, leaf: &DynTraceRecord<'_>, depth: usize) -> bool;
+    fn include_leaf(&self, leaf: &R, depth: usize) -> bool;
 
     /// Should the traversal descend into the given parent at the given depth?
     ///
@@ -77,7 +80,7 @@ pub trait VisibilityStrategy {
     ///
     /// # Returns
     /// `true` if children should be visited, `false` to skip the subtree
-    fn descend_into(&self, parent: &DynTraceRecord<'_>, depth: usize) -> bool;
+    fn descend_into(&self, parent: &R, depth: usize) -> bool;
 
     /// Optional window hint for wide-child optimization.
     ///
@@ -93,7 +96,7 @@ pub trait VisibilityStrategy {
     /// `Some((start, end))` to visit children[start..end], or `None` for all children
     fn child_window_hint(
         &self,
-        _parent: &DynTraceRecord<'_>,
+        _parent: &R,
         _depth: usize,
     ) -> Option<(usize, usize)> {
         None
@@ -105,16 +108,16 @@ pub trait VisibilityStrategy {
 /// This strategy produces the complete unfiltered tree traversal.
 pub struct UnfilteredStrategy;
 
-impl VisibilityStrategy for UnfilteredStrategy {
-    fn include_parent(&self, _parent: &DynTraceRecord, _depth: usize) -> bool {
+impl<'a, R: TraceRecord<'a>> VisibilityStrategy<'a, R> for UnfilteredStrategy {
+    fn include_parent(&self, _parent: &R, _depth: usize) -> bool {
         true
     }
 
-    fn include_leaf(&self, _leaf: &DynTraceRecord, _depth: usize) -> bool {
+    fn include_leaf(&self, _leaf: &R, _depth: usize) -> bool {
         true
     }
 
-    fn descend_into(&self, _parent: &DynTraceRecord, _depth: usize) -> bool {
+    fn descend_into(&self, _parent: &R, _depth: usize) -> bool {
         true
     }
 }
@@ -132,19 +135,19 @@ pub struct ViewportFilterStrategy {
     pub end: i64,
 }
 
-impl VisibilityStrategy for ViewportFilterStrategy {
-    fn include_parent(&self, _parent: &DynTraceRecord, _depth: usize) -> bool {
+impl<'a, R: TraceRecord<'a>> VisibilityStrategy<'a, R> for ViewportFilterStrategy {
+    fn include_parent(&self, _parent: &R, _depth: usize) -> bool {
         // Always include parent nodes as structural anchors
         true
     }
 
-    fn include_leaf(&self, leaf: &DynTraceRecord, _depth: usize) -> bool {
+    fn include_leaf(&self, leaf: &R, _depth: usize) -> bool {
         // Include leaf only if its clock is in the viewport range
         let c = leaf.clk();
         c >= self.start && c <= self.end
     }
 
-    fn descend_into(&self, parent: &DynTraceRecord, _depth: usize) -> bool {
+    fn descend_into(&self, parent: &R, _depth: usize) -> bool {
         // Early prune: if parent starts after viewport end, skip entire subtree
         // This is safe because children have start times >= parent start time
         parent.clk() <= self.end
@@ -152,7 +155,7 @@ impl VisibilityStrategy for ViewportFilterStrategy {
 
     fn child_window_hint(
         &self,
-        parent: &DynTraceRecord,
+        parent: &R,
         _depth: usize,
     ) -> Option<(usize, usize)> {
         // If the parent has children and they are leaves, we can use binary search
@@ -216,8 +219,8 @@ impl VisibilityStrategy for ViewportFilterStrategy {
 
 /// Stack frame for iterative depth-first traversal.
 #[derive(Clone)]
-struct TraversalFrame<'a> {
-    record: DynTraceRecord<'a>,
+struct TraversalFrame<'a, R: TraceRecord<'a>> {
+    record: R,
     depth: usize,
     /// If Some, we've already yielded this parent and are processing children
     /// at the given index. If None, we haven't processed this node yet.
@@ -226,6 +229,8 @@ struct TraversalFrame<'a> {
     branch_context: Vec<bool>,
     /// Whether this node is the last child of its parent
     is_last_child: bool,
+    /// Phantom data to mark the lifetime
+    _phantom: PhantomData<&'a ()>,
 }
 
 /// Iterator that yields visible nodes according to a visibility strategy.
@@ -233,22 +238,22 @@ struct TraversalFrame<'a> {
 /// This iterator performs a depth-first traversal using an explicit stack
 /// to avoid recursion and enable lazy evaluation. It consults the strategy
 /// at each step to determine visibility and whether to descend.
-pub struct TraversalIter<'a, S: VisibilityStrategy> {
-    stack: Vec<TraversalFrame<'a>>,
+pub struct TraversalIter<'a, R: TraceRecord<'a>, S: VisibilityStrategy<'a, R>> {
+    stack: Vec<TraversalFrame<'a, R>>,
     strategy: &'a S,
 }
 
-impl<'a, S: VisibilityStrategy> TraversalIter<'a, S> {
+impl<'a, R: TraceRecord<'a>, S: VisibilityStrategy<'a, R>> TraversalIter<'a, R, S> {
     fn new<I>(roots: I, strategy: &'a S) -> Self
     where
-        I: IntoIterator<Item = &'a DynTraceRecord<'a>>,
+        I: IntoIterator<Item = R>,
     {
         // Collect roots into a vec to determine which are last
-        let roots_vec: Vec<_> = roots.into_iter().cloned().collect();
+        let roots_vec: Vec<_> = roots.into_iter().collect();
         let num_roots = roots_vec.len();
 
         // Collect into Vec first, then reverse for correct LIFO stack order
-        let mut stack: Vec<TraversalFrame<'a>> = roots_vec
+        let mut stack: Vec<TraversalFrame<'a, R>> = roots_vec
             .into_iter()
             .enumerate()
             .map(|(i, record)| TraversalFrame {
@@ -257,6 +262,7 @@ impl<'a, S: VisibilityStrategy> TraversalIter<'a, S> {
                 child_index: None,
                 branch_context: Vec::new(),
                 is_last_child: i == num_roots - 1,
+                _phantom: PhantomData,
             })
             .collect();
 
@@ -266,8 +272,8 @@ impl<'a, S: VisibilityStrategy> TraversalIter<'a, S> {
     }
 }
 
-impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
-    type Item = VisibleNode<'a>;
+impl<'a, R: TraceRecord<'a>, S: VisibilityStrategy<'a, R>> Iterator for TraversalIter<'a, R, S> {
+    type Item = VisibleNode<'a, R>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(mut frame) = self.stack.pop() {
@@ -322,6 +328,7 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                                 child_index: None,
                                 branch_context: child_branch_context,
                                 is_last_child: is_last,
+                                _phantom: PhantomData,
                             });
                         }
                     }
@@ -334,6 +341,7 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                             kind: NodeKind::Parent,
                             branch_context: parent_branch_context,
                             is_last_child: parent_is_last_child,
+                            _phantom: PhantomData,
                         });
                     }
                 } else {
@@ -351,6 +359,7 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
                         kind: NodeKind::Leaf,
                         branch_context: frame.branch_context,
                         is_last_child: frame.is_last_child,
+                        _phantom: PhantomData,
                     });
                 }
             }
@@ -384,16 +393,22 @@ impl<'a, S: VisibilityStrategy> Iterator for TraversalIter<'a, S> {
 ///     println!("Record {} at depth {}", node.record.name(), node.depth);
 /// }
 /// ```
-pub fn traverse_visible<'a, S: VisibilityStrategy>(
-    roots: impl IntoIterator<Item = &'a DynTraceRecord<'a>>,
+pub fn traverse_visible<'a, R, S, I>(
+    roots: I,
     strategy: &'a S,
-) -> impl Iterator<Item = VisibleNode<'a>> {
+) -> impl Iterator<Item = VisibleNode<'a, R>>
+where
+    R: TraceRecord<'a>,
+    S: VisibilityStrategy<'a, R>,
+    I: IntoIterator<Item = R>,
+{
     TraversalIter::new(roots, strategy)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rjets::TraceEvent;
 
     // Mock TraceRecord for testing
     #[derive(Clone)]
@@ -472,18 +487,20 @@ mod tests {
     fn test_unfiltered_strategy_includes_all() {
         let strategy = UnfilteredStrategy;
         let record = MockRecord { id: 1, clk: 100, children: vec![] };
+        let record_ref = &record;
 
-        assert!(strategy.include_parent(&record, 0));
-        assert!(strategy.include_leaf(&record, 0));
-        assert!(strategy.descend_into(&record, 0));
+        assert!(strategy.include_parent(&record_ref, 0));
+        assert!(strategy.include_leaf(&record_ref, 0));
+        assert!(strategy.descend_into(&record_ref, 0));
     }
 
     #[test]
     fn test_viewport_filter_strategy_parents_always_included() {
         let strategy = ViewportFilterStrategy { start: 100, end: 200 };
         let record = MockRecord { id: 1, clk: 50, children: vec![] };
+        let record_ref = &record;
 
-        assert!(strategy.include_parent(&record, 0));
+        assert!(strategy.include_parent(&record_ref, 0));
     }
 
     #[test]
@@ -493,9 +510,9 @@ mod tests {
         let leaf_before = MockRecord { id: 2, clk: 50, children: vec![] };
         let leaf_after = MockRecord { id: 3, clk: 250, children: vec![] };
 
-        assert!(strategy.include_leaf(&leaf_in, 0));
-        assert!(!strategy.include_leaf(&leaf_before, 0));
-        assert!(!strategy.include_leaf(&leaf_after, 0));
+        assert!(strategy.include_leaf(&&leaf_in, 0));
+        assert!(!strategy.include_leaf(&&leaf_before, 0));
+        assert!(!strategy.include_leaf(&&leaf_after, 0));
     }
 
     #[test]
@@ -504,8 +521,8 @@ mod tests {
         let parent_before_end = MockRecord { id: 1, clk: 150, children: vec![] };
         let parent_after_end = MockRecord { id: 2, clk: 250, children: vec![] };
 
-        assert!(strategy.descend_into(&parent_before_end, 0));
-        assert!(!strategy.descend_into(&parent_after_end, 0));
+        assert!(strategy.descend_into(&&parent_before_end, 0));
+        assert!(!strategy.descend_into(&&parent_after_end, 0));
     }
 
     #[test]
@@ -525,12 +542,11 @@ mod tests {
             ],
         };
 
-        let hint = strategy.child_window_hint(&parent, 0);
+        let hint = strategy.child_window_hint(&&parent, 0);
         assert_eq!(hint, Some((1, 4))); // Indices 1, 2, 3 (clk 100, 150, 200)
     }
 
     #[test]
-    #[ignore = "MockRecord tests need to be refactored after trait lifetime changes"]
     fn test_traverse_visible_unfiltered_simple() {
         let strategy = UnfilteredStrategy;
 
@@ -544,7 +560,7 @@ mod tests {
             ],
         };
 
-        let roots: Vec<&DynTraceRecord> = vec![&root];
+        let roots = vec![&root];
         let nodes: Vec<_> = traverse_visible(roots, &strategy).collect();
 
         assert_eq!(nodes.len(), 3);
@@ -562,7 +578,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "MockRecord tests need to be refactored after trait lifetime changes"]
     fn test_traverse_visible_nested() {
         let strategy = UnfilteredStrategy;
 
@@ -580,7 +595,7 @@ mod tests {
             }],
         };
 
-        let roots: Vec<&DynTraceRecord> = vec![&root];
+        let roots = vec![&root];
         let nodes: Vec<_> = traverse_visible(roots, &strategy).collect();
 
         assert_eq!(nodes.len(), 4);
@@ -609,7 +624,7 @@ mod tests {
             ],
         };
 
-        let roots: Vec<&DynTraceRecord> = vec![&root];
+        let roots = vec![&root];
         let nodes: Vec<_> = traverse_visible(roots, &strategy).collect();
 
         // Should include parent (always) and only the leaf in viewport
@@ -641,7 +656,7 @@ mod tests {
             ],
         };
 
-        let roots: Vec<&DynTraceRecord> = vec![&root];
+        let roots = vec![&root];
         let nodes: Vec<_> = traverse_visible(roots, &strategy).collect();
 
         // Should include: root parent, parent at clk 300 (always included), leaf at 150
@@ -658,13 +673,12 @@ mod tests {
     #[test]
     fn test_traverse_visible_empty() {
         let strategy = UnfilteredStrategy;
-        let roots: Vec<&DynTraceRecord> = vec![];
+        let roots: Vec<&MockRecord> = vec![];
         let nodes: Vec<_> = traverse_visible(roots, &strategy).collect();
         assert_eq!(nodes.len(), 0);
     }
 
     #[test]
-    #[ignore = "MockRecord tests need to be refactored after trait lifetime changes"]
     fn test_traverse_visible_multiple_roots() {
         let strategy = UnfilteredStrategy;
 
@@ -679,7 +693,7 @@ mod tests {
             children: vec![MockRecord { id: 4, clk: 20, children: vec![] }],
         };
 
-        let roots: Vec<&DynTraceRecord> = vec![&root1, &root2];
+        let roots = vec![&root1, &root2];
         let nodes: Vec<_> = traverse_visible(roots, &strategy).collect();
 
         assert_eq!(nodes.len(), 4);
