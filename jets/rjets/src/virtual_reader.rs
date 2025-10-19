@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, DynTraceData};
 
 const DEFAULT_MAX_DEPTH: usize = 5;
 const DEFAULT_MAX_CHILDREN: usize = 10;
@@ -31,7 +31,7 @@ impl VirtualTraceReader {
 }
 
 impl TraceReader for VirtualTraceReader {
-    fn read(&self, _file_path: &str) -> anyhow::Result<Box<dyn TraceData>> {
+    fn read(&self, _file_path: &str) -> anyhow::Result<DynTraceData> {
         let mut rng = StdRng::seed_from_u64(self.seed);
 
         // Generate 1-5 root records
@@ -45,7 +45,7 @@ impl TraceReader for VirtualTraceReader {
             next_id += 1; // Increment for next root
         }
 
-        Ok(Box::new(VirtualTraceData::new(roots)))
+        Ok(DynTraceData::Virtual(VirtualTraceData::new(roots)))
     }
 }
 
@@ -107,17 +107,137 @@ fn calculate_virtual_trace_extent(records: &HashMap<u64, VirtualTraceRecord>) ->
     }
 }
 
+// Wrapper types for GAT references
+pub struct VirtualTraceDataRef<'a>(&'a VirtualTraceData);
+
+impl<'a> TraceMetadata for VirtualTraceDataRef<'a> {
+    fn version(&self) -> &str {
+        self.0.version()
+    }
+
+    fn header_data(&self) -> &serde_json::Value {
+        self.0.header_data()
+    }
+
+    fn capture_end_clk(&self) -> Option<i64> {
+        self.0.capture_end_clk()
+    }
+
+    fn total_records(&self) -> Option<usize> {
+        self.0.total_records()
+    }
+
+    fn total_annotations(&self) -> Option<usize> {
+        self.0.total_annotations()
+    }
+
+    fn total_events(&self) -> Option<usize> {
+        self.0.total_events()
+    }
+
+    fn trace_extent(&self) -> (i64, i64) {
+        self.0.trace_extent()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct VirtualTraceRecordRef<'a>(&'a VirtualTraceRecord);
+
+impl<'a> TraceRecord<'a> for VirtualTraceRecordRef<'a> {
+    type Event<'b> = VirtualTraceEventRef<'b> where Self: 'b;
+
+    fn clk(&self) -> i64 {
+        self.0.clk()
+    }
+
+    fn end_clk(&self) -> Option<i64> {
+        self.0.end_clk()
+    }
+
+    fn duration(&self) -> Option<i64> {
+        self.0.duration()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn id(&self) -> u64 {
+        self.0.id()
+    }
+
+    fn parent_id(&self) -> Option<u64> {
+        self.0.parent_id()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn data(&self) -> HashMap<String, serde_json::Value> {
+        self.0.data()
+    }
+
+    fn num_children(&self) -> usize {
+        self.0.num_children()
+    }
+
+    fn child_at(&self, index: usize) -> Option<Self> {
+        // Access children directly to preserve the 'a lifetime
+        self.0.children.get(index).map(VirtualTraceRecordRef)
+    }
+
+    fn num_events(&self) -> usize {
+        self.0.num_events()
+    }
+
+    fn event_at(&self, index: usize) -> Option<Self::Event<'_>> {
+        self.0.event_at(index)
+    }
+
+    fn subtree_depth(&self) -> usize {
+        self.0.subtree_depth()
+    }
+}
+
+pub struct VirtualTraceEventRef<'a>(&'a VirtualTraceEvent);
+
+impl<'a> TraceEvent for VirtualTraceEventRef<'a> {
+    fn clk(&self) -> i64 {
+        self.0.clk()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn record_id(&self) -> u64 {
+        self.0.record_id()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn data(&self) -> HashMap<String, serde_json::Value> {
+        self.0.data()
+    }
+}
+
 impl TraceData for VirtualTraceData {
-    fn metadata(&self) -> &dyn TraceMetadata {
-        self
+    type Metadata<'a> = VirtualTraceDataRef<'a> where Self: 'a;
+    type Record<'a> = VirtualTraceRecordRef<'a> where Self: 'a;
+
+    fn metadata(&self) -> Self::Metadata<'_> {
+        VirtualTraceDataRef(self)
     }
 
     fn root_ids(&self) -> Vec<u64> {
         self.roots.iter().map(|r| r.id).collect()
     }
 
-    fn get_record(&self, id: u64) -> Option<&dyn TraceRecord> {
-        self.records_by_id.get(&id).map(|r| r as &dyn TraceRecord)
+    fn get_record(&self, id: u64) -> Option<Self::Record<'_>> {
+        self.records_by_id.get(&id).map(VirtualTraceRecordRef)
     }
 }
 
@@ -241,7 +361,9 @@ impl VirtualTraceRecord {
     }
 }
 
-impl TraceRecord for VirtualTraceRecord {
+impl<'a> TraceRecord<'a> for &'a VirtualTraceRecord {
+    type Event<'b> = VirtualTraceEventRef<'b> where Self: 'b;
+
     fn clk(&self) -> i64 {
         self.clk
     }
@@ -274,16 +396,20 @@ impl TraceRecord for VirtualTraceRecord {
         self.data.clone()
     }
 
-    fn children(&self) -> Vec<&dyn TraceRecord> {
-        self.children.iter()
-            .map(|c| c as &dyn TraceRecord)
-            .collect()
+    fn num_children(&self) -> usize {
+        self.children.len()
     }
 
-    fn events(&self) -> Vec<&dyn TraceEvent> {
-        self.events.iter()
-            .map(|e| e as &dyn TraceEvent)
-            .collect()
+    fn child_at(&self, index: usize) -> Option<Self> {
+        self.children.get(index)
+    }
+
+    fn num_events(&self) -> usize {
+        self.events.len()
+    }
+
+    fn event_at(&self, index: usize) -> Option<Self::Event<'_>> {
+        self.events.get(index).map(VirtualTraceEventRef)
     }
 
     fn subtree_depth(&self) -> usize {

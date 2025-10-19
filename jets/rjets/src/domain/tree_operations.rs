@@ -10,7 +10,7 @@
 
 use crate::cache::TreeCache;
 use crate::domain::visibility::{self, VisibilityStrategy};
-use rjets::TraceData;
+use rjets::{TraceData, TraceRecord, DynTraceData, DynTraceRecord};
 use std::collections::HashSet;
 
 /// Gets the total number of visible nodes (uses cache if available).
@@ -20,7 +20,7 @@ use std::collections::HashSet;
 /// * `expanded_nodes` - Set of IDs for expanded nodes
 /// * `cache` - Tree cache for memoizing results
 pub fn get_total_visible_nodes(
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     cache: &mut TreeCache,
 ) -> usize {
@@ -44,7 +44,7 @@ pub fn get_total_visible_nodes(
 /// * `expanded_nodes` - Set of IDs for expanded nodes
 /// * `cache` - Tree cache for memoizing results
 pub fn get_max_visible_depth(
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     cache: &mut TreeCache,
 ) -> usize {
@@ -63,7 +63,7 @@ pub fn get_max_visible_depth(
 /// * `trace` - The trace data containing the tree structure
 /// * `expanded_nodes` - Set of IDs for expanded nodes
 pub fn calculate_max_visible_depth(
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
 ) -> usize {
     let mut max_depth = 0;
@@ -84,7 +84,7 @@ pub fn calculate_max_visible_depth(
 pub fn calculate_node_depth(
     record_id: u64,
     current_depth: usize,
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
 ) -> usize {
     let mut max_depth = current_depth;
@@ -115,7 +115,7 @@ pub fn calculate_node_depth(
 /// * `cache` - Tree cache for memoizing results
 pub fn get_subtree_size(
     record_id: u64,
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     cache: &mut TreeCache,
 ) -> usize {
@@ -137,7 +137,7 @@ pub fn get_subtree_size(
 /// * `cache_map` - Existing cache map for looking up already-computed sizes
 pub fn calculate_subtree_size(
     record_id: u64,
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     cache_map: &std::collections::HashMap<u64, usize>,
 ) -> usize {
@@ -168,7 +168,7 @@ pub fn calculate_subtree_size(
 /// * `cache` - Tree cache for memoizing results
 pub fn are_all_children_collapsed_cached(
     parent_id: u64,
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     cache: &mut TreeCache,
 ) -> bool {
@@ -177,11 +177,15 @@ pub fn are_all_children_collapsed_cached(
     }
 
     let result = if let Some(record) = trace.get_record(parent_id) {
-        let children = record.children();
-        if children.is_empty() {
+        let num_children = record.num_children();
+        if num_children == 0 {
             true // No children = treat as collapsed
         } else {
-            children.iter().all(|child| !expanded_nodes.contains(&child.id()))
+            (0..num_children).all(|i| {
+                record.child_at(i)
+                    .map(|child| !expanded_nodes.contains(&child.id()))
+                    .unwrap_or(true)
+            })
         }
     } else {
         true
@@ -220,22 +224,22 @@ struct ExpansionAwareStrategy<'a, S: VisibilityStrategy> {
 }
 
 impl<'a, S: VisibilityStrategy> VisibilityStrategy for ExpansionAwareStrategy<'a, S> {
-    fn include_parent(&self, parent: &dyn rjets::TraceRecord, depth: usize) -> bool {
+    fn include_parent(&self, parent: &DynTraceRecord<'_>, depth: usize) -> bool {
         self.base_strategy.include_parent(parent, depth)
     }
 
-    fn include_leaf(&self, leaf: &dyn rjets::TraceRecord, depth: usize) -> bool {
+    fn include_leaf(&self, leaf: &DynTraceRecord<'_>, depth: usize) -> bool {
         self.base_strategy.include_leaf(leaf, depth)
     }
 
-    fn descend_into(&self, parent: &dyn rjets::TraceRecord, depth: usize) -> bool {
+    fn descend_into(&self, parent: &DynTraceRecord<'_>, depth: usize) -> bool {
         // Only descend if BOTH the node is expanded AND the base strategy allows it
         self.expanded_nodes.contains(&parent.id()) && self.base_strategy.descend_into(parent, depth)
     }
 
     fn child_window_hint(
         &self,
-        parent: &dyn rjets::TraceRecord,
+        parent: &DynTraceRecord<'_>,
         depth: usize,
     ) -> Option<(usize, usize)> {
         self.base_strategy.child_window_hint(parent, depth)
@@ -255,7 +259,7 @@ impl<'a, S: VisibilityStrategy> VisibilityStrategy for ExpansionAwareStrategy<'a
 /// # Returns
 /// Vector of filtered visible nodes with row indices and depths
 pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     strategy: &S,
 ) -> Vec<FilteredVisibleNode> {
@@ -265,15 +269,15 @@ pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
         expanded_nodes,
     };
 
-    // Get roots as trait objects
-    let roots: Vec<&dyn rjets::TraceRecord> = trace
+    // Get roots as owned records
+    let roots: Vec<DynTraceRecord> = trace
         .root_ids()
         .iter()
         .filter_map(|&id| trace.get_record(id))
         .collect();
 
-    // Traverse using the strategy and assign row indices
-    visibility::traverse_visible(roots, &expansion_strategy)
+    // Traverse using the strategy and assign row indices (passing references)
+    visibility::traverse_visible(roots.iter(), &expansion_strategy)
         .enumerate()
         .map(|(row_index, node)| FilteredVisibleNode {
             record_id: node.record.id(),
@@ -297,7 +301,7 @@ pub fn collect_visible_nodes_with_strategy<S: VisibilityStrategy>(
 /// # Returns
 /// Vector of all visible nodes (expansion-filtered only)
 pub fn collect_unfiltered_visible_nodes_strategy(
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
 ) -> Vec<FilteredVisibleNode> {
     let strategy = visibility::UnfilteredStrategy;
@@ -318,7 +322,7 @@ pub fn collect_unfiltered_visible_nodes_strategy(
 /// # Returns
 /// Vector of viewport-filtered visible nodes
 pub fn collect_viewport_filtered_nodes_strategy(
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     expanded_nodes: &HashSet<u64>,
     viewport_start_clk: i64,
     viewport_end_clk: i64,
@@ -342,30 +346,62 @@ mod strategy_tests {
         roots: Vec<u64>,
     }
 
+    #[derive(Clone)]
     struct MockRecord {
         id: u64,
         clk: i64,
         children: Vec<Arc<MockRecord>>,
     }
 
+    // Mock metadata for testing
+    struct MockMetadata;
+
+    impl rjets::TraceMetadata for MockMetadata {
+        fn version(&self) -> &str { "1.0" }
+        fn header_data(&self) -> &serde_json::Value { &serde_json::Value::Null }
+        fn capture_end_clk(&self) -> Option<i64> { None }
+        fn total_records(&self) -> Option<usize> { None }
+        fn total_annotations(&self) -> Option<usize> { None }
+        fn total_events(&self) -> Option<usize> { None }
+        fn trace_extent(&self) -> (i64, i64) { (0, 0) }
+    }
+
+    // Mock event for testing
+    #[derive(Clone, Copy)]
+    struct MockEvent<'a>(&'a ());
+
+    impl<'a> rjets::TraceEvent for MockEvent<'a> {
+        fn clk(&self) -> i64 { 0 }
+        fn name(&self) -> &str { "" }
+        fn record_id(&self) -> u64 { 0 }
+        fn description(&self) -> &str { "" }
+        fn data(&self) -> HashMap<String, serde_json::Value> {
+            HashMap::new()
+        }
+    }
+
     // Implement Send manually since Arc<T> is Send when T is Send+Sync
     unsafe impl Send for MockTrace {}
 
     impl rjets::TraceData for MockTrace {
-        fn metadata(&self) -> &dyn rjets::TraceMetadata {
-            unimplemented!()
+        type Metadata<'a> = MockMetadata where Self: 'a;
+        type Record<'a> = &'a MockRecord where Self: 'a;
+
+        fn metadata(&self) -> Self::Metadata<'_> {
+            MockMetadata
         }
 
         fn root_ids(&self) -> Vec<u64> {
             self.roots.clone()
         }
 
-        fn get_record(&self, id: u64) -> Option<&dyn rjets::TraceRecord> {
-            self.records.get(&id).map(|r| r.as_ref() as &dyn rjets::TraceRecord)
+        fn get_record(&self, id: u64) -> Option<Self::Record<'_>> {
+            self.records.get(&id).map(|r| r.as_ref())
         }
     }
 
-    impl rjets::TraceRecord for MockRecord {
+    impl<'a> rjets::TraceRecord<'a> for &'a MockRecord {
+        type Event<'b> = MockEvent<'b> where Self: 'b;
         fn clk(&self) -> i64 {
             self.clk
         }
@@ -390,14 +426,17 @@ mod strategy_tests {
         fn data(&self) -> HashMap<String, serde_json::Value> {
             HashMap::new()
         }
-        fn children(&self) -> Vec<&dyn rjets::TraceRecord> {
-            self.children
-                .iter()
-                .map(|c| c.as_ref() as &dyn rjets::TraceRecord)
-                .collect()
+        fn num_children(&self) -> usize {
+            self.children.len()
         }
-        fn events(&self) -> Vec<&dyn rjets::TraceEvent> {
-            vec![]
+        fn child_at(&self, index: usize) -> Option<Self> {
+            self.children.get(index).map(|arc| arc.as_ref())
+        }
+        fn num_events(&self) -> usize {
+            0
+        }
+        fn event_at(&self, _index: usize) -> Option<Self::Event<'_>> {
+            None
         }
         fn subtree_depth(&self) -> usize {
             if self.children.is_empty() {

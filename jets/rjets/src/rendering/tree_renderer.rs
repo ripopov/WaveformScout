@@ -4,7 +4,7 @@
 //! Uses egui's painter API for custom drawing with column layout support.
 
 use eframe::egui;
-use rjets::{TraceData, ThemeColors};
+use rjets::{ThemeColors, DynTraceData, TraceData, TraceRecord, TraceEvent};
 use std::collections::HashSet;
 
 use crate::ui::virtual_scrolling::ROW_HEIGHT;
@@ -31,7 +31,7 @@ use crate::rendering::text_utils::truncate_text_to_fit;
 /// * `Option<TreeNodeInteraction>` - User interaction result (expand/collapse, selection)
 pub fn render_tree_node(
     ui: &mut egui::Ui,
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     record_id: u64,
     depth: usize,
     expand_width: f32,
@@ -49,15 +49,14 @@ pub fn render_tree_node(
         None => return None,
     };
 
-    let has_children = !record.children().is_empty();
+    let has_children = record.num_children() > 0;
     let name = record.name().to_string();
     let description = record.description().to_string();
     let clk = record.clk();
     let end_clk = record.end_clk();
 
-    let events = record.events();
-    let first_event_clk = if !events.is_empty() {
-        Some(events[0].clk())
+    let first_event_clk = if record.num_events() > 0 {
+        record.event_at(0).map(|e| e.clk())
     } else {
         None
     };

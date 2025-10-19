@@ -6,7 +6,7 @@ use std::sync::Arc;
 use once_cell::sync::OnceCell;
 use anyhow::{Result, Context, anyhow};
 use brotli::Decompressor;
-use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, RecordId};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, RecordId, DynTraceData};
 use crate::string_intern::StringInterner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,12 +394,144 @@ fn calculate_trace_extent(all_records: &[JetsTraceRecord]) -> (i64, i64) {
     }
 }
 
+// Wrapper types for GAT references
+
+#[derive(Clone, Copy)]
+pub struct JetsTraceMetadataRef<'a>(&'a JetsTraceMetadata);
+
+impl<'a> TraceMetadata for JetsTraceMetadataRef<'a> {
+    fn version(&self) -> &str {
+        self.0.version()
+    }
+
+    fn header_data(&self) -> &serde_json::Value {
+        self.0.header_data()
+    }
+
+    fn capture_end_clk(&self) -> Option<i64> {
+        self.0.capture_end_clk()
+    }
+
+    fn total_records(&self) -> Option<usize> {
+        self.0.total_records()
+    }
+
+    fn total_annotations(&self) -> Option<usize> {
+        self.0.total_annotations()
+    }
+
+    fn total_events(&self) -> Option<usize> {
+        self.0.total_events()
+    }
+
+    fn trace_extent(&self) -> (i64, i64) {
+        self.0.trace_extent()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct JetsTraceRecordRef<'a>(&'a JetsTraceRecord);
+
+impl<'a> JetsTraceRecordRef<'a> {
+    /// Helper method to iterate over children (for compatibility)
+    pub fn children(self) -> impl Iterator<Item = JetsTraceRecordRef<'a>> + 'a {
+        (0..self.num_children()).filter_map(move |i| self.child_at(i))
+    }
+}
+
+impl<'a> TraceRecord<'a> for JetsTraceRecordRef<'a> {
+    type Event<'b> = JetsTraceEventRef<'b> where Self: 'b;
+
+    fn clk(&self) -> i64 {
+        self.0.clk()
+    }
+
+    fn end_clk(&self) -> Option<i64> {
+        self.0.end_clk()
+    }
+
+    fn duration(&self) -> Option<i64> {
+        self.0.duration()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn id(&self) -> RecordId {
+        self.0.id()
+    }
+
+    fn parent_id(&self) -> Option<RecordId> {
+        self.0.parent_id()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn data(&self) -> HashMap<String, serde_json::Value> {
+        self.0.data()
+    }
+
+    fn num_children(&self) -> usize {
+        self.0.num_children()
+    }
+
+    fn child_at(&self, index: usize) -> Option<Self> {
+        // Access the child directly from the arena to preserve the 'a lifetime
+        let arena = self.0.arena.get()?;
+        let &child_idx = self.0.child_indices.get(index)?;
+        let child = arena.get(child_idx)?;
+        // Lazily initialize arena for children too
+        let _ = child.arena.get_or_init(|| Arc::clone(arena));
+        Some(JetsTraceRecordRef(child))
+    }
+
+    fn num_events(&self) -> usize {
+        self.0.num_events()
+    }
+
+    fn event_at(&self, index: usize) -> Option<Self::Event<'_>> {
+        self.0.event_at(index)
+    }
+
+    fn subtree_depth(&self) -> usize {
+        self.0.subtree_depth()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct JetsTraceEventRef<'a>(&'a JetsTraceEvent);
+
+impl<'a> TraceEvent for JetsTraceEventRef<'a> {
+    fn clk(&self) -> i64 {
+        self.0.clk()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn record_id(&self) -> RecordId {
+        self.0.record_id()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn data(&self) -> HashMap<String, serde_json::Value> {
+        self.0.data()
+    }
+}
+
 // Trait implementations
 
 impl TraceReader for JetsTraceReader {
-    fn read(&self, file_path: &str) -> anyhow::Result<Box<dyn TraceData>> {
+    fn read(&self, file_path: &str) -> anyhow::Result<DynTraceData> {
         let data = parse_trace(file_path)?;
-        Ok(Box::new(data))
+        Ok(DynTraceData::Jets(data))
     }
 }
 
@@ -434,8 +566,11 @@ impl TraceMetadata for JetsTraceMetadata {
 }
 
 impl TraceData for JetsTraceData {
-    fn metadata(&self) -> &dyn TraceMetadata {
-        &self.metadata
+    type Metadata<'a> = JetsTraceMetadataRef<'a> where Self: 'a;
+    type Record<'a> = JetsTraceRecordRef<'a> where Self: 'a;
+
+    fn metadata(&self) -> Self::Metadata<'_> {
+        JetsTraceMetadataRef(&self.metadata)
     }
 
     fn root_ids(&self) -> Vec<u64> {
@@ -445,18 +580,20 @@ impl TraceData for JetsTraceData {
             .collect()
     }
 
-    fn get_record(&self, id: u64) -> Option<&dyn TraceRecord> {
+    fn get_record(&self, id: u64) -> Option<Self::Record<'_>> {
         self.records_by_id.get(&id)
             .and_then(|&index| self.all_records.get(index))
             .map(|record| {
                 // Lazily initialize arena reference on first access
                 let _ = record.arena.get_or_init(|| Arc::clone(&self.all_records));
-                record as &dyn TraceRecord
+                JetsTraceRecordRef(record)
             })
     }
 }
 
-impl TraceRecord for JetsTraceRecord {
+impl<'a> TraceRecord<'a> for &'a JetsTraceRecord {
+    type Event<'b> = JetsTraceEventRef<'b> where Self: 'b;
+
     fn clk(&self) -> i64 {
         self.clk
     }
@@ -507,25 +644,25 @@ impl TraceRecord for JetsTraceRecord {
         result
     }
 
-    fn children(&self) -> Vec<&dyn TraceRecord> {
-        if let Some(arena) = self.arena.get() {
-            self.child_indices.iter()
-                .filter_map(|&idx| arena.get(idx))
-                .map(|child| {
-                    // Lazily initialize arena for children too, enabling transitive resolution
-                    let _ = child.arena.get_or_init(|| Arc::clone(arena));
-                    child as &dyn TraceRecord
-                })
-                .collect()
-        } else {
-            Vec::new()
-        }
+    fn num_children(&self) -> usize {
+        self.child_indices.len()
     }
 
-    fn events(&self) -> Vec<&dyn TraceEvent> {
-        self.events.iter()
-            .map(|e| e as &dyn TraceEvent)
-            .collect()
+    fn child_at(&self, index: usize) -> Option<Self> {
+        let arena = self.arena.get()?;
+        let &child_idx = self.child_indices.get(index)?;
+        let child = arena.get(child_idx)?;
+        // Lazily initialize arena for children too, enabling transitive resolution
+        let _ = child.arena.get_or_init(|| Arc::clone(arena));
+        Some(child)
+    }
+
+    fn num_events(&self) -> usize {
+        self.events.len()
+    }
+
+    fn event_at(&self, index: usize) -> Option<Self::Event<'_>> {
+        self.events.get(index).map(JetsTraceEventRef)
     }
 
     fn subtree_depth(&self) -> usize {

@@ -39,7 +39,7 @@ pub trait TraceReader {
 /// TraceData must be Send to support async loading in background threads
 pub trait TraceData: Send {
     type Metadata<'a>: TraceMetadata where Self: 'a;
-    type Record<'a>: TraceRecord where Self: 'a;
+    type Record<'a>: TraceRecord<'a> where Self: 'a;
 
     /// Returns metadata (information from headers and footers)
     fn metadata(&self) -> Self::Metadata<'_>;
@@ -76,8 +76,11 @@ pub trait TraceMetadata {
 }
 
 /// Trait for accessing trace record
-pub trait TraceRecord {
-    type ChildRecord<'a>: TraceRecord where Self: 'a;
+///
+/// The lifetime parameter 'data represents the lifetime of the underlying TraceData storage.
+/// All records from the same TraceData share this lifetime, allowing children to have
+/// the same lifetime as their parents.
+pub trait TraceRecord<'data>: Clone {
     type Event<'a>: TraceEvent where Self: 'a;
 
     /// Returns the start timestamp (clock value)
@@ -108,7 +111,9 @@ pub trait TraceRecord {
     fn num_children(&self) -> usize;
 
     /// Returns the child at the given index
-    fn child_at(&self, index: usize) -> Option<Self::ChildRecord<'_>>;
+    ///
+    /// The returned child has the same lifetime as the parent (both tied to TraceData).
+    fn child_at(&self, index: usize) -> Option<Self>;
 
     /// Returns the number of events
     fn num_events(&self) -> usize;
@@ -260,8 +265,7 @@ impl<'a> DynTraceRecord<'a> {
     }
 }
 
-impl<'a> TraceRecord for DynTraceRecord<'a> {
-    type ChildRecord<'b> = DynTraceRecord<'b> where Self: 'b;
+impl<'a> TraceRecord<'a> for DynTraceRecord<'a> {
     type Event<'b> = DynTraceEvent<'b> where Self: 'b;
 
     #[inline]
@@ -346,7 +350,7 @@ impl<'a> TraceRecord for DynTraceRecord<'a> {
     }
 
     #[inline]
-    fn child_at(&self, index: usize) -> Option<Self::ChildRecord<'_>> {
+    fn child_at(&self, index: usize) -> Option<Self> {
         match self {
             DynTraceRecord::Jets(r) => r.child_at(index).map(DynTraceRecord::Jets),
             DynTraceRecord::Virtual(r) => r.child_at(index).map(DynTraceRecord::Virtual),

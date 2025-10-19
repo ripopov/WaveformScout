@@ -254,7 +254,7 @@ fn render_loading_indicator(ui: &mut egui::Ui, theme_colors: &ThemeColors, _load
 /// Renders a single timeline row (delegates to timeline_renderer).
 fn render_timeline_row(
     ui: &mut egui::Ui,
-    trace: &dyn rjets::TraceData,
+    trace: &rjets::DynTraceData,
     record_id: u64,
     viewport_start_clk: i64,
     viewport_end_clk: i64,

@@ -6,6 +6,7 @@ use eframe::egui;
 use egui::{Color32, RichText, ScrollArea};
 use rjets::ThemeColors;
 use crate::app::AppState;
+use rjets::{TraceData, TraceRecord, TraceEvent};
 
 /// Renders the details panel showing annotations, data, and events for the selected record
 ///
@@ -63,7 +64,10 @@ pub fn render_details_panel(ui: &mut egui::Ui, state: &AppState, theme_colors: &
 
                 // Show events - ALL of them, sorted by timestamp
                 ui.label(RichText::new("Events:").strong());
-                let mut events = record.events();
+                let num_events = record.num_events();
+                let mut events: Vec<_> = (0..num_events)
+                    .filter_map(|i| record.event_at(i))
+                    .collect();
                 events.sort_by_key(|e| e.clk());
                 if !events.is_empty() {
                     for event in &events {

@@ -142,7 +142,7 @@ pub fn render_tree_panel(
 /// Renders a single tree node row (delegates to tree_renderer).
 fn render_tree_node(
     ui: &mut egui::Ui,
-    trace: &dyn rjets::TraceData,
+    trace: &rjets::DynTraceData,
     record_id: u64,
     depth: usize,
     expand_width: f32,

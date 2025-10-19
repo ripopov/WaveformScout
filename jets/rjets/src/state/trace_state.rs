@@ -3,7 +3,7 @@
 //! This module encapsulates all state related to the loaded trace file,
 //! including the trace data itself, file path, and trace time extent.
 
-use rjets::TraceData;
+use rjets::{DynTraceData, TraceData, TraceMetadata};
 use std::path::PathBuf;
 
 /// State related to the loaded trace file and its time extent.
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub struct TraceState {
     /// The currently loaded trace data (if any)
-    trace_data: Option<Box<dyn TraceData>>,
+    trace_data: Option<DynTraceData>,
     /// Path to the currently loaded file (None for virtual traces)
     file_path: Option<PathBuf>,
     /// Minimum clock value in the trace
@@ -40,7 +40,7 @@ impl TraceState {
     /// # Arguments
     /// * `data` - The trace data to load
     /// * `path` - Optional file path (None for virtual traces)
-    pub fn load_trace(&mut self, data: Box<dyn TraceData>, path: Option<PathBuf>) {
+    pub fn load_trace(&mut self, data: DynTraceData, path: Option<PathBuf>) {
         let (min, max) = data.metadata().trace_extent();
         self.trace_data = Some(data);
         self.file_path = path;
@@ -57,8 +57,8 @@ impl TraceState {
     }
 
     /// Returns a reference to the loaded trace data, if any.
-    pub fn trace_data(&self) -> Option<&dyn TraceData> {
-        self.trace_data.as_ref().map(|data| data.as_ref())
+    pub fn trace_data(&self) -> Option<&DynTraceData> {
+        self.trace_data.as_ref()
     }
 
     /// Returns the file path of the loaded trace, if any.

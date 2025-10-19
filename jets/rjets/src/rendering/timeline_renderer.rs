@@ -5,7 +5,7 @@
 
 use eframe::egui;
 use egui::Color32;
-use rjets::{ThemeColors, TraceData};
+use rjets::{ThemeColors, DynTraceData, TraceData, TraceRecord, TraceEvent};
 
 use crate::ui::virtual_scrolling::ROW_HEIGHT;
 use crate::domain::viewport_operations;
@@ -29,7 +29,7 @@ use crate::utils::format_clock;
 /// * `Option<TimelineRowInteraction>` - User interaction result (bar click, event click)
 pub fn render_timeline_row<F>(
     ui: &mut egui::Ui,
-    trace: &dyn TraceData,
+    trace: &DynTraceData,
     record_id: u64,
     viewport_start_clk: i64,
     viewport_end_clk: i64,
@@ -105,9 +105,8 @@ where
 
         if pointer_over_bar && pointer_clicked && !is_dragging {
             let was_already_selected = selected_record_id == Some(record_id);
-            let events = record.events();
-            let first_event_clk = if !events.is_empty() {
-                Some(events[0].clk())
+            let first_event_clk = if record.num_events() > 0 {
+                record.event_at(0).map(|e| e.clk())
             } else {
                 None
             };
@@ -132,19 +131,31 @@ where
         }
 
         // Draw event markers with binary search optimization
-        let events = record.events();
+        let num_events = record.num_events();
 
         // Use binary search to find first visible event
-        let first_visible_idx = events.binary_search_by(|event| {
-            if event.clk() < viewport_start_clk {
-                std::cmp::Ordering::Less
+        let mut left = 0;
+        let mut right = num_events;
+        while left < right {
+            let mid = left + (right - left) / 2;
+            if let Some(event) = record.event_at(mid) {
+                if event.clk() < viewport_start_clk {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
             } else {
-                std::cmp::Ordering::Greater
+                break;
             }
-        }).unwrap_or_else(|idx| idx);
+        }
+        let first_visible_idx = left;
 
         // Render only visible events
-        for event in events.iter().skip(first_visible_idx) {
+        for i in first_visible_idx..num_events {
+            let event = match record.event_at(i) {
+                Some(e) => e,
+                None => continue,
+            };
             let event_clk = event.clk();
 
             // Early exit if beyond viewport

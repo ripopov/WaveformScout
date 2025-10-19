@@ -6,6 +6,7 @@ use eframe::egui;
 use egui::RichText;
 use crate::app::AppState;
 use crate::utils::{format_clock, get_current_memory_mb, format_memory_mb};
+use rjets::{TraceData, TraceMetadata};
 
 /// Renders the status panel at the bottom of the window with trace metadata
 ///

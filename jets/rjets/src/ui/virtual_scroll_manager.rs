@@ -5,7 +5,7 @@
 
 use crate::cache::TreeCache;
 use crate::ui::virtual_scrolling::{self, VisibleNode};
-use rjets::TraceData;
+use rjets::DynTraceData;
 use std::collections::HashSet;
 
 /// Manages virtual scrolling state and operations for synchronized panels.
@@ -14,7 +14,7 @@ pub struct VirtualScrollManager;
 impl VirtualScrollManager {
     /// Gets the total number of visible nodes in the tree (cached).
     pub fn get_total_visible_nodes(
-        trace: &dyn TraceData,
+        trace: &DynTraceData,
         expanded_nodes: &HashSet<u64>,
         cache: &mut TreeCache,
     ) -> usize {
@@ -23,7 +23,7 @@ impl VirtualScrollManager {
 
     /// Gets the maximum visible depth in the tree (cached).
     pub fn get_max_visible_depth(
-        trace: &dyn TraceData,
+        trace: &DynTraceData,
         expanded_nodes: &HashSet<u64>,
         cache: &mut TreeCache,
     ) -> usize {
@@ -32,7 +32,7 @@ impl VirtualScrollManager {
 
     /// Collects nodes visible in the current viewport plus buffer.
     pub fn collect_visible_nodes(
-        trace: &dyn TraceData,
+        trace: &DynTraceData,
         expanded_nodes: &HashSet<u64>,
         cache: &mut TreeCache,
         viewport_scroll_offset: f32,
@@ -105,7 +105,7 @@ impl VirtualScrollManager {
     /// This method applies temporal filtering based on the viewport clock range,
     /// showing only leaf records that start within [viewport_start_clk, viewport_end_clk].
     pub fn collect_filtered_visible_nodes(
-        trace: &dyn TraceData,
+        trace: &DynTraceData,
         expanded_nodes: &HashSet<u64>,
         cache: &mut TreeCache,
         viewport_scroll_offset: f32,

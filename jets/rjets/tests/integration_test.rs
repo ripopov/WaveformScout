@@ -1,5 +1,5 @@
 use rjets::{TraceWriter, TraceReader, JetsTraceReader, VirtualTraceReader, parse_trace};
-use rjets::TraceData;
+use rjets::{TraceData, TraceRecord, TraceMetadata, TraceEvent, DynTraceData};
 use anyhow::Result;
 use std::fs;
 
@@ -82,7 +82,7 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     }
 
     // Read the trace back using trait API
-    let reader: Box<dyn TraceReader> = Box::new(JetsTraceReader::new());
+    let reader = JetsTraceReader::new();
     let trace = reader.read(test_file)?;
 
     // Verify metadata
@@ -108,16 +108,16 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     assert_eq!(data["compiler"]["name"], "nvcc");
 
     // Verify events
-    let events = root.events();
+    let events: Vec<_> = (0..root.num_events()).filter_map(|i| root.event_at(i)).collect();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].name(), "ProgramStart");
     assert_eq!(events[0].description(), "Program execution start");
     assert_eq!(events[0].clk(), 1001);
 
     // Verify children
-    let children = root.children();
+    let children: Vec<_> = (0..root.num_children()).filter_map(|i| root.child_at(i)).collect();
     assert_eq!(children.len(), 1);
-    let child = children[0];
+    let child = &children[0];
     assert_eq!(child.id(), 2);
     assert_eq!(child.parent_id(), Some(1));
     assert_eq!(child.name(), "kernel_launch");
@@ -127,7 +127,7 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     assert_eq!(child.duration(), Some(100));
 
     // Verify child events
-    let child_events = child.events();
+    let child_events: Vec<_> = (0..child.num_events()).filter_map(|i| child.event_at(i)).collect();
     assert_eq!(child_events.len(), 1);
     assert_eq!(child_events[0].name(), "DispatchStart");
     assert_eq!(child_events[0].description(), "Dispatch execution start");
@@ -190,7 +190,7 @@ fn test_write_and_read_hierarchical_trace() -> Result<()> {
     }
 
     // Parse and verify using trait API
-    let reader: Box<dyn TraceReader> = Box::new(JetsTraceReader::new());
+    let reader = JetsTraceReader::new();
     let trace = reader.read(test_file)?;
 
     let root_ids = trace.root_ids();
@@ -200,35 +200,35 @@ fn test_write_and_read_hierarchical_trace() -> Result<()> {
     assert_eq!(prog.id(), 1);
     assert_eq!(prog.name(), "main");
     assert_eq!(prog.description(), "Main program");
-    let prog_children = prog.children();
+    let prog_children: Vec<_> = (0..prog.num_children()).filter_map(|i| prog.child_at(i)).collect();
     assert_eq!(prog_children.len(), 1);
 
-    let disp = prog_children[0];
+    let disp = &prog_children[0];
     assert_eq!(disp.id(), 2);
     assert_eq!(disp.name(), "kernel");
     assert_eq!(disp.description(), "Kernel dispatch");
-    let disp_children = disp.children();
+    let disp_children: Vec<_> = (0..disp.num_children()).filter_map(|i| disp.child_at(i)).collect();
     assert_eq!(disp_children.len(), 1);
 
-    let tb = disp_children[0];
+    let tb = &disp_children[0];
     assert_eq!(tb.id(), 3);
     assert_eq!(tb.name(), "block_0");
     assert_eq!(tb.description(), "Thread block 0");
-    let tb_children = tb.children();
+    let tb_children: Vec<_> = (0..tb.num_children()).filter_map(|i| tb.child_at(i)).collect();
     assert_eq!(tb_children.len(), 1);
 
-    let warp = tb_children[0];
+    let warp = &tb_children[0];
     assert_eq!(warp.id(), 4);
     assert_eq!(warp.name(), "warp_0");
     assert_eq!(warp.description(), "Warp 0 execution");
-    let warp_children = warp.children();
+    let warp_children: Vec<_> = (0..warp.num_children()).filter_map(|i| warp.child_at(i)).collect();
     assert_eq!(warp_children.len(), 1);
 
-    let inst = warp_children[0];
+    let inst = &warp_children[0];
     assert_eq!(inst.id(), 5);
     assert_eq!(inst.name(), "HMMA");
     assert_eq!(inst.description(), "HMMA instruction");
-    let inst_events = inst.events();
+    let inst_events: Vec<_> = (0..inst.num_events()).filter_map(|i| inst.event_at(i)).collect();
     assert_eq!(inst_events.len(), 1);
     assert_eq!(inst_events[0].description(), "Instruction execution");
     assert_eq!(inst.duration(), Some(10));
@@ -241,7 +241,7 @@ fn test_write_and_read_hierarchical_trace() -> Result<()> {
 
 #[test]
 fn test_virtual_reader() -> Result<()> {
-    let reader: Box<dyn TraceReader> = Box::new(VirtualTraceReader::new());
+    let reader = VirtualTraceReader::new();
     let trace = reader.read("")?; // Path is ignored for virtual reader
 
     // Verify metadata
@@ -260,7 +260,7 @@ fn test_virtual_reader() -> Result<()> {
         assert!(record.clk() >= 0);
 
         // Verify children generation works
-        let _children = record.children();
+        let _children: Vec<_> = (0..record.num_children()).filter_map(|i| record.child_at(i)).collect();
         // Children may or may not exist depending on depth and random generation
 
         // Verify data exists
@@ -268,7 +268,7 @@ fn test_virtual_reader() -> Result<()> {
         assert!(data.len() >= 3); // Should have 3-7 fields
 
         // Verify events
-        let events = record.events();
+        let events: Vec<_> = (0..record.num_events()).filter_map(|i| record.event_at(i)).collect();
         assert!(events.len() <= 5); // Should have 0-5 events
     }
 
@@ -289,15 +289,13 @@ fn test_trait_polymorphism() -> Result<()> {
         writer.write_footer(Some(100))?;
     }
 
-    // Test polymorphism: both readers should work through the same interface
-    let readers: Vec<Box<dyn TraceReader>> = vec![
-        Box::new(JetsTraceReader::new()),
-        Box::new(VirtualTraceReader::new()),
+    // Test polymorphism: test each reader separately with the same interface
+    let traces: Vec<DynTraceData> = vec![
+        JetsTraceReader::new().read(test_file)?,
+        VirtualTraceReader::new().read("")?,
     ];
 
-    for (i, reader) in readers.iter().enumerate() {
-        let path = if i == 0 { test_file } else { "" }; // Virtual reader ignores path
-        let trace = reader.read(path)?;
+    for trace in traces {
 
         // Both should provide valid traces through the same interface
         assert!(trace.metadata().version().len() > 0);
@@ -326,7 +324,7 @@ fn test_read_real_trace_file() -> Result<()> {
         return Ok(());
     }
 
-    let reader: Box<dyn TraceReader> = Box::new(JetsTraceReader::new());
+    let reader = JetsTraceReader::new();
     let trace = reader.read(trace_file)?;
     
     // Just verify we can read it
@@ -447,9 +445,9 @@ fn test_brotli_write_and_read() -> Result<()> {
     assert_eq!(root.end_clk(), Some(1300));
 
     // Verify child record
-    let children = root.children();
+    let children: Vec<_> = (0..root.num_children()).filter_map(|i| root.child_at(i)).collect();
     assert_eq!(children.len(), 1);
-    let child = children[0];
+    let child = &children[0];
     assert_eq!(child.id(), 2);
     assert_eq!(child.name(), "child_record");
     assert_eq!(child.parent_id(), Some(1));
@@ -462,7 +460,7 @@ fn test_brotli_write_and_read() -> Result<()> {
     assert_eq!(child_data["test_annotation"]["annotation_key"], "annotation_value");
 
     // Verify event
-    let events = child.events();
+    let events: Vec<_> = (0..child.num_events()).filter_map(|i| child.event_at(i)).collect();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].name(), "TestEvent");
     assert_eq!(events[0].description(), "Test event for Brotli");

@@ -6,6 +6,7 @@
 use crate::app::AppState;
 use crate::io::{AsyncLoader, LoadResult};
 use std::path::PathBuf;
+use rjets::TraceMetadata;
 
 /// Coordinates application-level operations and workflows.
 ///

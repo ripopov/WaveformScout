@@ -9,7 +9,8 @@ pub mod string_intern;
 // Export traits
 pub use traits::{
     TraceReader, TraceData, TraceMetadata,
-    TraceRecord, TraceEvent, RecordId
+    TraceRecord, TraceEvent, RecordId,
+    DynTraceData, DynTraceMetadata, DynTraceRecord, DynTraceEvent
 };
 
 // Export JETS implementation

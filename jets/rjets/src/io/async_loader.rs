@@ -4,7 +4,7 @@
 //! keeping the GUI responsive during file I/O operations.
 
 use eframe::egui;
-use rjets::{TraceData, JetsTraceReader, VirtualTraceReader, PipetraceReader, TraceReader};
+use rjets::{DynTraceData, JetsTraceReader, VirtualTraceReader, PipetraceReader, TraceReader};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver};
@@ -16,7 +16,7 @@ pub enum LoadResult {
     /// Loading completed successfully
     Success {
         /// The loaded trace data
-        data: Box<dyn TraceData>,
+        data: DynTraceData,
         /// Path to the file that was loaded (None for virtual traces)
         path: Option<PathBuf>,
     },
@@ -35,7 +35,7 @@ pub struct AsyncLoader {
     loading_state: Arc<Mutex<LoadingState>>,
 
     /// Channel receiver for loading results
-    loading_receiver: Option<Receiver<Result<Box<dyn TraceData>, String>>>,
+    loading_receiver: Option<Receiver<Result<DynTraceData, String>>>,
 
     /// Path of the file currently being loaded
     pending_load_path: Option<PathBuf>,
@@ -121,7 +121,7 @@ impl AsyncLoader {
     /// # Returns
     /// * `Ok(data)` - Successfully generated virtual trace
     /// * `Err(msg)` - Error generating the trace
-    pub fn load_virtual_trace(&mut self) -> Result<Box<dyn TraceData>, String> {
+    pub fn load_virtual_trace(&mut self) -> Result<DynTraceData, String> {
         let virtual_reader = VirtualTraceReader::new();
         virtual_reader.read("").map_err(|e| e.to_string())
     }
