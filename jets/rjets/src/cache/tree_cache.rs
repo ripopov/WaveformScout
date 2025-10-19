@@ -32,10 +32,6 @@ pub struct TreeCache {
 
     /// Cached total filtered node count for current viewport.
     pub filtered_node_count: Option<usize>,
-
-    /// Cached subtree depths for records (record_id -> depth).
-    /// Depth 0 = leaf, depth > 0 = parent with children.
-    pub subtree_depths: HashMap<u64, usize>,
 }
 
 impl TreeCache {
@@ -49,7 +45,6 @@ impl TreeCache {
             expansion_seq: 0,
             filtered_viewport_range: None,
             filtered_node_count: None,
-            subtree_depths: HashMap::new(),
         }
     }
 

@@ -31,6 +31,7 @@ pub struct VisibleNode<'a, R: TraceRecord<'a>> {
     /// Depth in the tree hierarchy (0 for root)
     pub depth: usize,
     /// Whether this is a parent or leaf node
+    #[allow(dead_code)]
     pub kind: NodeKind,
     /// Tree branch context: For each depth level (0 to depth-1), indicates
     /// whether there are more siblings below this node at that level.
@@ -173,7 +174,6 @@ impl<'a, R: TraceRecord<'a>> VisibilityStrategy<'a, R> for ViewportFilterStrateg
         }
 
         // Binary search for first child with clk >= start
-        let mut first_idx = 0;
         let mut left = 0;
         let mut right = num_children;
         while left < right {
@@ -188,10 +188,9 @@ impl<'a, R: TraceRecord<'a>> VisibilityStrategy<'a, R> for ViewportFilterStrateg
                 break;
             }
         }
-        first_idx = left;
+        let first_idx = left;
 
         // Binary search for last child with clk <= end
-        let mut last_idx = 0;
         left = 0;
         right = num_children;
         while left < right {
@@ -206,7 +205,7 @@ impl<'a, R: TraceRecord<'a>> VisibilityStrategy<'a, R> for ViewportFilterStrateg
                 break;
             }
         }
-        last_idx = if left == 0 { 0 } else { left - 1 };
+        let last_idx = if left == 0 { 0 } else { left - 1 };
 
         // Return the window if there's overlap
         if first_idx <= last_idx && last_idx < num_children {
@@ -276,7 +275,7 @@ impl<'a, R: TraceRecord<'a>, S: VisibilityStrategy<'a, R>> Iterator for Traversa
     type Item = VisibleNode<'a, R>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(mut frame) = self.stack.pop() {
+        while let Some(frame) = self.stack.pop() {
             let depth = frame.depth;
             let num_children = frame.record.num_children();
 

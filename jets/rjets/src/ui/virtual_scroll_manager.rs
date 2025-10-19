@@ -34,7 +34,7 @@ impl VirtualScrollManager {
     pub fn collect_visible_nodes(
         trace: &DynTraceData,
         expanded_nodes: &HashSet<u64>,
-        cache: &mut TreeCache,
+        _cache: &mut TreeCache,
         viewport_scroll_offset: f32,
         viewport_height: f32,
     ) -> Vec<VisibleNode> {

@@ -3,7 +3,7 @@
 //! This module encapsulates all state related to the loaded trace file,
 //! including the trace data itself, file path, and trace time extent.
 
-use rjets::{DynTraceData, TraceData, TraceMetadata};
+use rjets::{DynTraceData, TraceMetadata};
 use std::path::PathBuf;
 
 /// State related to the loaded trace file and its time extent.
