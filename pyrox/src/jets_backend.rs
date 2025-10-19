@@ -1,7 +1,7 @@
 //! JETS backend implementation for trace files with hierarchical events
 
 use crate::traits::*;
-use rjets::{JetsTraceData, TraceData, TraceRecord, TraceEvent};
+use rjets::{DynTraceData, DynTraceRecord, TraceData, TraceMetadata, TraceRecord, TraceEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
 }
 
 /// Convert TraceRecord to JSON string
-fn record_to_json(record: &dyn TraceRecord) -> String {
+fn record_to_json<'a, R: TraceRecord<'a>>(record: &R) -> String {
     let mut obj = serde_json::Map::new();
     obj.insert("id".to_string(), serde_json::Value::Number(record.id().into()));
     obj.insert("name".to_string(), serde_json::Value::String(record.name().to_string()));
@@ -31,7 +31,7 @@ fn record_to_json(record: &dyn TraceRecord) -> String {
 }
 
 /// Convert TraceEvent to JSON string
-fn event_to_json(event: &dyn TraceEvent) -> String {
+fn event_to_json<E: TraceEvent>(event: &E) -> String {
     let mut obj = serde_json::Map::new();
     obj.insert("name".to_string(), serde_json::Value::String(event.name().to_string()));
 
@@ -48,13 +48,13 @@ fn event_to_json(event: &dyn TraceEvent) -> String {
 /// JETS hierarchy implementation
 #[derive(Clone)]
 pub struct JetsHierarchy {
-    trace_data: Arc<JetsTraceData>,
+    trace_data: Arc<DynTraceData>,
     clock_freq_mhz: f64,
     record_id_to_handle: HashMap<u64, usize>,
 }
 
 impl JetsHierarchy {
-    pub fn new(trace_data: Arc<JetsTraceData>) -> Self {
+    pub fn new(trace_data: Arc<DynTraceData>) -> Self {
         let metadata = trace_data.metadata();
         let clock_freq_mhz = metadata.header_data()
             .get("clock_frequency_mhz")
@@ -64,8 +64,8 @@ impl JetsHierarchy {
         let mut record_id_to_handle = HashMap::new();
         let mut next_handle = 0;
 
-        fn register_record(
-            record: &dyn TraceRecord,
+        fn register_record<'a>(
+            record: &DynTraceRecord<'a>,
             handle: &mut usize,
             id_map: &mut HashMap<u64, usize>,
         ) {
@@ -73,14 +73,17 @@ impl JetsHierarchy {
             id_map.insert(record.id(), current_handle);
             *handle += 1;
 
-            for child in record.children() {
-                register_record(child, handle, id_map);
+            // Use index-based access for children
+            for i in 0..record.num_children() {
+                if let Some(child) = record.child_at(i) {
+                    register_record(&child, handle, id_map);
+                }
             }
         }
 
         for root_id in trace_data.root_ids() {
             if let Some(root) = trace_data.get_record(root_id) {
-                register_record(root, &mut next_handle, &mut record_id_to_handle);
+                register_record(&root, &mut next_handle, &mut record_id_to_handle);
             }
         }
 
@@ -99,7 +102,7 @@ impl JetsHierarchy {
         self.trace_data.root_ids()
     }
 
-    pub fn get_record_by_handle(&self, handle: usize) -> Option<&dyn TraceRecord> {
+    pub fn get_record_by_handle(&self, handle: usize) -> Option<DynTraceRecord<'_>> {
         // Find the record ID that corresponds to this handle
         let id = self.record_id_to_handle
             .iter()
@@ -109,7 +112,7 @@ impl JetsHierarchy {
         self.trace_data.get_record(id)
     }
 
-    pub fn get_record_by_id(&self, id: u64) -> Option<&dyn TraceRecord> {
+    pub fn get_record_by_id(&self, id: u64) -> Option<DynTraceRecord<'_>> {
         self.trace_data.get_record(id)
     }
 
@@ -117,7 +120,7 @@ impl JetsHierarchy {
         self.record_id_to_handle.get(&id).copied()
     }
 
-    pub fn generate_signal_changes(&self, record: &dyn TraceRecord) -> Vec<(Time, SignalValue)> {
+    pub fn generate_signal_changes(&self, record: &DynTraceRecord<'_>) -> Vec<(Time, SignalValue)> {
         let mut changes = Vec::new();
 
         // Initial high-impedance state
@@ -127,10 +130,12 @@ impl JetsHierarchy {
         let start_time_ps = clock_to_picoseconds(record.clk().max(1), self.clock_freq_mhz);
         changes.push((start_time_ps as Time, SignalValue::String(record_to_json(record))));
 
-        // Events
-        for event in record.events() {
-            let event_time_ps = clock_to_picoseconds(event.clk(), self.clock_freq_mhz);
-            changes.push((event_time_ps as Time, SignalValue::String(event_to_json(event))));
+        // Events - use index-based access
+        for i in 0..record.num_events() {
+            if let Some(event) = record.event_at(i) {
+                let event_time_ps = clock_to_picoseconds(event.clk(), self.clock_freq_mhz);
+                changes.push((event_time_ps as Time, SignalValue::String(event_to_json(&event))));
+            }
         }
 
         // Record end
@@ -161,7 +166,7 @@ impl JetsHierarchy {
         clock_to_picoseconds(max_clk, self.clock_freq_mhz) as Time
     }
 
-    pub fn trace_data(&self) -> &Arc<JetsTraceData> {
+    pub fn trace_data(&self) -> &Arc<DynTraceData> {
         &self.trace_data
     }
 }
@@ -174,7 +179,7 @@ impl HierarchyTrait for JetsHierarchy {
     fn all_vars(&self) -> Box<dyn Iterator<Item = Box<dyn VarTrait>> + Send + Sync> {
         let mut vars = Vec::new();
         for (&id, &handle) in &self.record_id_to_handle {
-            if let Some(record) = self.trace_data.get_record(id) {
+            if let Some(_record) = self.trace_data.get_record(id) {
                 vars.push(Box::new(JetsVar {
                     record_id: id,
                     signal_handle: handle,
@@ -189,7 +194,7 @@ impl HierarchyTrait for JetsHierarchy {
         let scopes: Vec<Box<dyn ScopeTrait>> = self.get_root_ids()
             .iter()
             .filter_map(|&root_id| {
-                self.record_id_to_handle.get(&root_id).map(|&handle| {
+                self.record_id_to_handle.get(&root_id).map(|&_handle| {
                     Box::new(JetsScope {
                         record_id: root_id,
                         clock_freq_mhz: self.clock_freq_mhz,
@@ -232,9 +237,15 @@ impl HierarchyTrait for JetsHierarchy {
                         clock_freq_mhz: self.clock_freq_mhz,
                     }));
                 } else {
-                    // Navigate to children
+                    // Navigate to children - use index-based access
                     if let Some(record) = self.trace_data.get_record(id) {
-                        current_ids = record.children().iter().map(|child| child.id()).collect();
+                        let mut child_ids = Vec::new();
+                        for i in 0..record.num_children() {
+                            if let Some(child) = record.child_at(i) {
+                                child_ids.push(child.id());
+                            }
+                        }
+                        current_ids = child_ids;
                     } else {
                         return None;
                     }
@@ -351,8 +362,9 @@ impl ScopeTrait for JetsScope {
             .expect("JETS scope requires JETS hierarchy");
 
         let scopes: Vec<Box<dyn ScopeTrait>> = if let Some(record) = jets_hier.get_record_by_id(self.record_id) {
-            record.children()
-                .iter()
+            // Use index-based access for children
+            (0..record.num_children())
+                .filter_map(|i| record.child_at(i))
                 .map(|child| {
                     Box::new(JetsScope {
                         record_id: child.id(),
@@ -636,7 +648,7 @@ pub struct JetsRecord {
 }
 
 impl JetsRecord {
-    fn get_record<'a>(&self, hier: &'a dyn HierarchyTrait) -> Option<&'a dyn TraceRecord> {
+    fn get_record<'a>(&self, hier: &'a dyn HierarchyTrait) -> Option<DynTraceRecord<'a>> {
         let jets_hier = hier
             .as_any()
             .downcast_ref::<JetsHierarchy>()
@@ -702,7 +714,7 @@ impl WaveSourceTrait for JetsSignalSource {
 
         for handle in handles {
             if let Some(record) = self.hierarchy.get_record_by_handle(*handle) {
-                let changes = self.hierarchy.generate_signal_changes(record);
+                let changes = self.hierarchy.generate_signal_changes(&record);
                 let signal_trait: Arc<dyn SignalTrait> = Arc::new(JetsSignal::new(changes));
                 loaded_signals.push((*handle, signal_trait));
             }
@@ -766,9 +778,11 @@ impl WaveformTrait for JetsWaveform {
 
         // JETS loads ENTIRE FILE in load_header() (all data in one shot)
         // This is the ONLY place where rjets::parse_trace() is called
-        let trace_data = rjets::parse_trace(&self.path)
+        // parse_trace returns JetsTraceData, wrap it in DynTraceData::Jets
+        let jets_data = rjets::parse_trace(&self.path)
             .map_err(|e| format!("Failed to load JETS file: {}", e))?;
 
+        let trace_data = rjets::DynTraceData::Jets(jets_data);
         let jets_hier = Arc::new(JetsHierarchy::new(Arc::new(trace_data)));
         let max_time = jets_hier.get_max_time();
 

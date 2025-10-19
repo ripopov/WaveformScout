@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use rjets::{parse_trace, JetsTraceData, TraceData, TraceRecord, TraceEvent};
+use rjets::{parse_trace, DynTraceData, DynTraceRecord, TraceData, TraceMetadata, TraceRecord, TraceEvent};
 use std::collections::HashMap;
 
 /// Convert clock cycles to picoseconds using clock frequency
@@ -11,7 +11,7 @@ fn clock_to_picoseconds(clk: i64, freq_mhz: f64) -> i64 {
 }
 
 /// Serialize TraceRecord to pretty-printed JSON string
-fn record_to_json(record: &dyn TraceRecord) -> String {
+fn record_to_json<'a, R: TraceRecord<'a>>(record: &R) -> String {
     let mut obj = serde_json::Map::new();
     obj.insert("id".to_string(), serde_json::Value::Number(record.id().into()));
     obj.insert("parent_id".to_string(), match record.parent_id() {
@@ -43,7 +43,7 @@ fn record_to_json(record: &dyn TraceRecord) -> String {
 }
 
 /// Serialize TraceEvent to pretty-printed JSON string
-fn event_to_json(event: &dyn TraceEvent) -> String {
+fn event_to_json<E: TraceEvent>(event: &E) -> String {
     let mut obj = serde_json::Map::new();
     obj.insert("name".to_string(), serde_json::Value::String(event.name().to_string()));
     obj.insert("clk".to_string(), serde_json::Value::Number(event.clk().into()));
@@ -202,13 +202,13 @@ fn python_from_json(py: Python, value: &serde_json::Value) -> PyResult<PyObject>
 
 /// JETS hierarchy wrapper
 pub(crate) struct JetsHierarchy {
-    trace_data: JetsTraceData,
+    trace_data: DynTraceData,
     clock_freq_mhz: f64,
     record_id_to_handle: HashMap<u64, usize>,
 }
 
 impl JetsHierarchy {
-    pub fn new(trace_data: JetsTraceData) -> Result<Self, String> {
+    pub fn new(trace_data: DynTraceData) -> Result<Self, String> {
         // Extract clock frequency from header metadata
         let metadata = trace_data.metadata();
         let clock_freq_mhz = metadata.header_data()
@@ -220,8 +220,8 @@ impl JetsHierarchy {
         let mut record_id_to_handle = HashMap::new();
         let mut next_handle = 0;
 
-        fn collect_records(
-            record: &dyn TraceRecord,
+        fn collect_records<'a>(
+            record: &DynTraceRecord<'a>,
             id_map: &mut HashMap<u64, usize>,
             next_handle: &mut usize,
         ) {
@@ -229,14 +229,17 @@ impl JetsHierarchy {
             *next_handle += 1;
             id_map.insert(record.id(), handle);
 
-            for child in record.children() {
-                collect_records(child, id_map, next_handle);
+            // Use index-based access for children
+            for i in 0..record.num_children() {
+                if let Some(child) = record.child_at(i) {
+                    collect_records(&child, id_map, next_handle);
+                }
             }
         }
 
         for root_id in trace_data.root_ids() {
             if let Some(root) = trace_data.get_record(root_id) {
-                collect_records(root, &mut record_id_to_handle, &mut next_handle);
+                collect_records(&root, &mut record_id_to_handle, &mut next_handle);
             }
         }
 
@@ -255,7 +258,7 @@ impl JetsHierarchy {
         self.trace_data.root_ids()
     }
 
-    pub(crate) fn get_record_by_handle(&self, handle: usize) -> Option<&dyn TraceRecord> {
+    pub(crate) fn get_record_by_handle(&self, handle: usize) -> Option<DynTraceRecord<'_>> {
         // Find the record ID that corresponds to this handle
         let id = self.record_id_to_handle
             .iter()
@@ -265,7 +268,7 @@ impl JetsHierarchy {
         self.trace_data.get_record(id)
     }
 
-    pub(crate) fn get_record_by_id(&self, id: u64) -> Option<&dyn TraceRecord> {
+    pub(crate) fn get_record_by_id(&self, id: u64) -> Option<DynTraceRecord<'_>> {
         self.trace_data.get_record(id)
     }
 
@@ -274,21 +277,23 @@ impl JetsHierarchy {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn create_record_wrapper(&self, record: &dyn TraceRecord) -> Record {
-        let events_cache: Vec<_> = record.events()
-            .iter()
-            .map(|e| {
-                let name = e.name().to_string();
-                let clk = e.clk();
-                let data = e.data();
-                let value = if data.is_empty() {
-                    None
-                } else {
-                    Some(serde_json::Value::Object(
-                        data.into_iter().map(|(k, v)| (k, v)).collect()
-                    ))
-                };
-                (name, clk, value)
+    pub(crate) fn create_record_wrapper(&self, record: &DynTraceRecord<'_>) -> Record {
+        // Use index-based access for events
+        let events_cache: Vec<_> = (0..record.num_events())
+            .filter_map(|i| {
+                record.event_at(i).map(|e| {
+                    let name = e.name().to_string();
+                    let clk = e.clk();
+                    let data = e.data();
+                    let value = if data.is_empty() {
+                        None
+                    } else {
+                        Some(serde_json::Value::Object(
+                            data.into_iter().map(|(k, v)| (k, v)).collect()
+                        ))
+                    };
+                    (name, clk, value)
+                })
             })
             .collect();
 
@@ -304,7 +309,7 @@ impl JetsHierarchy {
     }
 
     /// Generate signal changes for a record
-    pub(crate) fn generate_signal_changes(&self, record: &dyn TraceRecord) -> Vec<(i64, String)> {
+    pub(crate) fn generate_signal_changes(&self, record: &DynTraceRecord<'_>) -> Vec<(i64, String)> {
         let mut changes = Vec::new();
 
         // Initial value: "Z" at time 0 (outside record range)
@@ -315,13 +320,15 @@ impl JetsHierarchy {
         let start_time_ps = clock_to_picoseconds(record.clk(), self.clock_freq_mhz).max(1);
         changes.push((start_time_ps, record_to_json(record)));
 
-        // Events (sorted by clock)
-        let mut events: Vec<_> = record.events();
-        events.sort_by_key(|e| e.clk());
+        // Events - use index-based access and collect into a Vec with clocks for sorting
+        let mut events_with_clk: Vec<_> = (0..record.num_events())
+            .filter_map(|i| record.event_at(i).map(|e| (e.clk(), e)))
+            .collect();
+        events_with_clk.sort_by_key(|(clk, _)| *clk);
 
-        for event in &events {
+        for (_, event) in &events_with_clk {
             let event_time_ps = clock_to_picoseconds(event.clk(), self.clock_freq_mhz);
-            changes.push((event_time_ps, event_to_json(*event)));
+            changes.push((event_time_ps, event_to_json(event)));
         }
 
         // End marker (if end_clk exists): transition back to "Z"
@@ -367,8 +374,11 @@ impl JetsHierarchy {
 
 /// Load JETS file and create hierarchy
 pub(crate) fn load_jets_file(path: &str) -> Result<JetsHierarchy, String> {
-    let trace_data = parse_trace(path)
+    // parse_trace returns JetsTraceData, wrap it in DynTraceData::Jets
+    let jets_data = parse_trace(path)
         .map_err(|e| format!("Failed to parse JETS file: {}", e))?;
+
+    let trace_data = DynTraceData::Jets(jets_data);
 
     JetsHierarchy::new(trace_data)
 }
