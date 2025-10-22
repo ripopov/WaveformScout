@@ -249,16 +249,16 @@ class WaveformDB:
             - Sets up the event bridge for thread-safe async callbacks
             - Registers the async callback if waveform is already loaded
             - Retries any signals that were queued for loading before event bus was attached
-            - If an event bus is already attached, this method does nothing (idempotent)
+            - If a different event bus was previously attached, it will be replaced
         """
-        # Skip if event bus already attached
-        if self._event_bus is not None:
+        # If the same event bus is already attached, nothing to do
+        if self._event_bus is event_bus:
             return
 
-        # Store event bus reference
+        # Store event bus reference (replacing any old one)
         self._event_bus = event_bus
 
-        # Create Qt signal bridge for thread safety
+        # Create Qt signal bridge for thread safety (replacing any old one)
         self._event_bridge = AsyncEventBridge(event_bus)
 
         # Register async callback if waveform already loaded
