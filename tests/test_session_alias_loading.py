@@ -162,16 +162,16 @@ class TestSessionAliasLoading:
         """Test loading a session with aliased signals using pyrox backend."""
         if not test_waveform_path.exists():
             pytest.skip(f"Test file {test_waveform_path} not found")
-        
+
         # Save the session to a temp file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(session_with_aliases, f)
             session_file = Path(f.name)
-        
+
         try:
             # Load session with pyrox backend
             session = load_session(session_file)
-            
+
             assert session is not None
             assert session.waveform_files
 
@@ -179,6 +179,10 @@ class TestSessionAliasLoading:
             primary_file = session.get_primary_file()
             assert primary_file is not None
             db = primary_file.waveform_db
+
+            # Attach EventBus for async signal loading to work
+            event_bus = EventBus()
+            db.attach_event_bus(event_bus)
             
             # Test pready (handle 0) - should be a 1-bit signal with value 1 at t=0
             value_pready = _test_sample(db, 0, 0)
@@ -217,16 +221,16 @@ class TestSessionAliasLoading:
         """Test loading a session with aliased signals using pylibfst backend."""
         if not test_waveform_path.exists():
             pytest.skip(f"Test file {test_waveform_path} not found")
-        
+
         # Save the session to a temp file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(session_with_aliases, f)
             session_file = Path(f.name)
-        
+
         try:
             # Load session with pylibfst backend
             session = load_session(session_file)
-            
+
             assert session is not None
             assert session.waveform_files
 
@@ -234,6 +238,10 @@ class TestSessionAliasLoading:
             primary_file = session.get_primary_file()
             assert primary_file is not None
             db = primary_file.waveform_db
+
+            # Attach EventBus for async signal loading to work
+            event_bus = EventBus()
+            db.attach_event_bus(event_bus)
             
             # Test pready (handle 0)
             value_pready = _test_sample(db, 0, 0)
@@ -280,6 +288,10 @@ class TestSessionAliasLoading:
             primary_file = session.get_primary_file()
             assert primary_file is not None
             db = primary_file.waveform_db
+
+            # Attach EventBus for async signal loading to work
+            event_bus = EventBus()
+            db.attach_event_bus(event_bus)
 
             # Test values for handle 0 (pready)
             for t in [0, 100, 1000, 10000]:

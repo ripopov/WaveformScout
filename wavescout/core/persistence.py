@@ -582,8 +582,9 @@ def load_session(path: pathlib.Path) -> WaveformSession:
     max_duration = 0
     file_id_to_db: Dict[int, WaveformDB] = {}
 
-    from wavescout.application.event_bus import EventBus
-    event_bus = EventBus()
+    # NOTE: Don't create an EventBus here. The WaveformController will attach
+    # its own event bus later in set_session(). Creating a temporary event bus
+    # causes async events to be emitted to the wrong bus during reload.
 
     if 'waveform_files' in data:
         # New multi-file format
@@ -598,8 +599,8 @@ def load_session(path: pathlib.Path) -> WaveformSession:
                 continue
 
             try:
-                # Open WaveformDB
-                waveform_db = WaveformDB(event_bus=event_bus)
+                # Open WaveformDB without event bus - controller will attach it later
+                waveform_db = WaveformDB(event_bus=None)
                 waveform_db.open(file_path)
 
                 # Validate timescale against first file
@@ -651,7 +652,8 @@ def load_session(path: pathlib.Path) -> WaveformSession:
         db_uri = data.get('db_uri')
         if db_uri and pathlib.Path(db_uri).exists():
             db_start = time.time()
-            waveform_db = WaveformDB(event_bus=event_bus)
+            # Open WaveformDB without event bus - controller will attach it later
+            waveform_db = WaveformDB(event_bus=None)
             waveform_db.open(db_uri)
 
             timescale = waveform_db.get_timescale()
