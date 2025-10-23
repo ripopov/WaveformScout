@@ -546,24 +546,32 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
                     // Emit start event
                     emit_event(&shared_state, AsyncEvent::SignalStartLoad(handles.clone()));
 
-                    // Acquire backend lock only during signal loading (minimize lock holding time)
-                    let result = {
+                    // Step 1: Clone Arc references while holding lock (< 1ms)
+                    let arc_refs_result = {
                         let mut backend_guard = shared_state.backend.lock().unwrap();
                         if let Some(backend) = backend_guard.as_mut() {
-                            match (backend.hierarchy(), backend.wave_source()) {
-                                (Some(hier_trait), Some(source)) => {
-                                    // Load signals while holding the lock (but in a minimal scope)
-                                    Ok(source.load_signals(&handles, &*hier_trait))
-                                }
+                            match (backend.hierarchy(), backend.wave_source_arc()) {
+                                (Some(h), Some(s)) => Ok((h, s)),
                                 (None, _) => Err("Hierarchy not loaded".to_string()),
                                 (_, None) => Err("Wave source not available".to_string()),
                             }
                         } else {
                             Err("Backend not initialized".to_string())
                         }
-                    }; // backend_guard dropped here
+                    }; // backend_guard dropped here (lock released in < 1ms)
 
-                    // Process results after releasing the lock
+                    // Process Arc references result
+                    let result = match arc_refs_result {
+                        Ok((hier_arc, source_arc)) => {
+                            // Step 2: Load signals without holding backend lock (10-100ms)
+                            // Only wave_source lock is held during actual loading
+                            let mut source_guard = source_arc.lock().unwrap();
+                            Ok(source_guard.load_signals(&handles, &*hier_arc))
+                        }
+                        Err(e) => Err(e),
+                    };
+
+                    // Process results after releasing all locks
                     match result {
                         Ok(loaded_signals) => {
                             if !loaded_signals.is_empty() {
@@ -583,6 +591,10 @@ fn async_worker(receiver: Receiver<AsyncRequest>, shared_state: Arc<SharedState>
 /// Helper to emit events to Python callback
 #[allow(deprecated)]
 fn emit_event(shared_state: &SharedState, event: AsyncEvent) {
+    // NOTE: Callback lock is held during Python call. This is acceptable because:
+    // 1. The callback lock is separate from the backend lock (which is the main bottleneck)
+    // 2. PyO3's Py<PyAny> requires the GIL to be cloned, making lock-free callback cloning complex
+    // 3. Callback emissions are infrequent compared to signal loading operations
     if let Some(callback) = shared_state.callback.lock().unwrap().as_ref() {
         Python::with_gil(|py| {
             // Convert event to Python dict
@@ -880,22 +892,29 @@ impl Waveform {
             .map(|var| var.0.signal_handle())
             .collect();
 
-        // Backend-agnostic path: release GIL and acquire backend lock only during signal loading
+        // Backend-agnostic path: release GIL and acquire backend lock with fine-grained locking
         let signals = py.allow_threads(|| -> Result<Vec<(SignalHandle, Arc<dyn traits::SignalTrait>)>, String> {
-            let mut backend_guard = self.shared_state.backend.lock().unwrap();
-            let backend = backend_guard
-                .as_mut()
-                .ok_or_else(|| "Backend not initialized".to_string())?;
+            // Get Arc references with minimal lock scope
+            let (hier_arc, source_arc) = {
+                let mut backend_guard = self.shared_state.backend.lock().unwrap();
+                let backend = backend_guard
+                    .as_mut()
+                    .ok_or_else(|| "Backend not initialized".to_string())?;
 
-            let hier_trait = backend
-                .hierarchy()
-                .ok_or_else(|| "Hierarchy not loaded yet".to_string())?;
+                let hier = backend
+                    .hierarchy()
+                    .ok_or_else(|| "Hierarchy not loaded yet".to_string())?;
 
-            let wave_source = backend
-                .wave_source()
-                .ok_or_else(|| "Wave source not available".to_string())?;
+                let source = backend
+                    .wave_source_arc()
+                    .ok_or_else(|| "Wave source not available".to_string())?;
 
-            Ok(wave_source.load_signals(&handles, &*hier_trait))
+                Ok::<_, String>((hier, source))
+            }?; // backend lock released
+
+            // Load signals without backend lock
+            let mut source = source_arc.lock().unwrap();
+            Ok(source.load_signals(&handles, &*hier_arc))
         })
         .map_err(|e| PyRuntimeError::new_err(e))?;
 
@@ -932,22 +951,29 @@ impl Waveform {
         handle: SignalHandle,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, Signal>> {
-        // Backend-agnostic path: release GIL and acquire backend lock only during signal loading
+        // Backend-agnostic path: release GIL and acquire backend lock with fine-grained locking
         let mut signals = py.allow_threads(|| -> Result<Vec<(SignalHandle, Arc<dyn traits::SignalTrait>)>, String> {
-            let mut backend_guard = self.shared_state.backend.lock().unwrap();
-            let backend = backend_guard
-                .as_mut()
-                .ok_or_else(|| "Backend not initialized".to_string())?;
+            // Get Arc references with minimal lock scope
+            let (hier_arc, source_arc) = {
+                let mut backend_guard = self.shared_state.backend.lock().unwrap();
+                let backend = backend_guard
+                    .as_mut()
+                    .ok_or_else(|| "Backend not initialized".to_string())?;
 
-            let hier_trait = backend
-                .hierarchy()
-                .ok_or_else(|| "Hierarchy not loaded yet".to_string())?;
+                let hier = backend
+                    .hierarchy()
+                    .ok_or_else(|| "Hierarchy not loaded yet".to_string())?;
 
-            let wave_source = backend
-                .wave_source()
-                .ok_or_else(|| "Wave source not available".to_string())?;
+                let source = backend
+                    .wave_source_arc()
+                    .ok_or_else(|| "Wave source not available".to_string())?;
 
-            Ok(wave_source.load_signals(&[handle], &*hier_trait))
+                Ok::<_, String>((hier, source))
+            }?; // backend lock released
+
+            // Load signals without backend lock
+            let mut source = source_arc.lock().unwrap();
+            Ok(source.load_signals(&[handle], &*hier_arc))
         })
         .map_err(|e| PyRuntimeError::new_err(e))?;
 

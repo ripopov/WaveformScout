@@ -734,7 +734,7 @@ pub struct JetsWaveform {
     // State management
     hierarchy: Option<Arc<JetsHierarchy>>,
     time_table: Option<Arc<JetsTimeTable>>,
-    wave_source: Option<JetsSignalSource>,
+    wave_source: Option<Arc<std::sync::Mutex<JetsSignalSource>>>,
 
     // Loading status (both set to true after load_header)
     loaded: bool,
@@ -788,7 +788,7 @@ impl WaveformTrait for JetsWaveform {
 
         self.hierarchy = Some(jets_hier.clone());
         self.time_table = Some(Arc::new(JetsTimeTable::new(max_time)));
-        self.wave_source = Some(JetsSignalSource::new(jets_hier));
+        self.wave_source = Some(Arc::new(std::sync::Mutex::new(JetsSignalSource::new(jets_hier))));
         self.loaded = true;
 
         Ok(())
@@ -808,9 +808,9 @@ impl WaveformTrait for JetsWaveform {
         self.loaded
     }
 
-    fn wave_source(&mut self) -> Option<&mut dyn WaveSourceTrait> {
+    fn wave_source_arc(&mut self) -> Option<Arc<std::sync::Mutex<dyn WaveSourceTrait>>> {
         self.wave_source
-            .as_mut()
-            .map(|ws| ws as &mut dyn WaveSourceTrait)
+            .as_ref()
+            .map(|ws| ws.clone() as Arc<std::sync::Mutex<dyn WaveSourceTrait>>)
     }
 }

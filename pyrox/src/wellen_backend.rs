@@ -677,7 +677,7 @@ pub struct WellenWaveform {
     // State management
     hierarchy: Option<Arc<WellenHierarchy>>,
     time_table: Option<Arc<WellenTimeTable>>,
-    wave_source: Option<WellenSignalSource>,
+    wave_source: Option<Arc<std::sync::Mutex<WellenSignalSource>>>,
 
     // Internal Wellen state
     body_continuation: Option<wellen::viewers::ReadBodyContinuation<BufReader<File>>>,
@@ -766,12 +766,12 @@ impl WaveformTrait for WellenWaveform {
         self.time_table = Some(Arc::new(WellenTimeTable {
             inner: Arc::new(body.time_table.clone()),
         }));
-        self.wave_source = Some(WellenSignalSource::new(
+        self.wave_source = Some(Arc::new(std::sync::Mutex::new(WellenSignalSource::new(
             body.source,
             Arc::new(WellenTimeTable {
                 inner: Arc::new(body.time_table),
             }),
-        ));
+        ))));
         self.body_loaded = true;
 
         Ok(())
@@ -781,10 +781,10 @@ impl WaveformTrait for WellenWaveform {
         self.body_loaded
     }
 
-    fn wave_source(&mut self) -> Option<&mut dyn WaveSourceTrait> {
+    fn wave_source_arc(&mut self) -> Option<Arc<std::sync::Mutex<dyn WaveSourceTrait>>> {
         self.wave_source
-            .as_mut()
-            .map(|ws| ws as &mut dyn WaveSourceTrait)
+            .as_ref()
+            .map(|ws| ws.clone() as Arc<std::sync::Mutex<dyn WaveSourceTrait>>)
     }
 }
 

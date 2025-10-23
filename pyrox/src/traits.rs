@@ -331,8 +331,16 @@ pub trait WaveformTrait: Send + Sync {
     /// Check if body is loaded
     fn body_loaded(&self) -> bool;
 
-    /// Get mutable access to signal source (returns None if body not loaded).
+    /// Get shared reference to wave source (for concurrent access).
     ///
-    /// Mutable access is required because signal loading may update internal caches.
-    fn wave_source(&mut self) -> Option<&mut dyn WaveSourceTrait>;
+    /// Returns an Arc<Mutex<...>> that can be cloned and held without
+    /// blocking access to the backend. Backends that support concurrent
+    /// signal loading should override this method.
+    ///
+    /// This enables fine-grained locking where the backend mutex can be
+    /// released immediately after cloning the Arc, and only the wave_source
+    /// mutex needs to be held during actual signal loading operations.
+    fn wave_source_arc(&mut self) -> Option<Arc<std::sync::Mutex<dyn WaveSourceTrait>>> {
+        None  // Default: not supported
+    }
 }
