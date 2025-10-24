@@ -4,7 +4,7 @@ Generate PNG snapshots of WaveScout waveform viewer from saved sessions.
 
 Usage:
     python take_snapshot.py [--backend wellen|libfst] <session.json> [output.png]
-    
+
 Args:
     --backend    - FST backend to use: 'wellen' (pyrox) or 'libfst' (pylibfst)
     session.json - WaveScout session file (auto-detected if omitted)
@@ -18,14 +18,42 @@ import sys
 import time
 import argparse
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Optional, Literal, Dict, List
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 from wavescout import WaveScoutWidget, load_session
 from wavescout.utils.timing_utils import set_startup_time, tprint
+from wavescout.core.data_model import SignalNode, GroupNode, TreeNode, WaveformSession
+from wavescout.application.event_bus import EventBus
+from pyrox import SignalHandle
 
 # Global startup time for tracking elapsed time
 startup_time = None
+
+def collect_signal_handles_by_file(session: WaveformSession) -> Dict[int, List[SignalHandle]]:
+    """Collect all signal handles from the session tree, grouped by file_id.
+
+    Args:
+        session: The WaveformSession to collect handles from
+
+    Returns:
+        Dictionary mapping file_id to list of signal handles
+    """
+    handles_by_file: Dict[int, List[SignalHandle]] = {}
+
+    def collect_from_nodes(nodes: List[TreeNode]) -> None:
+        """Recursively collect handles from nodes."""
+        for node in nodes:
+            if isinstance(node, SignalNode) and node.handle is not None:
+                file_id = node.file_id
+                if file_id not in handles_by_file:
+                    handles_by_file[file_id] = []
+                handles_by_file[file_id].append(node.handle)
+            if isinstance(node, GroupNode):
+                collect_from_nodes(node.children)
+
+    collect_from_nodes(session.root_nodes)
+    return handles_by_file
 
 def take_snapshot(session_file: str, output_file: str = "snapshot.png",
                   backend: Optional[Literal["wellen", "libfst"]] = None):
@@ -53,9 +81,37 @@ def take_snapshot(session_file: str, output_file: str = "snapshot.png",
         session = load_session(Path(session_file))
     tprint("Session loaded")
 
+    # Attach event bus to enable async signal loading
+    # (load_session creates WaveformDB without event bus for late binding)
+    tprint("Attaching event bus to waveform databases...")
+    event_bus = EventBus()
+    for file_ref in session.waveform_files:
+        if file_ref.waveform_db:
+            file_ref.waveform_db.attach_event_bus(event_bus)
+    tprint("Event bus attached")
+
     tprint("Setting session on widget...")
     widget.setSession(session)
     tprint("Session set on widget")
+
+    # Wait for all signals to finish loading asynchronously
+    tprint("Waiting for signals to load...")
+    wait_start = time.time()
+    handles_by_file = collect_signal_handles_by_file(session)
+    total_handles = sum(len(handles) for handles in handles_by_file.values())
+    tprint(f"Found {total_handles} signals across {len(handles_by_file)} file(s)")
+
+    for file_id, handles in handles_by_file.items():
+        file_ref = session.get_file_by_id(file_id)
+        if file_ref and file_ref.waveform_db:
+            tprint(f"Waiting for {len(handles)} signals from file {file_id}...")
+            success = file_ref.waveform_db.wait_for_signals(handles, timeout=10.0)
+            if not success:
+                tprint(f"WARNING: Timeout waiting for signals from file {file_id}")
+            else:
+                tprint(f"All signals from file {file_id} loaded successfully")
+
+    tprint(f"Signal loading completed (took {time.time() - wait_start:.3f}s)")
 
     # Show widget (needed for rendering)
     tprint("Showing widget...")
@@ -132,3 +188,4 @@ if __name__ == "__main__":
     # Print total script runtime including argument parsing
     total_runtime = time.time() - script_start_time
     tprint(f"Script total runtime: {total_runtime:.3f} seconds")
+    sys.exit(0)
