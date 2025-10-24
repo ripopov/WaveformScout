@@ -79,9 +79,10 @@ pub enum SignalScalar {
 /// Result returned by `query_signal` before PyO3 wrapping
 #[derive(Debug, Clone)]
 pub struct QueryResult {
-    pub value: SignalValue,
-    pub actual_time: Time,
-    pub next_change: Option<Time>,
+    pub value: Option<SignalValue>,
+    pub actual_time: Option<Time>,
+    pub next_idx: Option<TimeTableIdx>,
+    pub next_time: Option<Time>,
 }
 
 // === HierarchyTrait ===

@@ -569,22 +569,32 @@ impl SignalTrait for JetsSignal {
                 if idx > 0 {
                     idx - 1
                 } else {
-                    return Err(SignalError::OutOfRange(query_time));
+                    // Query is before the first transition
+                    // Return None for value/actual_time, and info about the first transition
+                    let (first_time, _) = self.changes.get(0)
+                        .ok_or_else(|| SignalError::Backend("Empty signal".to_string()))?;
+                    return Ok(QueryResult {
+                        value: None,
+                        actual_time: None,
+                        next_idx: Some(0),
+                        next_time: Some(*first_time),
+                    });
                 }
             }
         };
 
         let (actual_time, value) = &self.changes[idx];
-        let next_change = if idx + 1 < self.changes.len() {
-            Some(self.changes[idx + 1].0)
+        let (next_idx, next_time) = if idx + 1 < self.changes.len() {
+            (Some((idx + 1) as u32), Some(self.changes[idx + 1].0))
         } else {
-            None
+            (None, None)
         };
 
         Ok(QueryResult {
-            value: value.clone(),
-            actual_time: *actual_time,
-            next_change,
+            value: Some(value.clone()),
+            actual_time: Some(*actual_time),
+            next_idx,
+            next_time,
         })
     }
 

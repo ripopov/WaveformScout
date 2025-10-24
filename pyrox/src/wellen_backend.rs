@@ -420,31 +420,65 @@ impl SignalTrait for WellenSignal {
                 if idx > 0 {
                     idx - 1
                 } else {
-                    return Err(SignalError::OutOfRange(query_time));
+                    // Query is before the first transition
+                    // Return None for value/actual_time, and info about the first transition
+                    let first_time = self.time_table.get(0);
+                    return Ok(QueryResult {
+                        value: None,
+                        actual_time: None,
+                        next_idx: Some(0),
+                        next_time: first_time,
+                    });
                 }
             }
         };
 
-        let offset = self
-            .signal
-            .get_offset(time_idx as u32)
-            .ok_or_else(|| SignalError::Backend("Failed to get offset".to_string()))?;
+        let offset = match self.signal.get_offset(time_idx as u32) {
+            Some(off) => off,
+            None => {
+                // Signal has no data at this time index (common for event signals before first transition)
+                // Return None for value/actual_time, and info about the next transition
+
+                // Find the first valid time index for this signal
+                let mut next_valid_idx = None;
+                let mut next_valid_time = None;
+
+                for idx in (time_idx as u32 + 1)..=u32::MAX {
+                    if let Some(_) = self.signal.get_offset(idx) {
+                        next_valid_idx = Some(idx);
+                        next_valid_time = self.time_table.get(idx as usize);
+                        break;
+                    }
+                    // Stop if we've gone past the reasonable range
+                    if idx > 10000 { break; }
+                }
+
+                return Ok(QueryResult {
+                    value: None,
+                    actual_time: None,
+                    next_idx: next_valid_idx,
+                    next_time: next_valid_time,
+                });
+            }
+        };
 
         let value = self
             .signal
             .get_value_at(&offset, offset.elements - 1);
 
-        let actual_time = self.time_table.get(time_idx).unwrap();
+        let actual_time = self.time_table.get(time_idx);
 
-        let next_change = offset
+        let (next_idx, next_time) = offset
             .next_index
             .map(|nz| nz.get())
-            .and_then(|next_idx| self.time_table.get(next_idx as usize));
+            .map(|idx| (Some(idx), self.time_table.get(idx as usize)))
+            .unwrap_or((None, None));
 
         Ok(QueryResult {
-            value: convert_wellen_value_to_signal_value(&value),
+            value: Some(convert_wellen_value_to_signal_value(&value)),
             actual_time,
-            next_change,
+            next_idx,
+            next_time,
         })
     }
 

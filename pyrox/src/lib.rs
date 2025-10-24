@@ -1074,15 +1074,15 @@ impl Signal {
         let result = self.backend.query_signal(query_time)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        let value = convert_signal_value_to_py(result.value, py).ok();
+        let value = result.value.and_then(|v| convert_signal_value_to_py(v, py).ok());
 
         Bound::new(
             py,
             QueryResult {
                 value,
-                actual_time: Some(result.actual_time),
-                next_idx: result.next_change.map(|_| 0), // Index not used in trait API
-                next_time: result.next_change,
+                actual_time: result.actual_time,
+                next_idx: result.next_idx,
+                next_time: result.next_time,
             },
         )
     }
