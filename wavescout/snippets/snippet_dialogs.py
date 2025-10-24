@@ -235,6 +235,7 @@ class InstantiateSnippetDialog(QDialog):
         # Target scope input
         self.scope_edit = QLineEdit(self.snippet.parent_name)
         self.scope_edit.selectAll()
+        self.scope_edit.setToolTip("Target scope for instantiation (leave empty for root scope)")
         form_layout.addRow("Target Scope:", self.scope_edit)
         
         # Validation feedback
@@ -305,12 +306,6 @@ class InstantiateSnippetDialog(QDialog):
         if not self.waveform_db:
             self.validation_label.setText("⚠ No waveform loaded")
             self.validation_label.setStyleSheet("QLabel { color: orange; }")
-            self.ok_button.setEnabled(False)
-            return
-        
-        if not target_scope:
-            self.validation_label.setText("❌ Please enter a target scope")
-            self.validation_label.setStyleSheet("QLabel { color: red; }")
             self.ok_button.setEnabled(False)
             return
         
