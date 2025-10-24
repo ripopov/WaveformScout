@@ -1845,7 +1845,7 @@ class WaveScoutMainWindow(FramelessWindow):
 
                 # Wrap the snippet nodes in a group with custom name
                 group_node = GroupNode(
-                    name=group_name,  # Use custom group name from dialog
+                    local_name=group_name,  # Use custom group name from dialog
                     children=remapped_nodes,
                     is_expanded=True
                 )
@@ -1912,7 +1912,7 @@ class WaveScoutMainWindow(FramelessWindow):
 
             # Create group to wrap snippet (reuse logic from _on_snippet_instantiate)
             group_node = GroupNode(
-                name=snippet.name,
+                local_name=snippet.name,
                 children=validated_nodes,
                 is_expanded=True
             )

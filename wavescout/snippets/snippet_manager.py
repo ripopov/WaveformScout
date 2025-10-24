@@ -214,41 +214,34 @@ class SnippetManager(QObject):
     
     def find_common_parent(self, group_node: TreeNode) -> str:
         """Find common parent scope for all signals in a group."""
-        all_paths: list[str] = []
+        all_scope_paths: list[tuple[str, ...]] = []
 
-        def collect_paths(node: TreeNode) -> None:
+        def collect_scope_paths(node: TreeNode) -> None:
             if not node.is_group:
-                all_paths.append(node.name)
+                # Use the actual scope_path method which respects waveform structure
+                # For SignalNode, this returns _waveform_scope; for GroupNode, it builds from parent chain
+                scope = node.scope_path()
+                all_scope_paths.append(scope)
             elif isinstance(node, GroupNode):
                 for child in node.children:
-                    collect_paths(child)
+                    collect_scope_paths(child)
 
-        collect_paths(group_node)
+        collect_scope_paths(group_node)
 
-        if not all_paths:
+        if not all_scope_paths:
             return ""
 
-        # Split all paths by '.' and exclude the signal name (last component)
-        parent_paths = []
-        for path in all_paths:
-            parts = path.split('.')
-            if len(parts) > 1:
-                # Keep everything except the signal name (last part)
-                parent_paths.append(parts[:-1])
-            else:
-                # If there's only one component, there's no parent scope
-                parent_paths.append([])
-
-        if not parent_paths or not parent_paths[0]:
+        # If all paths are empty (root level signals), return empty string
+        if all(len(path) == 0 for path in all_scope_paths):
             return ""
 
-        # Find common prefix among parent paths
+        # Find common prefix among scope paths
         common: list[str] = []
-        min_len = min(len(p) for p in parent_paths)
+        min_len = min(len(p) for p in all_scope_paths)
 
         for i in range(min_len):
-            if all(p[i] == parent_paths[0][i] for p in parent_paths):
-                common.append(parent_paths[0][i])
+            if all(p[i] == all_scope_paths[0][i] for p in all_scope_paths):
+                common.append(all_scope_paths[0][i])
             else:
                 break
 
