@@ -400,7 +400,7 @@ fn calculate_trace_extent(all_records: &[JetsTraceRecord]) -> (i64, i64) {
 pub struct JetsTraceMetadataRef<'a>(&'a JetsTraceMetadata);
 
 impl<'a> TraceMetadata for JetsTraceMetadataRef<'a> {
-    fn version(&self) -> &str {
+    fn version(&self) -> String {
         self.0.version()
     }
 
@@ -454,7 +454,7 @@ impl<'a> TraceRecord<'a> for JetsTraceRecordRef<'a> {
         self.0.duration()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         self.0.name()
     }
 
@@ -466,7 +466,7 @@ impl<'a> TraceRecord<'a> for JetsTraceRecordRef<'a> {
         self.0.parent_id()
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> String {
         self.0.description()
     }
 
@@ -509,7 +509,7 @@ impl<'a> TraceEvent for JetsTraceEventRef<'a> {
         self.0.clk()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         self.0.name()
     }
 
@@ -517,7 +517,7 @@ impl<'a> TraceEvent for JetsTraceEventRef<'a> {
         self.0.record_id()
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> String {
         self.0.description()
     }
 
@@ -536,8 +536,8 @@ impl TraceReader for JetsTraceReader {
 }
 
 impl TraceMetadata for JetsTraceMetadata {
-    fn version(&self) -> &str {
-        &self.header.version
+    fn version(&self) -> String {
+        self.header.version.clone()
     }
 
     fn header_data(&self) -> &serde_json::Value {
@@ -606,8 +606,8 @@ impl<'a> TraceRecord<'a> for &'a JetsTraceRecord {
         self.duration
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> String {
+        self.name.to_string()
     }
 
     fn id(&self) -> RecordId {
@@ -618,8 +618,8 @@ impl<'a> TraceRecord<'a> for &'a JetsTraceRecord {
         self.parent_id
     }
 
-    fn description(&self) -> &str {
-        &self.description
+    fn description(&self) -> String {
+        self.description.to_string()
     }
 
     fn data(&self) -> HashMap<String, serde_json::Value> {
@@ -697,16 +697,16 @@ impl TraceEvent for JetsTraceEvent {
         self.clk
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> String {
+        self.name.to_string()
     }
 
     fn record_id(&self) -> RecordId {
         self.record_id
     }
 
-    fn description(&self) -> &str {
-        &self.description
+    fn description(&self) -> String {
+        self.description.to_string()
     }
 
     fn data(&self) -> HashMap<String, serde_json::Value> {

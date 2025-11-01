@@ -425,7 +425,7 @@ mod strategy_tests {
     struct MockMetadata;
 
     impl rjets::TraceMetadata for MockMetadata {
-        fn version(&self) -> &str { "1.0" }
+        fn version(&self) -> String { "1.0".to_string() }
         fn header_data(&self) -> &serde_json::Value { &serde_json::Value::Null }
         fn capture_end_clk(&self) -> Option<i64> { None }
         fn total_records(&self) -> Option<usize> { None }
@@ -440,9 +440,9 @@ mod strategy_tests {
 
     impl<'a> rjets::TraceEvent for MockEvent<'a> {
         fn clk(&self) -> i64 { 0 }
-        fn name(&self) -> &str { "" }
+        fn name(&self) -> String { "".to_string() }
         fn record_id(&self) -> u64 { 0 }
-        fn description(&self) -> &str { "" }
+        fn description(&self) -> String { "".to_string() }
         fn data(&self) -> HashMap<String, serde_json::Value> {
             HashMap::new()
         }
@@ -479,8 +479,8 @@ mod strategy_tests {
         fn duration(&self) -> Option<i64> {
             None
         }
-        fn name(&self) -> &str {
-            "test"
+        fn name(&self) -> String {
+            "test".to_string()
         }
         fn id(&self) -> u64 {
             self.id
@@ -488,8 +488,8 @@ mod strategy_tests {
         fn parent_id(&self) -> Option<u64> {
             None
         }
-        fn description(&self) -> &str {
-            ""
+        fn description(&self) -> String {
+            "".to_string()
         }
         fn data(&self) -> HashMap<String, serde_json::Value> {
             HashMap::new()

@@ -20,7 +20,7 @@ impl TraceReader for PipetraceReader {
 pub struct PipetraceMetadataRef<'a>(&'a PipetraceMetadata);
 
 impl<'a> TraceMetadata for PipetraceMetadataRef<'a> {
-    fn version(&self) -> &str { self.0.version() }
+    fn version(&self) -> String { self.0.version() }
     fn header_data(&self) -> &serde_json::Value { self.0.header_data() }
     fn capture_end_clk(&self) -> Option<i64> { self.0.capture_end_clk() }
     fn total_records(&self) -> Option<usize> { self.0.total_records() }
@@ -38,10 +38,10 @@ impl<'a> TraceRecord<'a> for PipetraceRecordRef<'a> {
     fn clk(&self) -> i64 { self.0.clk() }
     fn end_clk(&self) -> Option<i64> { self.0.end_clk() }
     fn duration(&self) -> Option<i64> { self.0.duration() }
-    fn name(&self) -> &str { self.0.name() }
+    fn name(&self) -> String { self.0.name() }
     fn id(&self) -> u64 { self.0.id() }
     fn parent_id(&self) -> Option<u64> { self.0.parent_id() }
-    fn description(&self) -> &str { self.0.description() }
+    fn description(&self) -> String { self.0.description() }
     fn data(&self) -> HashMap<String, serde_json::Value> { self.0.data() }
     fn num_children(&self) -> usize { self.0.num_children() }
     fn child_at(&self, index: usize) -> Option<Self> {
@@ -58,9 +58,9 @@ pub struct PipetraceEventRef<'a>(&'a PipetraceEvent);
 
 impl<'a> TraceEvent for PipetraceEventRef<'a> {
     fn clk(&self) -> i64 { self.0.clk() }
-    fn name(&self) -> &str { self.0.name() }
+    fn name(&self) -> String { self.0.name() }
     fn record_id(&self) -> u64 { self.0.record_id() }
-    fn description(&self) -> &str { self.0.description() }
+    fn description(&self) -> String { self.0.description() }
     fn data(&self) -> HashMap<String, serde_json::Value> { self.0.data() }
 }
 
@@ -90,7 +90,7 @@ static EMPTY_JSON: once_cell::sync::Lazy<serde_json::Value> = once_cell::sync::L
 static EMPTY_PIPETRACE_METADATA: PipetraceMetadata = PipetraceMetadata;
 
 impl TraceMetadata for PipetraceMetadata {
-    fn version(&self) -> &str { "pipetrace-stub" }
+    fn version(&self) -> String { "pipetrace-stub".to_string() }
     fn header_data(&self) -> &serde_json::Value { &EMPTY_JSON }
     fn capture_end_clk(&self) -> Option<i64> { None }
     fn total_records(&self) -> Option<usize> { None }
@@ -108,10 +108,10 @@ impl<'a> TraceRecord<'a> for &'a PipetraceRecord {
     fn clk(&self) -> i64 { 0 }
     fn end_clk(&self) -> Option<i64> { None }
     fn duration(&self) -> Option<i64> { None }
-    fn name(&self) -> &str { "" }
+    fn name(&self) -> String { "".to_string() }
     fn id(&self) -> u64 { 0 }
     fn parent_id(&self) -> Option<u64> { None }
-    fn description(&self) -> &str { "" }
+    fn description(&self) -> String { "".to_string() }
     fn data(&self) -> HashMap<String, serde_json::Value> { HashMap::new() }
     fn num_children(&self) -> usize { 0 }
     fn child_at(&self, _index: usize) -> Option<Self> { None }
@@ -125,9 +125,9 @@ pub struct PipetraceEvent;
 
 impl TraceEvent for PipetraceEvent {
     fn clk(&self) -> i64 { 0 }
-    fn name(&self) -> &str { "" }
+    fn name(&self) -> String { "".to_string() }
     fn record_id(&self) -> u64 { 0 }
-    fn description(&self) -> &str { "" }
+    fn description(&self) -> String { "".to_string() }
     fn data(&self) -> HashMap<String, serde_json::Value> { HashMap::new() }
 }
 

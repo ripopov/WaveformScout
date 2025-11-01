@@ -54,7 +54,7 @@ pub trait TraceData: Send {
 /// Trait for accessing trace metadata
 pub trait TraceMetadata {
     /// Returns the trace version
-    fn version(&self) -> &str;
+    fn version(&self) -> String;
 
     /// Returns the header data (metadata from the header)
     fn header_data(&self) -> &serde_json::Value;
@@ -93,7 +93,7 @@ pub trait TraceRecord<'data>: Clone {
     fn duration(&self) -> Option<i64>;
 
     /// Returns the record name
-    fn name(&self) -> &str;
+    fn name(&self) -> String;
 
     /// Returns the record ID
     fn id(&self) -> RecordId;
@@ -102,7 +102,7 @@ pub trait TraceRecord<'data>: Clone {
     fn parent_id(&self) -> Option<RecordId>;
 
     /// Returns the record description
-    fn description(&self) -> &str;
+    fn description(&self) -> String;
 
     /// Returns all record data as a key-value map (includes merged annotations)
     fn data(&self) -> HashMap<String, serde_json::Value>;
@@ -138,13 +138,13 @@ pub trait TraceEvent {
     fn clk(&self) -> i64;
 
     /// Returns the event name
-    fn name(&self) -> &str;
+    fn name(&self) -> String;
 
     /// Returns the ID of the record this event belongs to
     fn record_id(&self) -> RecordId;
 
     /// Returns the event description
-    fn description(&self) -> &str;
+    fn description(&self) -> String;
 
     /// Returns all event data as a key-value map
     fn data(&self) -> HashMap<String, serde_json::Value>;
@@ -195,7 +195,7 @@ impl TraceData for DynTraceData {
 
 impl<'a> TraceMetadata for DynTraceMetadata<'a> {
     #[inline]
-    fn version(&self) -> &str {
+    fn version(&self) -> String {
         match self {
             DynTraceMetadata::Jets(m) => m.version(),
             DynTraceMetadata::Virtual(m) => m.version(),
@@ -296,7 +296,7 @@ impl<'a> TraceRecord<'a> for DynTraceRecord<'a> {
     }
 
     #[inline]
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         match self {
             DynTraceRecord::Jets(r) => r.name(),
             DynTraceRecord::Virtual(r) => r.name(),
@@ -323,7 +323,7 @@ impl<'a> TraceRecord<'a> for DynTraceRecord<'a> {
     }
 
     #[inline]
-    fn description(&self) -> &str {
+    fn description(&self) -> String {
         match self {
             DynTraceRecord::Jets(r) => r.description(),
             DynTraceRecord::Virtual(r) => r.description(),
@@ -397,7 +397,7 @@ impl<'a> TraceEvent for DynTraceEvent<'a> {
     }
 
     #[inline]
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         match self {
             DynTraceEvent::Jets(e) => e.name(),
             DynTraceEvent::Virtual(e) => e.name(),
@@ -415,7 +415,7 @@ impl<'a> TraceEvent for DynTraceEvent<'a> {
     }
 
     #[inline]
-    fn description(&self) -> &str {
+    fn description(&self) -> String {
         match self {
             DynTraceEvent::Jets(e) => e.description(),
             DynTraceEvent::Virtual(e) => e.description(),

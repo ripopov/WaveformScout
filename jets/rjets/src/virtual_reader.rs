@@ -111,7 +111,7 @@ fn calculate_virtual_trace_extent(records: &HashMap<u64, VirtualTraceRecord>) ->
 pub struct VirtualTraceDataRef<'a>(&'a VirtualTraceData);
 
 impl<'a> TraceMetadata for VirtualTraceDataRef<'a> {
-    fn version(&self) -> &str {
+    fn version(&self) -> String {
         self.0.version()
     }
 
@@ -158,7 +158,7 @@ impl<'a> TraceRecord<'a> for VirtualTraceRecordRef<'a> {
         self.0.duration()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         self.0.name()
     }
 
@@ -170,7 +170,7 @@ impl<'a> TraceRecord<'a> for VirtualTraceRecordRef<'a> {
         self.0.parent_id()
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> String {
         self.0.description()
     }
 
@@ -207,7 +207,7 @@ impl<'a> TraceEvent for VirtualTraceEventRef<'a> {
         self.0.clk()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         self.0.name()
     }
 
@@ -215,7 +215,7 @@ impl<'a> TraceEvent for VirtualTraceEventRef<'a> {
         self.0.record_id()
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> String {
         self.0.description()
     }
 
@@ -242,8 +242,8 @@ impl TraceData for VirtualTraceData {
 }
 
 impl TraceMetadata for VirtualTraceData {
-    fn version(&self) -> &str {
-        "virtual-1.0"
+    fn version(&self) -> String {
+        "virtual-1.0".to_string()
     }
 
     fn header_data(&self) -> &serde_json::Value {
@@ -376,8 +376,8 @@ impl<'a> TraceRecord<'a> for &'a VirtualTraceRecord {
         self.duration
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> String {
+        self.name.clone()
     }
 
     fn id(&self) -> u64 {
@@ -388,8 +388,8 @@ impl<'a> TraceRecord<'a> for &'a VirtualTraceRecord {
         self.parent_id
     }
 
-    fn description(&self) -> &str {
-        &self.description
+    fn description(&self) -> String {
+        self.description.clone()
     }
 
     fn data(&self) -> HashMap<String, serde_json::Value> {
@@ -465,16 +465,16 @@ impl TraceEvent for VirtualTraceEvent {
         self.clk
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> String {
+        self.name.clone()
     }
 
     fn record_id(&self) -> u64 {
         self.record_id
     }
 
-    fn description(&self) -> &str {
-        &self.description
+    fn description(&self) -> String {
+        self.description.clone()
     }
 
     fn data(&self) -> HashMap<String, serde_json::Value> {

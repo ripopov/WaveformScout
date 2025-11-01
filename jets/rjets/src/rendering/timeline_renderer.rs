@@ -85,7 +85,7 @@ where
         let bar_color = if is_selected {
             theme_colors.blue
         } else {
-            get_record_color_fn(record.name())
+            get_record_color_fn(&record.name())
         };
 
         ui.painter().rect_filled(bar_rect, 2.0, bar_color);

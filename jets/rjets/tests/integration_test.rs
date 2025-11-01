@@ -2,10 +2,12 @@ use rjets::{TraceWriter, TraceReader, JetsTraceReader, VirtualTraceReader, parse
 use rjets::{TraceData, TraceRecord, TraceMetadata, TraceEvent, DynTraceData};
 use anyhow::Result;
 use std::fs;
+use std::env;
 
 #[test]
 fn test_write_and_read_basic_trace() -> Result<()> {
-    let test_file = "/tmp/test_trace.jets";
+    let test_file = env::temp_dir().join("test_trace.jets");
+    let test_file = test_file.to_str().unwrap();
 
     // Clean up any existing file
     let _ = fs::remove_file(test_file);
@@ -146,7 +148,8 @@ fn test_write_and_read_basic_trace() -> Result<()> {
 
 #[test]
 fn test_write_and_read_hierarchical_trace() -> Result<()> {
-    let test_file = "/tmp/test_hierarchical_trace.jets";
+    let test_file = env::temp_dir().join("test_hierarchical_trace.jets");
+    let test_file = test_file.to_str().unwrap();
 
     // Clean up any existing file
     let _ = fs::remove_file(test_file);
@@ -278,7 +281,8 @@ fn test_virtual_reader() -> Result<()> {
 #[test]
 fn test_trait_polymorphism() -> Result<()> {
     // Create test file for JETS reader
-    let test_file = "/tmp/test_polymorphism.jets";
+    let test_file = env::temp_dir().join("test_polymorphism.jets");
+    let test_file = test_file.to_str().unwrap();
     let _ = fs::remove_file(test_file);
 
     {
@@ -343,8 +347,10 @@ fn test_read_real_trace_file() -> Result<()> {
 
 #[test]
 fn test_brotli_write_and_read() -> Result<()> {
-    let compressed_file = "/tmp/test_brotli_trace.jets.br";
-    let uncompressed_file = "/tmp/test_brotli_trace_uncompressed.jets";
+    let compressed_file = env::temp_dir().join("test_brotli_trace.jets.br");
+    let compressed_file = compressed_file.to_str().unwrap();
+    let uncompressed_file = env::temp_dir().join("test_brotli_trace_uncompressed.jets");
+    let uncompressed_file = uncompressed_file.to_str().unwrap();
 
     // Clean up any existing files
     let _ = fs::remove_file(compressed_file);
@@ -494,7 +500,8 @@ fn test_brotli_write_and_read() -> Result<()> {
 #[test]
 fn test_brotli_detection_by_extension() -> Result<()> {
     // Test that .jets.br triggers compression
-    let br_file = "/tmp/test_extension.jets.br";
+    let br_file = env::temp_dir().join("test_extension.jets.br");
+    let br_file = br_file.to_str().unwrap();
     let _ = fs::remove_file(br_file);
 
     {

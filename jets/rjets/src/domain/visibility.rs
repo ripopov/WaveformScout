@@ -423,9 +423,9 @@ mod tests {
 
     impl<'a> TraceEvent for MockEvent<'a> {
         fn clk(&self) -> i64 { 0 }
-        fn name(&self) -> &str { "" }
+        fn name(&self) -> String { "".to_string() }
         fn record_id(&self) -> u64 { 0 }
-        fn description(&self) -> &str { "" }
+        fn description(&self) -> String { "".to_string() }
         fn data(&self) -> std::collections::HashMap<String, serde_json::Value> {
             std::collections::HashMap::new()
         }
@@ -442,8 +442,8 @@ mod tests {
         fn duration(&self) -> Option<i64> {
             None
         }
-        fn name(&self) -> &str {
-            "mock"
+        fn name(&self) -> String {
+            "mock".to_string()
         }
         fn id(&self) -> u64 {
             self.id
@@ -451,8 +451,8 @@ mod tests {
         fn parent_id(&self) -> Option<u64> {
             None
         }
-        fn description(&self) -> &str {
-            ""
+        fn description(&self) -> String {
+            "".to_string()
         }
         fn data(&self) -> std::collections::HashMap<String, serde_json::Value> {
             std::collections::HashMap::new()
