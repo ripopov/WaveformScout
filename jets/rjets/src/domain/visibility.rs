@@ -421,14 +421,25 @@ mod tests {
     #[derive(Clone, Copy)]
     struct MockEvent<'a>(&'a ());
 
+    impl<'a> rjets::AttributeAccessor for MockEvent<'a> {
+        fn attr_count(&self) -> u64 { 0 }
+        fn attr(&self, _key: &str) -> Option<serde_json::Value> { None }
+        fn attr_at(&self, _index: u64) -> Option<(String, serde_json::Value)> { None }
+        fn attrs(&self) -> Vec<(String, serde_json::Value)> { Vec::new() }
+    }
+
     impl<'a> TraceEvent for MockEvent<'a> {
         fn clk(&self) -> i64 { 0 }
         fn name(&self) -> String { "".to_string() }
         fn record_id(&self) -> u64 { 0 }
         fn description(&self) -> String { "".to_string() }
-        fn data(&self) -> std::collections::HashMap<String, serde_json::Value> {
-            std::collections::HashMap::new()
-        }
+    }
+
+    impl<'a> rjets::AttributeAccessor for &'a MockRecord {
+        fn attr_count(&self) -> u64 { 0 }
+        fn attr(&self, _key: &str) -> Option<serde_json::Value> { None }
+        fn attr_at(&self, _index: u64) -> Option<(String, serde_json::Value)> { None }
+        fn attrs(&self) -> Vec<(String, serde_json::Value)> { Vec::new() }
     }
 
     impl<'a> TraceRecord<'a> for &'a MockRecord {
@@ -453,9 +464,6 @@ mod tests {
         }
         fn description(&self) -> String {
             "".to_string()
-        }
-        fn data(&self) -> std::collections::HashMap<String, serde_json::Value> {
-            std::collections::HashMap::new()
         }
         fn num_children(&self) -> usize {
             self.children.len()

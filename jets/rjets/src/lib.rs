@@ -10,7 +10,8 @@ pub mod string_intern;
 pub use traits::{
     TraceReader, TraceData, TraceMetadata,
     TraceRecord, TraceEvent, RecordId,
-    DynTraceData, DynTraceMetadata, DynTraceRecord, DynTraceEvent
+    DynTraceData, DynTraceMetadata, DynTraceRecord, DynTraceEvent,
+    AttributeAccessor
 };
 
 // Export JETS implementation
@@ -27,8 +28,8 @@ pub use virtual_reader::{
 
 // Export pipetrace implementation
 pub use pipetrace_reader::{
-    PipetraceReader, PipetraceData, PipetraceMetadata,
-    PipetraceRecord, PipetraceEvent
+    PipetraceReader, PipetraceData, PipetraceMetadataRef,
+    PipetraceRecordRef, PipetraceEventRef
 };
 
 // Export writer (unchanged)

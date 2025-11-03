@@ -6,7 +6,7 @@ use std::sync::Arc;
 use once_cell::sync::OnceCell;
 use anyhow::{Result, Context, anyhow};
 use brotli::Decompressor;
-use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, RecordId, DynTraceData};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, RecordId, DynTraceData, AttributeAccessor};
 use crate::string_intern::StringInterner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -439,6 +439,24 @@ impl<'a> JetsTraceRecordRef<'a> {
     }
 }
 
+impl<'a> AttributeAccessor for JetsTraceRecordRef<'a> {
+    fn attr_count(&self) -> u64 {
+        self.0.attr_count()
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.attr(key)
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.0.attr_at(index)
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.0.attrs()
+    }
+}
+
 impl<'a> TraceRecord<'a> for JetsTraceRecordRef<'a> {
     type Event<'b> = JetsTraceEventRef<'b> where Self: 'b;
 
@@ -468,10 +486,6 @@ impl<'a> TraceRecord<'a> for JetsTraceRecordRef<'a> {
 
     fn description(&self) -> String {
         self.0.description()
-    }
-
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        self.0.data()
     }
 
     fn num_children(&self) -> usize {
@@ -504,6 +518,24 @@ impl<'a> TraceRecord<'a> for JetsTraceRecordRef<'a> {
 #[derive(Clone, Copy)]
 pub struct JetsTraceEventRef<'a>(&'a JetsTraceEvent);
 
+impl<'a> AttributeAccessor for JetsTraceEventRef<'a> {
+    fn attr_count(&self) -> u64 {
+        self.0.attr_count()
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.attr(key)
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.0.attr_at(index)
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.0.attrs()
+    }
+}
+
 impl<'a> TraceEvent for JetsTraceEventRef<'a> {
     fn clk(&self) -> i64 {
         self.0.clk()
@@ -519,10 +551,6 @@ impl<'a> TraceEvent for JetsTraceEventRef<'a> {
 
     fn description(&self) -> String {
         self.0.description()
-    }
-
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        self.0.data()
     }
 }
 
@@ -622,28 +650,6 @@ impl<'a> TraceRecord<'a> for &'a JetsTraceRecord {
         self.description.to_string()
     }
 
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        let mut result = HashMap::new();
-
-        // Add original data fields
-        if let Some(data) = &self.data {
-            if let serde_json::Value::Object(map) = data {
-                for (key, value) in map {
-                    result.insert(key.clone(), value.clone());
-                }
-            } else {
-                result.insert("data".to_string(), data.clone());
-            }
-        }
-
-        // Merge annotations into the data dictionary
-        for annotation in &self.annotations {
-            result.insert(annotation.name.to_string(), annotation.data.clone());
-        }
-
-        result
-    }
-
     fn num_children(&self) -> usize {
         self.child_indices.len()
     }
@@ -692,6 +698,145 @@ impl<'a> TraceRecord<'a> for &'a JetsTraceRecord {
     }
 }
 
+impl AttributeAccessor for &JetsTraceRecord {
+    fn attr_count(&self) -> u64 {
+        let mut count = 0u64;
+        
+        // Count original data fields
+        if let Some(serde_json::Value::Object(map)) = &self.data {
+            count += map.len() as u64;
+        } else if self.data.is_some() {
+            count += 1;
+        }
+        
+        // Count annotations (merged into attributes)
+        count += self.annotations.len() as u64;
+        
+        count
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        // First check annotations (they take precedence in merged view)
+        for annotation in &self.annotations {
+            if annotation.name.as_ref() == key {
+                return Some(annotation.data.clone());
+            }
+        }
+        
+        // Then check original data
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                return map.get(key).cloned();
+            } else if key == "data" {
+                return Some(data.clone());
+            }
+        }
+        
+        None
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        let mut current_index = 0u64;
+        
+        // First iterate over original data fields
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                for (key, value) in map {
+                    if current_index == index {
+                        return Some((key.clone(), value.clone()));
+                    }
+                    current_index += 1;
+                }
+            } else {
+                if current_index == index {
+                    return Some(("data".to_string(), data.clone()));
+                }
+                current_index += 1;
+            }
+        }
+        
+        // Then iterate over annotations
+        let annotation_index = (index - current_index) as usize;
+        self.annotations.get(annotation_index).map(|ann| {
+            (ann.name.to_string(), ann.data.clone())
+        })
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        let mut result = Vec::new();
+        
+        // Add original data fields
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                for (key, value) in map {
+                    result.push((key.clone(), value.clone()));
+                }
+            } else {
+                result.push(("data".to_string(), data.clone()));
+            }
+        }
+        
+        // Add annotations (merged into attributes)
+        for annotation in &self.annotations {
+            result.push((annotation.name.to_string(), annotation.data.clone()));
+        }
+        
+        result
+    }
+}
+
+impl AttributeAccessor for JetsTraceEvent {
+    fn attr_count(&self) -> u64 {
+        if let Some(serde_json::Value::Object(map)) = &self.data {
+            map.len() as u64
+        } else if self.data.is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                return map.get(key).cloned();
+            } else if key == "data" {
+                return Some(data.clone());
+            }
+        }
+        None
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                return map.iter()
+                    .nth(index as usize)
+                    .map(|(k, v)| (k.clone(), v.clone()));
+            } else if index == 0 {
+                return Some(("data".to_string(), data.clone()));
+            }
+        }
+        None
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        let mut result = Vec::new();
+        
+        if let Some(data) = &self.data {
+            if let serde_json::Value::Object(map) = data {
+                for (key, value) in map {
+                    result.push((key.clone(), value.clone()));
+                }
+            } else {
+                result.push(("data".to_string(), data.clone()));
+            }
+        }
+        
+        result
+    }
+}
+
 impl TraceEvent for JetsTraceEvent {
     fn clk(&self) -> i64 {
         self.clk
@@ -707,21 +852,5 @@ impl TraceEvent for JetsTraceEvent {
 
     fn description(&self) -> String {
         self.description.to_string()
-    }
-
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        let mut result = HashMap::new();
-
-        if let Some(data) = &self.data {
-            if let serde_json::Value::Object(map) = data {
-                for (key, value) in map {
-                    result.insert(key.clone(), value.clone());
-                }
-            } else {
-                result.insert("data".to_string(), data.clone());
-            }
-        }
-
-        result
     }
 }

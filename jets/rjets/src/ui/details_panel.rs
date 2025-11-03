@@ -6,7 +6,7 @@ use eframe::egui;
 use egui::{Color32, RichText, ScrollArea};
 use rjets::ThemeColors;
 use crate::app::AppState;
-use rjets::{TraceData, TraceRecord, TraceEvent};
+use rjets::{TraceData, TraceRecord, TraceEvent, AttributeAccessor};
 
 /// Renders the details panel showing annotations, data, and events for the selected record
 ///
@@ -42,12 +42,12 @@ pub fn render_details_panel(ui: &mut egui::Ui, state: &AppState, theme_colors: &
 
                 // Show merged data (includes annotations) - ALL of them, sorted by key
                 ui.label(RichText::new("Annotations & Data:").strong());
-                let data = record.data();
-                if !data.is_empty() {
-                    let mut sorted_data: Vec<_> = data.iter().collect();
-                    sorted_data.sort_by_key(|(key, _)| *key);
+                let attr_count = record.attr_count();
+                if attr_count > 0 {
+                    let mut attrs = record.attrs();
+                    attrs.sort_by(|a, b| a.0.cmp(&b.0));
 
-                    for (key, value) in sorted_data {
+                    for (key, value) in attrs {
                         let data_json = serde_json::json!({
                             key: value
                         });
@@ -71,12 +71,14 @@ pub fn render_details_panel(ui: &mut egui::Ui, state: &AppState, theme_colors: &
                 events.sort_by_key(|e| e.clk());
                 if !events.is_empty() {
                     for event in &events {
+                        let event_attrs = event.attrs();
+                        let data_obj: serde_json::Map<String, serde_json::Value> = event_attrs.into_iter().collect();
                         let evt_json = serde_json::json!({
                             "clk": event.clk(),
                             "name": event.name(),
                             "description": event.description(),
                             "record_id": event.record_id(),
-                            "data": event.data()
+                            "data": data_obj
                         });
                         let event_text = serde_json::to_string(&evt_json).unwrap();
 

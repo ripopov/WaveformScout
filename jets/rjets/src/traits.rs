@@ -1,7 +1,30 @@
-use std::collections::HashMap;
-
 /// Type alias for record IDs (domain identifiers from trace files)
 pub type RecordId = u64;
+
+/// Trait for accessing attributes in an ordered, efficient manner.
+/// 
+/// This trait provides methods to:
+/// - Query the total number of attributes
+/// - Access individual attributes by name or index
+/// - Retrieve all attributes in a stable order
+/// 
+/// Unlike `HashMap<String, Value>`, this API:
+/// - Preserves insertion order to avoid GUI flickering
+/// - Allows lazy access to avoid unnecessary allocations
+/// - Enables selective attribute retrieval
+pub trait AttributeAccessor {
+    /// Get total number of attributes
+    fn attr_count(&self) -> u64;
+    
+    /// Get attribute value by name
+    fn attr(&self, key: &str) -> Option<serde_json::Value>;
+    
+    /// Get attribute by index (preserves order)
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)>;
+    
+    /// Get all attributes as ordered Vec (maintains C-side order)
+    fn attrs(&self) -> Vec<(String, serde_json::Value)>;
+}
 
 // Forward declarations for enum types (defined at end of file)
 pub enum DynTraceData {
@@ -80,7 +103,7 @@ pub trait TraceMetadata {
 /// The lifetime parameter 'data represents the lifetime of the underlying TraceData storage.
 /// All records from the same TraceData share this lifetime, allowing children to have
 /// the same lifetime as their parents.
-pub trait TraceRecord<'data>: Clone {
+pub trait TraceRecord<'data>: Clone + AttributeAccessor {
     type Event<'a>: TraceEvent where Self: 'a;
 
     /// Returns the start timestamp (clock value)
@@ -103,9 +126,6 @@ pub trait TraceRecord<'data>: Clone {
 
     /// Returns the record description
     fn description(&self) -> String;
-
-    /// Returns all record data as a key-value map (includes merged annotations)
-    fn data(&self) -> HashMap<String, serde_json::Value>;
 
     /// Returns the number of children
     fn num_children(&self) -> usize;
@@ -133,7 +153,7 @@ pub trait TraceRecord<'data>: Clone {
 }
 
 /// Trait for accessing trace event
-pub trait TraceEvent {
+pub trait TraceEvent: AttributeAccessor {
     /// Returns the event timestamp (clock value)
     fn clk(&self) -> i64;
 
@@ -145,9 +165,6 @@ pub trait TraceEvent {
 
     /// Returns the event description
     fn description(&self) -> String;
-
-    /// Returns all event data as a key-value map
-    fn data(&self) -> HashMap<String, serde_json::Value>;
 }
 
 // ============================================================================
@@ -265,6 +282,44 @@ impl<'a> DynTraceRecord<'a> {
     }
 }
 
+impl<'a> AttributeAccessor for DynTraceRecord<'a> {
+    #[inline]
+    fn attr_count(&self) -> u64 {
+        match self {
+            DynTraceRecord::Jets(r) => r.attr_count(),
+            DynTraceRecord::Virtual(r) => r.attr_count(),
+            DynTraceRecord::Pipetrace(r) => r.attr_count(),
+        }
+    }
+
+    #[inline]
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        match self {
+            DynTraceRecord::Jets(r) => r.attr(key),
+            DynTraceRecord::Virtual(r) => r.attr(key),
+            DynTraceRecord::Pipetrace(r) => r.attr(key),
+        }
+    }
+
+    #[inline]
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        match self {
+            DynTraceRecord::Jets(r) => r.attr_at(index),
+            DynTraceRecord::Virtual(r) => r.attr_at(index),
+            DynTraceRecord::Pipetrace(r) => r.attr_at(index),
+        }
+    }
+
+    #[inline]
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        match self {
+            DynTraceRecord::Jets(r) => r.attrs(),
+            DynTraceRecord::Virtual(r) => r.attrs(),
+            DynTraceRecord::Pipetrace(r) => r.attrs(),
+        }
+    }
+}
+
 impl<'a> TraceRecord<'a> for DynTraceRecord<'a> {
     type Event<'b> = DynTraceEvent<'b> where Self: 'b;
 
@@ -332,15 +387,6 @@ impl<'a> TraceRecord<'a> for DynTraceRecord<'a> {
     }
 
     #[inline]
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        match self {
-            DynTraceRecord::Jets(r) => r.data(),
-            DynTraceRecord::Virtual(r) => r.data(),
-            DynTraceRecord::Pipetrace(r) => r.data(),
-        }
-    }
-
-    #[inline]
     fn num_children(&self) -> usize {
         match self {
             DynTraceRecord::Jets(r) => r.num_children(),
@@ -386,6 +432,44 @@ impl<'a> TraceRecord<'a> for DynTraceRecord<'a> {
     }
 }
 
+impl<'a> AttributeAccessor for DynTraceEvent<'a> {
+    #[inline]
+    fn attr_count(&self) -> u64 {
+        match self {
+            DynTraceEvent::Jets(e) => e.attr_count(),
+            DynTraceEvent::Virtual(e) => e.attr_count(),
+            DynTraceEvent::Pipetrace(e) => e.attr_count(),
+        }
+    }
+
+    #[inline]
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        match self {
+            DynTraceEvent::Jets(e) => e.attr(key),
+            DynTraceEvent::Virtual(e) => e.attr(key),
+            DynTraceEvent::Pipetrace(e) => e.attr(key),
+        }
+    }
+
+    #[inline]
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        match self {
+            DynTraceEvent::Jets(e) => e.attr_at(index),
+            DynTraceEvent::Virtual(e) => e.attr_at(index),
+            DynTraceEvent::Pipetrace(e) => e.attr_at(index),
+        }
+    }
+
+    #[inline]
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        match self {
+            DynTraceEvent::Jets(e) => e.attrs(),
+            DynTraceEvent::Virtual(e) => e.attrs(),
+            DynTraceEvent::Pipetrace(e) => e.attrs(),
+        }
+    }
+}
+
 impl<'a> TraceEvent for DynTraceEvent<'a> {
     #[inline]
     fn clk(&self) -> i64 {
@@ -420,15 +504,6 @@ impl<'a> TraceEvent for DynTraceEvent<'a> {
             DynTraceEvent::Jets(e) => e.description(),
             DynTraceEvent::Virtual(e) => e.description(),
             DynTraceEvent::Pipetrace(e) => e.description(),
-        }
-    }
-
-    #[inline]
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        match self {
-            DynTraceEvent::Jets(e) => e.data(),
-            DynTraceEvent::Virtual(e) => e.data(),
-            DynTraceEvent::Pipetrace(e) => e.data(),
         }
     }
 }

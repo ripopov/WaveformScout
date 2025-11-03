@@ -1,5 +1,5 @@
 use rjets::{TraceWriter, TraceReader, JetsTraceReader, VirtualTraceReader, parse_trace};
-use rjets::{TraceData, TraceRecord, TraceMetadata, TraceEvent, DynTraceData};
+use rjets::{TraceData, TraceRecord, TraceMetadata, TraceEvent, DynTraceData, AttributeAccessor};
 use anyhow::Result;
 use std::fs;
 use std::env;
@@ -104,10 +104,10 @@ fn test_write_and_read_basic_trace() -> Result<()> {
     assert_eq!(root.duration(), Some(500));
 
     // Verify merged data (includes annotations)
-    let data = root.data();
-    assert!(data.contains_key("language"));
-    assert!(data.contains_key("compiler"));  // Annotation merged into data
-    assert_eq!(data["compiler"]["name"], "nvcc");
+    assert!(root.attr("language").is_some());
+    assert!(root.attr("compiler").is_some());  // Annotation merged into data
+    let compiler_attr = root.attr("compiler").unwrap();
+    assert_eq!(compiler_attr["name"], "nvcc");
 
     // Verify events
     let events: Vec<_> = (0..root.num_events()).filter_map(|i| root.event_at(i)).collect();
@@ -267,8 +267,8 @@ fn test_virtual_reader() -> Result<()> {
         // Children may or may not exist depending on depth and random generation
 
         // Verify data exists
-        let data = record.data();
-        assert!(data.len() >= 3); // Should have 3-7 fields
+        let attr_count = record.attr_count();
+        assert!(attr_count >= 3); // Should have 3-7 fields
 
         // Verify events
         let events: Vec<_> = (0..record.num_events()).filter_map(|i| record.event_at(i)).collect();
@@ -461,9 +461,9 @@ fn test_brotli_write_and_read() -> Result<()> {
     assert_eq!(child.end_clk(), Some(1200));
 
     // Verify annotation (merged into data)
-    let child_data = child.data();
-    assert!(child_data.contains_key("test_annotation"));
-    assert_eq!(child_data["test_annotation"]["annotation_key"], "annotation_value");
+    assert!(child.attr("test_annotation").is_some());
+    let test_annotation = child.attr("test_annotation").unwrap();
+    assert_eq!(test_annotation["annotation_key"], "annotation_value");
 
     // Verify event
     let events: Vec<_> = (0..child.num_events()).filter_map(|i| child.event_at(i)).collect();

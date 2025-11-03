@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, DynTraceData};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, DynTraceData, AttributeAccessor};
 
 const DEFAULT_MAX_DEPTH: usize = 5;
 const DEFAULT_MAX_CHILDREN: usize = 10;
@@ -143,6 +143,28 @@ impl<'a> TraceMetadata for VirtualTraceDataRef<'a> {
 #[derive(Clone, Copy)]
 pub struct VirtualTraceRecordRef<'a>(&'a VirtualTraceRecord);
 
+impl<'a> AttributeAccessor for VirtualTraceRecordRef<'a> {
+    fn attr_count(&self) -> u64 {
+        self.0.data.len() as u64
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.data.get(key).cloned()
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.0.data.iter()
+            .nth(index as usize)
+            .map(|(k, v)| (k.clone(), v.clone()))
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.0.data.iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+}
+
 impl<'a> TraceRecord<'a> for VirtualTraceRecordRef<'a> {
     type Event<'b> = VirtualTraceEventRef<'b> where Self: 'b;
 
@@ -174,10 +196,6 @@ impl<'a> TraceRecord<'a> for VirtualTraceRecordRef<'a> {
         self.0.description()
     }
 
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        self.0.data()
-    }
-
     fn num_children(&self) -> usize {
         self.0.num_children()
     }
@@ -202,6 +220,28 @@ impl<'a> TraceRecord<'a> for VirtualTraceRecordRef<'a> {
 
 pub struct VirtualTraceEventRef<'a>(&'a VirtualTraceEvent);
 
+impl<'a> AttributeAccessor for VirtualTraceEventRef<'a> {
+    fn attr_count(&self) -> u64 {
+        self.0.data.len() as u64
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.data.get(key).cloned()
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.0.data.iter()
+            .nth(index as usize)
+            .map(|(k, v)| (k.clone(), v.clone()))
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.0.data.iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+}
+
 impl<'a> TraceEvent for VirtualTraceEventRef<'a> {
     fn clk(&self) -> i64 {
         self.0.clk()
@@ -217,10 +257,6 @@ impl<'a> TraceEvent for VirtualTraceEventRef<'a> {
 
     fn description(&self) -> String {
         self.0.description()
-    }
-
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        self.0.data()
     }
 }
 
@@ -392,10 +428,6 @@ impl<'a> TraceRecord<'a> for &'a VirtualTraceRecord {
         self.description.clone()
     }
 
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        self.data.clone()
-    }
-
     fn num_children(&self) -> usize {
         self.children.len()
     }
@@ -460,6 +492,50 @@ impl VirtualTraceEvent {
     }
 }
 
+impl AttributeAccessor for &VirtualTraceRecord {
+    fn attr_count(&self) -> u64 {
+        self.data.len() as u64
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.data.get(key).cloned()
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.data.iter()
+            .nth(index as usize)
+            .map(|(k, v)| (k.clone(), v.clone()))
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.data.iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+}
+
+impl AttributeAccessor for VirtualTraceEvent {
+    fn attr_count(&self) -> u64 {
+        self.data.len() as u64
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.data.get(key).cloned()
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.data.iter()
+            .nth(index as usize)
+            .map(|(k, v)| (k.clone(), v.clone()))
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.data.iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+}
+
 impl TraceEvent for VirtualTraceEvent {
     fn clk(&self) -> i64 {
         self.clk
@@ -475,9 +551,5 @@ impl TraceEvent for VirtualTraceEvent {
 
     fn description(&self) -> String {
         self.description.clone()
-    }
-
-    fn data(&self) -> HashMap<String, serde_json::Value> {
-        self.data.clone()
     }
 }
