@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, DynTraceData};
+use crate::traits::{TraceReader, TraceData, TraceMetadata, TraceRecord, TraceEvent, DynTraceData, AttributeAccessor};
 
 /// stub implementation for now.
 
@@ -32,6 +31,24 @@ impl<'a> TraceMetadata for PipetraceMetadataRef<'a> {
 #[derive(Clone, Copy)]
 pub struct PipetraceRecordRef<'a>(&'a PipetraceRecord);
 
+impl<'a> AttributeAccessor for PipetraceRecordRef<'a> {
+    fn attr_count(&self) -> u64 {
+        self.0.attr_count()
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.attr(key)
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.0.attr_at(index)
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.0.attrs()
+    }
+}
+
 impl<'a> TraceRecord<'a> for PipetraceRecordRef<'a> {
     type Event<'b> = PipetraceEventRef<'b> where Self: 'b;
 
@@ -42,7 +59,6 @@ impl<'a> TraceRecord<'a> for PipetraceRecordRef<'a> {
     fn id(&self) -> u64 { self.0.id() }
     fn parent_id(&self) -> Option<u64> { self.0.parent_id() }
     fn description(&self) -> String { self.0.description() }
-    fn data(&self) -> HashMap<String, serde_json::Value> { self.0.data() }
     fn num_children(&self) -> usize { self.0.num_children() }
     fn child_at(&self, index: usize) -> Option<Self> {
         self.0.child_at(index).map(PipetraceRecordRef)
@@ -56,12 +72,29 @@ impl<'a> TraceRecord<'a> for PipetraceRecordRef<'a> {
 
 pub struct PipetraceEventRef<'a>(&'a PipetraceEvent);
 
+impl<'a> AttributeAccessor for PipetraceEventRef<'a> {
+    fn attr_count(&self) -> u64 {
+        self.0.attr_count()
+    }
+
+    fn attr(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.attr(key)
+    }
+
+    fn attr_at(&self, index: u64) -> Option<(String, serde_json::Value)> {
+        self.0.attr_at(index)
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        self.0.attrs()
+    }
+}
+
 impl<'a> TraceEvent for PipetraceEventRef<'a> {
     fn clk(&self) -> i64 { self.0.clk() }
     fn name(&self) -> String { self.0.name() }
     fn record_id(&self) -> u64 { self.0.record_id() }
     fn description(&self) -> String { self.0.description() }
-    fn data(&self) -> HashMap<String, serde_json::Value> { self.0.data() }
 }
 
 #[derive(Clone, Default)]
@@ -102,6 +135,24 @@ impl TraceMetadata for PipetraceMetadata {
 #[derive(Clone)]
 pub struct PipetraceRecord;
 
+impl AttributeAccessor for &PipetraceRecord {
+    fn attr_count(&self) -> u64 {
+        0
+    }
+
+    fn attr(&self, _key: &str) -> Option<serde_json::Value> {
+        None
+    }
+
+    fn attr_at(&self, _index: u64) -> Option<(String, serde_json::Value)> {
+        None
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        Vec::new()
+    }
+}
+
 impl<'a> TraceRecord<'a> for &'a PipetraceRecord {
     type Event<'b> = PipetraceEventRef<'b> where Self: 'b;
 
@@ -112,7 +163,6 @@ impl<'a> TraceRecord<'a> for &'a PipetraceRecord {
     fn id(&self) -> u64 { 0 }
     fn parent_id(&self) -> Option<u64> { None }
     fn description(&self) -> String { "".to_string() }
-    fn data(&self) -> HashMap<String, serde_json::Value> { HashMap::new() }
     fn num_children(&self) -> usize { 0 }
     fn child_at(&self, _index: usize) -> Option<Self> { None }
     fn num_events(&self) -> usize { 0 }
@@ -123,11 +173,28 @@ impl<'a> TraceRecord<'a> for &'a PipetraceRecord {
 #[derive(Clone)]
 pub struct PipetraceEvent;
 
+impl AttributeAccessor for PipetraceEvent {
+    fn attr_count(&self) -> u64 {
+        0
+    }
+
+    fn attr(&self, _key: &str) -> Option<serde_json::Value> {
+        None
+    }
+
+    fn attr_at(&self, _index: u64) -> Option<(String, serde_json::Value)> {
+        None
+    }
+
+    fn attrs(&self) -> Vec<(String, serde_json::Value)> {
+        Vec::new()
+    }
+}
+
 impl TraceEvent for PipetraceEvent {
     fn clk(&self) -> i64 { 0 }
     fn name(&self) -> String { "".to_string() }
     fn record_id(&self) -> u64 { 0 }
     fn description(&self) -> String { "".to_string() }
-    fn data(&self) -> HashMap<String, serde_json::Value> { HashMap::new() }
 }
 
